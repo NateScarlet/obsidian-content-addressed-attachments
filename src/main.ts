@@ -415,39 +415,21 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										data.format() || "*/*",
 									);
 								}
+								const headersRecord: Record<string, string> =
+									{};
+								headers.forEach((v, k) => {
+									headersRecord[k] = v;
+								});
 
-								let shouldTry = true;
-								try {
-									// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 fetch 来 HEAD
-									// eslint-disable-next-line no-restricted-globals
-									const resp = await fetch(url, {
-										method: "HEAD",
-										signal: ctr.signal,
-										headers: headers,
-										mode: "cors",
-										credentials: "omit",
-										referrerPolicy: "no-referrer",
-									});
-									shouldTry = resp.status === 200;
-								} catch (err) {
-									if (
-										!(
-											err instanceof Error &&
-											err.message.includes("CORS")
-										)
-									) {
-										console.error(err);
-									}
-								}
-								if (shouldTry) {
+								// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
+								const resp = await requestUrl({
+									url,
+									method: "HEAD",
+									headers: headersRecord,
+								});
+								if (resp.status == 200) {
 									console.debug("GET", url);
-									const headersRecord: Record<
-										string,
-										string
-									> = {};
-									headers.forEach((v, k) => {
-										headersRecord[k] = v;
-									});
+
 									const resp = await requestUrl({
 										url,
 										headers: headersRecord,
