@@ -19,7 +19,7 @@ export class LocalCAS implements CAS {
 		const filePath = this.getFilePath(cid);
 		const exists = await this.app.vault.adapter.exists(filePath);
 		if (exists) {
-			console.log("save", {
+			console.debug("save", {
 				filename: file.name,
 				filePath,
 				didCreate: false,
@@ -29,7 +29,7 @@ export class LocalCAS implements CAS {
 
 		await makeDirs(this.app.vault, dirname(filePath));
 		await this.app.vault.adapter.writeBinary(filePath, arrayBuffer);
-		console.log("save", { filename: file.name, filePath, didCreate: true });
+		console.debug("save", { filename: file.name, filePath, didCreate: true });
 		return { cid, didCreate: true };
 	}
 

@@ -318,10 +318,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			const value = el.getAttribute(attr);
 			if (value?.startsWith("ipfs://")) {
 				el.setAttr(attr, ""); // 避免发起请求
-				console.log("🖼️ 处理 URL:", value);
+				console.debug("🖼️ 处理 URL:", value);
 				const resolvedURL = await this.resolveURL(value);
 				if (resolvedURL) {
-					console.log("使用源:", resolvedURL);
+					console.debug("使用源:", resolvedURL);
 					el.setAttr(`data-original-${attr}`, value);
 					el.setAttr(attr, resolvedURL.href);
 				} else {
@@ -391,7 +391,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 								}
 							}
 							if (shouldTry) {
-								console.log("GET", url);
+								console.debug("GET", url);
 								const headersRecord: Record<string, string> =
 									{};
 								headers.forEach((v, k) => {

@@ -239,7 +239,7 @@ export class MigrationManager {
 		if (!file) {
 			return { success: false, reason: t("cannotResolvePath") };
 		}
-		console.log(file.extension)
+		console.debug(file.extension)
 		switch (file.extension) {
 			case "txt":
 			case "md":
