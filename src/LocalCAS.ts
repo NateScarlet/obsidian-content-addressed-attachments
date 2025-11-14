@@ -1,6 +1,6 @@
 import type { CAS } from "./main";
 import { CID } from "multiformats/cid";
-import { base32hexupper } from "multiformats/bases/base32";
+import { base32upper } from "multiformats/bases/base32";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import { App, getBlobArrayBuffer } from "obsidian";
@@ -40,7 +40,7 @@ export class LocalCAS implements CAS {
 	pathFromCID(cid: CID): string {
 		// 解析 CID
 
-		const h = cid.toString(base32hexupper).slice(1); // 第一个字母固定是 B 所以忽略
+		const h = cid.toString(base32upper).slice(1); // 第一个字母固定是 B 所以忽略
 
 		// 使用倒数第三和第二个字符进行分片
 		if (h.length < 4) {
