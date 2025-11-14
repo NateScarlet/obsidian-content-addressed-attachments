@@ -1,4 +1,3 @@
-// main.ts
 import {
 	FileSystemAdapter,
 	MarkdownView,
@@ -358,7 +357,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		for (const attr of ["src", "href"]) {
 			const value = el.getAttribute(attr);
 			if (value?.startsWith("ipfs://")) {
-				el.setAttr(attr, ""); // 避免发起请求
 				console.debug("🖼️ 处理 URL:", value);
 				const resolvedURL = await this.resolveURL(value);
 				if (resolvedURL) {
@@ -377,7 +375,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		rawURL: string,
 	): Promise<{ path?: string; href: string } | undefined> {
 		using stack = new DisposableStack();
-		const ctr = stack.adopt(new AbortController(), (i) => i.abort());
+		// const ctr = stack.adopt(new AbortController(), (i) => i.abort());
 		const data = this.prepareTemplateData(rawURL);
 
 		const localPath = join(this.settings.casDir, data.casPath());
