@@ -1,5 +1,11 @@
 // main.ts
-import { FileSystemAdapter, Notice, Plugin } from "obsidian";
+import {
+	FileSystemAdapter,
+	Notice,
+	Plugin,
+	requestUrl,
+	request,
+} from "obsidian";
 import isAbortError from "./utils/isAbortError";
 import { LocalCAS } from "./LocalCAS";
 import mustache from "mustache";
@@ -78,8 +84,8 @@ function getDefaultSettings() {
 			{
 				name: t("githubExample"),
 				urlTemplate:
-					"https://raw.githubusercontent.com/OWNER/REPO/main/{{#encodeURI}}{{{casPath}}}{{/encodeURI}}",
-				headers: [],
+					"https://raw.githubusercontent.com/OWNER/REPO/main/{{{#encodeURI}}}{{{casPath}}}{{{/encodeURI}}}",
+				headers: [["Authorization", "Token YOUR_PERSONAL_ACCESS_TOKEN"]],
 				enabled: false,
 			},
 		],
@@ -87,7 +93,7 @@ function getDefaultSettings() {
 }
 
 // 模板数据类型接口
-type TemplateLambda = (
+type TemplateLambda = () => (
 	text: string,
 	render: (text: string) => string,
 ) => string;
@@ -127,8 +133,8 @@ export interface CAS {
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	settings: Settings;
 	public cas: CAS;
-	private observer: MutationObserver;
 	private inProgressElements = new WeakSet<HTMLElement>();
+	private stack = new DisposableStack();
 
 	async onload() {
 		await this.loadSettings();
@@ -279,19 +285,22 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	private setupMutationObserver() {
-		this.observer = new MutationObserver((mutations) => {
-			mutations.forEach((mutation) => {
-				if (mutation.target instanceof HTMLElement) {
-					this.process(mutation.target);
-				}
-				mutation.addedNodes.forEach((node) => {
-					if (node instanceof HTMLElement) {
-						this.process(node);
+		const observer = this.stack.adopt(
+			new MutationObserver((mutations) => {
+				mutations.forEach((mutation) => {
+					if (mutation.target instanceof HTMLElement) {
+						this.process(mutation.target);
 					}
+					mutation.addedNodes.forEach((node) => {
+						if (node instanceof HTMLElement) {
+							this.process(node);
+						}
+					});
 				});
-			});
-		});
-		this.observer.observe(document.body, {
+			}),
+			(i) => i.disconnect(),
+		);
+		observer.observe(document.body, {
 			childList: true,
 			subtree: true,
 		});
@@ -358,18 +367,61 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							if (!headers.has("Accept")) {
 								headers.set("Accept", data.format() || "*/*");
 							}
-							const resp = await fetch(url, {
-								signal: ctr.signal,
-								method: "HEAD",
-								credentials: "omit",
-								mode: "cors",
-								referrerPolicy: "no-referrer",
-								headers,
-							});
-							if (resp.status === 200) {
-								resolve({ href: url });
+
+							// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先HEAD
+							let shouldTry = true;
+							try {
+								const resp = await fetch(url, {
+									method: "HEAD",
+									signal: ctr.signal,
+									headers: headers,
+									mode: "cors",
+									credentials: "omit",
+									referrerPolicy: "no-referrer",
+								});
+								shouldTry = resp.status === 200;
+							} catch (err) {
+								if (
+									!(
+										err instanceof Error &&
+										err.message.includes("CORS")
+									)
+								) {
+									console.error(err);
+								}
+							}
+							if (shouldTry) {
+								console.log("GET", url);
+								const headersRecord: Record<string, string> =
+									{};
+								headers.forEach((v, k) => {
+									headersRecord[k] = v;
+								});
+								const resp = await requestUrl({
+									url,
+									headers: headersRecord,
+									throw: false,
+								});
+								if (resp.status === 200) {
+									console.debug("GOT", resp.headers);
+									resolve({
+										href: this.stack.adopt(
+											URL.createObjectURL(
+												new Blob([resp.arrayBuffer], {
+													type:
+														resp.headers[
+															"Content-Type"
+														] || undefined,
+												}),
+											),
+											URL.revokeObjectURL,
+										),
+									});
+								}
 								return;
 							}
+						} catch (err) {
+							console.error("Failed to fetch", config, rawURL);
 						} finally {
 							remaining -= 1;
 							if (remaining === 0) {
@@ -416,7 +468,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			filename: () => url.searchParams.get("filename") || "",
 			format: () => url.searchParams.get("format") || "",
 			casPath: () => casPath,
-			encodeURI: (text, render) => encodeURIComponent(render(text)),
+			encodeURI: () => (text, render) => encodeURIComponent(render(text)),
 		};
 	}
 
@@ -441,8 +493,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	onunload() {
-		if (this.observer) {
-			this.observer.disconnect();
-		}
+		this.stack.dispose();
 	}
 }
