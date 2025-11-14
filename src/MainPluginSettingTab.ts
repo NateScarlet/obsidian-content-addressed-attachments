@@ -138,17 +138,19 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setName(t("externalStorage"))
 			.setDesc(t("externalStorageDesc"))
 			.addButton((button) =>
-				button.setButtonText(t("addExternalStorage")).onClick(() => {
-					this.plugin.settings.gatewayURLs.push({
-						name: t("newExternalStorage"),
-						urlTemplate:
-							"https://example.com/{{cid}}{{{url.pathname}}}",
-						headers: [],
-						enabled: true,
-					});
-					this.plugin.saveSettings();
-					this.display();
-				}),
+				button
+					.setButtonText(t("addExternalStorage"))
+					.onClick(async () => {
+						this.plugin.settings.gatewayURLs.push({
+							name: t("newExternalStorage"),
+							urlTemplate:
+								"https://example.com/{{cid}}{{{url.pathname}}}",
+							headers: [],
+							enabled: true,
+						});
+						await this.plugin.saveSettings();
+						this.display();
+					}),
 			);
 
 		this.plugin.settings.gatewayURLs.forEach((config, index) => {
@@ -179,8 +181,10 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 						});
 
-					input.inputEl.style.minWidth = "300px";
-					input.inputEl.style.flexGrow = "1";
+					input.inputEl.setCssStyles({
+						minWidth: "300px",
+						flexGrow: "1",
+					});
 					return input;
 				})
 				.addExtraButton((button) =>
@@ -191,9 +195,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							new HeadersEditModal(
 								this.app,
 								config,
-								async (newHeaders) => {
+								(newHeaders) => {
 									config.headers = newHeaders;
-									await this.plugin.saveSettings();
+									this.plugin
+										.saveSettings()
+										.catch(console.error);
 								},
 							).open();
 						}),
@@ -202,15 +208,15 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					button
 						.setIcon("trash")
 						.setTooltip(t("delete"))
-						.onClick(() => {
+						.onClick(async () => {
 							this.plugin.settings.gatewayURLs.splice(index, 1);
-							this.plugin.saveSettings();
+							await this.plugin.saveSettings();
 							this.display();
 						}),
 				);
 			const info = setting.settingEl.querySelector(".setting-item-info");
 			if (info instanceof HTMLElement) {
-				info.style.display = "none";
+				info.setCssStyles({ display: "none" });
 			}
 		});
 
@@ -332,9 +338,11 @@ class HeadersEditModal extends Modal {
 			.setPlaceholder(t("headersExample"))
 			.setValue(this.headersToString(this.config.headers))
 			.then((component) => {
-				component.inputEl.style.width = "100%";
-				component.inputEl.style.height = "200px";
-				component.inputEl.style.fontFamily = "monospace";
+				component.inputEl.setCssStyles({
+					width: "100%",
+					height: "200px",
+					fontFamily: "monospace",
+				});
 			});
 
 		// 按钮容器

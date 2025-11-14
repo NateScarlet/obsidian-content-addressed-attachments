@@ -1,6 +1,5 @@
-import { App, TFile, LinkCache, getLinkpath } from "obsidian";
+import { App, TFile, LinkCache } from "obsidian";
 import ContentAddressedAttachmentPlugin from "./main";
-import { dirname, join } from "path-browserify";
 import defineLocales from "./utils/defineLocales";
 
 //#region 国际化字符串
@@ -102,10 +101,10 @@ export class MigrationManager {
 				result.skipped += noteResult.skipped;
 				result.errors += noteResult.errors;
 				result.details.push(...noteResult.details);
-			} catch (error) {
+			} catch (err) {
 				result.errors++;
 				result.details.push(
-					t("errorProcessingNote")(file.path, error.message),
+					t("errorProcessingNote")(file.path, String(err)),
 				);
 				result.success = false;
 			}
@@ -180,10 +179,10 @@ export class MigrationManager {
 							),
 						);
 					}
-				} catch (error) {
+				} catch (err) {
 					result.errors++;
 					result.details.push(
-						t("errorProcessingLink")(link.link, error.message),
+						t("errorProcessingLink")(link.link, String(err)),
 					);
 				}
 			}
@@ -198,11 +197,11 @@ export class MigrationManager {
 				result.skipped++;
 				result.details.unshift(t("noMigrationNeeded")(file.path));
 			}
-		} catch (error) {
+		} catch (err) {
 			result.success = false;
 			result.errors++;
 			result.details.push(
-				t("errorProcessingNote")(file.path, error.message),
+				t("errorProcessingNote")(file.path, String(err)),
 			);
 		}
 
@@ -239,7 +238,7 @@ export class MigrationManager {
 		if (!file) {
 			return { success: false, reason: t("cannotResolvePath") };
 		}
-		console.debug(file.extension)
+		console.debug(file.extension);
 		switch (file.extension) {
 			case "txt":
 			case "md":
@@ -301,7 +300,7 @@ export class MigrationManager {
 			// 保存到CAS
 			const { cid } = await this.plugin.cas.save(fileObj);
 
-			const url = new URL(`ipfs://${cid}`);
+			const url = new URL(`ipfs://${cid.toString()}`);
 			url.searchParams.set("filename", file.name);
 			return {
 				success: true,
@@ -311,7 +310,7 @@ export class MigrationManager {
 			console.warn(`迁移文件失败: ${file.path}`, error);
 			return {
 				success: false,
-				error: error.message,
+				error: String(error),
 			};
 		}
 	}

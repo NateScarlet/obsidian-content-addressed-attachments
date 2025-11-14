@@ -29,7 +29,11 @@ export class LocalCAS implements CAS {
 
 		await makeDirs(this.app.vault, dirname(filePath));
 		await this.app.vault.adapter.writeBinary(filePath, arrayBuffer);
-		console.debug("save", { filename: file.name, filePath, didCreate: true });
+		console.debug("save", {
+			filename: file.name,
+			filePath,
+			didCreate: true,
+		});
 		return { cid, didCreate: true };
 	}
 
@@ -40,7 +44,7 @@ export class LocalCAS implements CAS {
 
 		// 使用倒数第三和第二个字符进行分片
 		if (h.length < 4) {
-			throw new Error(`unexpected short CID: '${cid}'`);
+			throw new Error(`unexpected short CID: '${cid.toString()}'`);
 		}
 		const shard = h.slice(h.length - 3, h.length - 1);
 		return `${shard}/${h}.data`;
@@ -58,7 +62,7 @@ export class LocalCAS implements CAS {
 				}
 			};
 
-			reader.onerror = () => reject(reader.error);
+			reader.onerror = () => reject(reader.error as Error);
 			reader.readAsArrayBuffer(file);
 		});
 	}

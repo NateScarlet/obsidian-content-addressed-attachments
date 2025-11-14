@@ -1,8 +1,8 @@
 import { Notice } from "obsidian";
 
 export default function openPath(url: string) {
-	const shell = (window as any).electron?.shell;
-	if (shell || !url.startsWith("app:")) {
+	const shell = window.electron?.shell;
+	if (shell && !url.startsWith("app:")) {
 		shell.openPath(url);
 	} else {
 		const fragment = new DocumentFragment();

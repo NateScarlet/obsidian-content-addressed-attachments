@@ -4,7 +4,6 @@ import {
 	Notice,
 	Plugin,
 	requestUrl,
-	request,
 } from "obsidian";
 import isAbortError from "./utils/isAbortError";
 import { LocalCAS } from "./LocalCAS";
@@ -85,7 +84,9 @@ function getDefaultSettings() {
 				name: t("githubExample"),
 				urlTemplate:
 					"https://raw.githubusercontent.com/OWNER/REPO/main/{{{#encodeURI}}}{{{casPath}}}{{{/encodeURI}}}",
-				headers: [["Authorization", "Token YOUR_PERSONAL_ACCESS_TOKEN"]],
+				headers: [
+					["Authorization", "Token YOUR_PERSONAL_ACCESS_TOKEN"],
+				],
 				enabled: false,
 			},
 		],
@@ -234,7 +235,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		});
 
 		// 初始处理
-		this.process();
+		this.process().catch(console.error);
 	}
 
 	private async executeMigration(scope: "current" | "all") {
@@ -263,14 +264,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}
 			progressModal.updateProgress(result);
 		} catch (error) {
-			progressModal.showError(error.message);
+			progressModal.showError(String(error));
 			console.error("迁移失败:", error);
 		}
 	}
 
 	private async generateMarkdownLink(file: File): Promise<string> {
 		const { cid } = await this.cas.save(file);
-		const url = new URL(`ipfs://${cid}`);
+		const url = new URL(`ipfs://${cid.toString()}`);
 		if (file.name) {
 			url.searchParams.set("filename", file.name);
 		}
@@ -289,11 +290,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			new MutationObserver((mutations) => {
 				mutations.forEach((mutation) => {
 					if (mutation.target instanceof HTMLElement) {
-						this.process(mutation.target);
+						this.process(mutation.target).catch(console.error);
 					}
 					mutation.addedNodes.forEach((node) => {
 						if (node instanceof HTMLElement) {
-							this.process(node);
+							this.process(node).catch(console.error);
 						}
 					});
 				});
@@ -353,81 +354,95 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				this.settings.gatewayURLs.map((config) => {
 					return new Promise<
 						Awaited<ReturnType<typeof this.resolveURL>>
-					>(async (resolve) => {
-						stack.defer(() => resolve(undefined)); // 确保退出后所有Promise一定处于完成状态
-						try {
-							if (!config.enabled) {
-								return;
-							}
-							const url = this.renderGatewayURL(rawURL, config);
-							if (!url) {
-								return;
-							}
-							const headers = new Headers(config.headers);
-							if (!headers.has("Accept")) {
-								headers.set("Accept", data.format() || "*/*");
-							}
-
-							// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先HEAD
-							let shouldTry = true;
+					>((resolve) => {
+						(async () => {
+							stack.defer(() => resolve(undefined)); // 确保退出后所有Promise一定处于完成状态
 							try {
-								const resp = await fetch(url, {
-									method: "HEAD",
-									signal: ctr.signal,
-									headers: headers,
-									mode: "cors",
-									credentials: "omit",
-									referrerPolicy: "no-referrer",
-								});
-								shouldTry = resp.status === 200;
-							} catch (err) {
-								if (
-									!(
-										err instanceof Error &&
-										err.message.includes("CORS")
-									)
-								) {
-									console.error(err);
+								if (!config.enabled) {
+									return;
 								}
-							}
-							if (shouldTry) {
-								console.debug("GET", url);
-								const headersRecord: Record<string, string> =
-									{};
-								headers.forEach((v, k) => {
-									headersRecord[k] = v;
-								});
-								const resp = await requestUrl({
-									url,
-									headers: headersRecord,
-									throw: false,
-								});
-								if (resp.status === 200) {
-									console.debug("GOT", resp.headers);
-									resolve({
-										href: this.stack.adopt(
-											URL.createObjectURL(
-												new Blob([resp.arrayBuffer], {
-													type:
-														resp.headers[
-															"Content-Type"
-														] || undefined,
-												}),
-											),
-											URL.revokeObjectURL,
-										),
+								const url = this.renderGatewayURL(
+									rawURL,
+									config,
+								);
+								if (!url) {
+									return;
+								}
+								const headers = new Headers(config.headers);
+								if (!headers.has("Accept")) {
+									headers.set(
+										"Accept",
+										data.format() || "*/*",
+									);
+								}
+
+								let shouldTry = true;
+								try {
+									// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 fetch 来 HEAD
+									// eslint-disable-next-line no-restricted-globals
+									const resp = await fetch(url, {
+										method: "HEAD",
+										signal: ctr.signal,
+										headers: headers,
+										mode: "cors",
+										credentials: "omit",
+										referrerPolicy: "no-referrer",
 									});
+									shouldTry = resp.status === 200;
+								} catch (err) {
+									if (
+										!(
+											err instanceof Error &&
+											err.message.includes("CORS")
+										)
+									) {
+										console.error(err);
+									}
 								}
-								return;
+								if (shouldTry) {
+									console.debug("GET", url);
+									const headersRecord: Record<
+										string,
+										string
+									> = {};
+									headers.forEach((v, k) => {
+										headersRecord[k] = v;
+									});
+									const resp = await requestUrl({
+										url,
+										headers: headersRecord,
+										throw: false,
+									});
+									if (resp.status === 200) {
+										console.debug("GOT", resp.headers);
+										resolve({
+											href: this.stack.adopt(
+												URL.createObjectURL(
+													new Blob(
+														[resp.arrayBuffer],
+														{
+															type:
+																resp.headers[
+																	"Content-Type"
+																] || undefined,
+														},
+													),
+												),
+												(i) => URL.revokeObjectURL(i),
+											),
+										});
+									}
+									return;
+								}
+							} finally {
+								remaining -= 1;
+								if (remaining === 0) {
+									resolve(undefined);
+								}
 							}
-						} catch (err) {
+						})().catch((err) => {
 							console.error("Failed to fetch", config, rawURL);
-						} finally {
-							remaining -= 1;
-							if (remaining === 0) {
-								resolve(undefined);
-							}
-						}
+						});
 					});
 				}),
 			);
@@ -439,14 +454,16 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	// 处理所有已存在的链接
-	private process(parent: ParentNode = document) {
+	private async process(parent: ParentNode = document): Promise<void> {
 		const match = parent.querySelectorAll<HTMLElement>(
 			'[src^="ipfs://"], [href^="ipfs://"]',
 		);
 
-		match.forEach(async (element) => {
-			this.processElementURL(element);
+		const jobs: Promise<void>[] = [];
+		match.forEach((element) => {
+			jobs.push(this.processElementURL(element));
 		});
+		await Promise.all(jobs);
 	}
 
 	// 生成模板数据
@@ -484,7 +501,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			getDefaultSettings(),
-			await this.loadData(),
+			(await this.loadData()) as Settings,
 		);
 	}
 
