@@ -1,5 +1,11 @@
 // main.ts
-import { FileSystemAdapter, Notice, Plugin, requestUrl } from "obsidian";
+import {
+	FileSystemAdapter,
+	MarkdownView,
+	Notice,
+	Plugin,
+	requestUrl,
+} from "obsidian";
 import isAbortError from "./utils/isAbortError";
 import { LocalCAS } from "./LocalCAS";
 import mustache from "mustache";
@@ -14,6 +20,7 @@ import defineLocales from "./utils/defineLocales";
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {
+		insertAttachment: "Insert attachment",
 		migrateComplete: (migrated: number) =>
 			`Migration complete: successfully migrated ${migrated} files`,
 		noMigrationNeeded: "No files need to be migrated",
@@ -27,6 +34,7 @@ const { t } = defineLocales({
 		githubExample: "Github Repository Example",
 	},
 	zh: {
+		insertAttachment: "插入附件",
 		migrateComplete: (migrated: number) =>
 			`迁移完成: 成功迁移 ${migrated} 个文件`,
 		noMigrationNeeded: "没有发现需要迁移的文件",
@@ -163,6 +171,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				}
 			}),
 		);
+
 		this.registerEvent(
 			this.app.workspace.on("editor-drop", async (e, editor) => {
 				const files = e.dataTransfer?.files;
@@ -216,6 +225,42 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			},
 			{ capture: true },
 		);
+
+		this.addCommand({
+			id: "insert-attachment",
+			name: t("insertAttachment"),
+			callback: () => {
+				window
+					.showOpenFilePicker({
+						id: "insert-attachment-ee03d94fe3c6",
+						multiple: true,
+					})
+					.then(async (handles) => {
+						const files = await Promise.all(
+							handles.map((h) => h.getFile()),
+						);
+						const view =
+							this.app.workspace.getActiveViewOfType(
+								MarkdownView,
+							);
+						if (!view) {
+							return;
+						}
+						const editor = view.editor;
+						for (const file of files) {
+							const text = await this.generateMarkdownLink(file);
+							editor.replaceRange(
+								text,
+								editor.getCursor("from"),
+								editor.getCursor("to"),
+							);
+						}
+					})
+					.catch((err) => {
+						new Notice(String(err));
+					});
+			},
+		});
 
 		this.addCommand({
 			id: "migrate-current-note",
