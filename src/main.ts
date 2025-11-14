@@ -1,10 +1,5 @@
 // main.ts
-import {
-	FileSystemAdapter,
-	Notice,
-	Plugin,
-	requestUrl,
-} from "obsidian";
+import { FileSystemAdapter, Notice, Plugin, requestUrl } from "obsidian";
 import isAbortError from "./utils/isAbortError";
 import { LocalCAS } from "./LocalCAS";
 import mustache from "mustache";
@@ -422,9 +417,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 														[resp.arrayBuffer],
 														{
 															type:
+																data.format() ||
 																resp.headers[
-																	"Content-Type"
-																] || undefined,
+																	"content-type"
+																] ||
+																undefined,
 														},
 													),
 												),
