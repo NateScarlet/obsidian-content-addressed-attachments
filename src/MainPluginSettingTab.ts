@@ -200,8 +200,15 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 									this.plugin
 										.saveSettings()
 										.catch(console.error);
+									this.display();
 								},
 							).open();
+						})
+						.extraSettingsEl.setCssStyles({
+							color:
+								config.headers.length > 0
+									? "var(--text-accent)"
+									: undefined,
 						}),
 				)
 				.addExtraButton((button) =>
