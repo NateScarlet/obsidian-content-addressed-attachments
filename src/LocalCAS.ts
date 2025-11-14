@@ -3,7 +3,7 @@ import { CID } from "multiformats/cid";
 import { base32hexupper } from "multiformats/bases/base32";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
-import type { App } from "obsidian";
+import { App, getBlobArrayBuffer } from "obsidian";
 import makeDirs from "./utils/makeDirs";
 import { dirname } from "path-browserify";
 
@@ -14,7 +14,7 @@ export class LocalCAS implements CAS {
 	) {}
 
 	async save(file: File): Promise<{ cid: CID; didCreate: boolean }> {
-		const arrayBuffer = await this.readFileAsArrayBuffer(file);
+		const arrayBuffer = await getBlobArrayBuffer(file);
 		const cid = await this.generateCID(arrayBuffer);
 		const filePath = this.getFilePath(cid);
 		const exists = await this.app.vault.adapter.exists(filePath);
@@ -48,23 +48,6 @@ export class LocalCAS implements CAS {
 		}
 		const shard = h.slice(h.length - 3, h.length - 1);
 		return `${shard}/${h}.data`;
-	}
-
-	private async readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-
-			reader.onload = () => {
-				if (reader.result instanceof ArrayBuffer) {
-					resolve(reader.result);
-				} else {
-					reject(new Error("Failed to read file as ArrayBuffer"));
-				}
-			};
-
-			reader.onerror = () => reject(reader.error as Error);
-			reader.readAsArrayBuffer(file);
-		});
 	}
 
 	private async generateCID(content: ArrayBuffer): Promise<CID> {
