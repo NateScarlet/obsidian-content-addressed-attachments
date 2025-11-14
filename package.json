@@ -1,0 +1,33 @@
+{
+	"name": "obsidian-content-addressed-attachments",
+	"license": "MIT",
+	"private": true,
+	"version": "0.0.1",
+	"description": "Manage attachments without consider about it's location in Obsidian (https://obsidian.md)",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
+	},
+	"keywords": [],
+	"author": "",
+	"devDependencies": {
+		"@types/node": "^16.11.6",
+		"@typescript-eslint/eslint-plugin": "5.29.0",
+		"@typescript-eslint/parser": "5.29.0",
+		"builtin-modules": "3.3.0",
+		"esbuild": "0.27.0",
+		"obsidian": "latest",
+		"prettier": "^3.6.2",
+		"tslib": "2.4.0",
+		"typescript": "5.9.3"
+	},
+	"dependencies": {
+		"@types/mustache": "^4.2.6",
+		"@types/path-browserify": "^1.0.3",
+		"multiformats": "^13.4.1",
+		"mustache": "^4.2.0",
+		"path-browserify": "^1.0.1"
+	}
+}
