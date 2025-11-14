@@ -485,7 +485,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		match.forEach((element) => {
 			jobs.push(this.processElementURL(element));
 		});
-		await Promise.all(jobs);
+		await Promise.allSettled(jobs);
 	}
 
 	// 生成模板数据
