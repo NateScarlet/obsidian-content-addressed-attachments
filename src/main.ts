@@ -15,6 +15,7 @@ import openExternalURL from "./utils/openExternalLink";
 import { MigrationProgressModal } from "./MigrationProgressModal";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
+import castError from "./utils/castError";
 
 //#region 国际化字符串
 const { t } = defineLocales({
@@ -303,7 +304,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}
 			progressModal.updateProgress(result);
 		} catch (error) {
-			progressModal.showError(String(error));
+			progressModal.showError(castError(error).message);
 			console.error("迁移失败:", error);
 		}
 	}
