@@ -8,6 +8,10 @@ import {
 import type ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
 import type { GatewayURLConfig } from "./main";
+import castError from "./utils/castError";
+
+const EXAMPLE_URL =
+	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
 
 //#region 国际化字符串
 const { t } = defineLocales({
@@ -61,6 +65,12 @@ const { t } = defineLocales({
 			"{{#encodeURI}}content{{/encodeURI}} - URI encoding helper function to avoid path separator escaping (default will be escaped)",
 		localGatewayExample: "Local Gateway Example",
 		githubExample: "GitHub Raw Example",
+		preview: "Preview",
+		previewDesc: "Real-time preview based on example IPFS URL",
+		exampleURL: "Example URL for preview",
+		renderedURL: "Rendered URL",
+		error: "Error",
+		focusToPreview: "Focus on a URL template input to see preview",
 	},
 	zh: {
 		localStorage: "本地存储",
@@ -108,11 +118,21 @@ const { t } = defineLocales({
 			"{{#encodeURI}}内容{{/encodeURI}} - URI编码辅助函数，用于避免路径分隔符被转义（默认会被转义）",
 		localGatewayExample: "本地网关示例",
 		githubExample: "GitHub Raw 示例",
+		preview: "预览",
+		previewDesc: "基于示例IPFS URL的实时预览",
+		exampleURL: "用于预览的示例URL",
+		renderedURL: "渲染后的URL",
+		error: "错误",
+		focusToPreview: "聚焦到URL模板输入框以查看预览",
 	},
 });
 //#endregion
 
 export default class MainPluginSettingTab extends PluginSettingTab {
+	private previewContainer: HTMLElement;
+	private previewEl: HTMLElement;
+	private activeConfigIndex: number = -1;
+
 	constructor(private plugin: ContentAddressedAttachmentPlugin) {
 		super(plugin.app, plugin);
 	}
@@ -120,6 +140,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.activeConfigIndex = -1;
 
 		new Setting(containerEl)
 			.setName(t("localStorage"))
@@ -153,6 +174,9 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		// 创建预览区域（放在所有配置项之后）
+		this.createPreviewArea(containerEl);
+
 		this.plugin.settings.gatewayURLs.forEach((config, index) => {
 			const setting = new Setting(containerEl)
 				.setName("")
@@ -179,12 +203,21 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							config.urlTemplate = value;
 							await this.plugin.saveSettings();
+							if (this.activeConfigIndex === index) {
+								this.updatePreview(config);
+							}
 						});
 
 					input.inputEl.setCssStyles({
 						minWidth: "300px",
 						flexGrow: "1",
 					});
+
+					input.inputEl.addEventListener("focus", () => {
+						this.activeConfigIndex = index;
+						this.updatePreview(config);
+					});
+
 					return input;
 				})
 				.addExtraButton((button) =>
@@ -221,6 +254,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							this.display();
 						}),
 				);
+
 			const info = setting.settingEl.querySelector(".setting-item-info");
 			if (info instanceof HTMLElement) {
 				info.setCssStyles({ display: "none" });
@@ -317,6 +351,102 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		});
 
 		// #endregion;
+	}
+
+	// 创建预览区域
+	private createPreviewArea(containerEl: HTMLElement): void {
+		this.previewContainer = containerEl.createDiv({
+			cls: "cas-url-preview",
+		});
+
+		this.previewContainer.setCssStyles({
+			margin: "10px 0",
+			padding: "10px",
+			border: "1px solid var(--background-modifier-border)",
+			borderRadius: "4px",
+			backgroundColor: "var(--background-secondary)",
+			fontSize: "0.9em",
+		});
+
+		// 示例URL说明
+		const exampleDesc = this.previewContainer.createDiv();
+		exampleDesc.setText(t("exampleURL"));
+		exampleDesc.setCssStyles({
+			fontWeight: "bold",
+			marginBottom: "5px",
+			fontSize: "0.8em",
+			color: "var(--text-muted)",
+		});
+
+		// 示例URL显示
+		const exampleEl = this.previewContainer.createDiv({
+			text: EXAMPLE_URL,
+		});
+		exampleEl.setCssStyles({
+			fontFamily: "monospace",
+			fontSize: "0.8em",
+			color: "var(--text-faint)",
+			marginBottom: "10px",
+			wordBreak: "break-all",
+		});
+
+		// 预览标题
+		const previewTitle = this.previewContainer.createDiv();
+		previewTitle.setText(t("renderedURL"));
+		previewTitle.setCssStyles({
+			fontWeight: "bold",
+			marginBottom: "5px",
+			fontSize: "0.8em",
+			color: "var(--text-muted)",
+		});
+
+		// 预览结果显示区域
+		this.previewEl = this.previewContainer.createDiv();
+		this.previewEl.setCssStyles({
+			fontFamily: "monospace",
+			fontSize: "0.9em",
+			color: "var(--text-normal)",
+			wordBreak: "break-all",
+			padding: "5px",
+			backgroundColor: "var(--background-primary)",
+			borderRadius: "3px",
+			border: "1px solid var(--background-modifier-border)",
+			minHeight: "20px",
+		});
+
+		// 初始状态显示提示信息
+		this.previewEl.setText(t("focusToPreview"));
+		this.previewEl.setCssStyles({
+			color: "var(--text-muted)",
+			fontStyle: "italic",
+		});
+	}
+
+	// 更新预览的方法
+	private updatePreview(config: GatewayURLConfig): void {
+		if (!this.previewEl) return;
+
+		try {
+			const renderedURL = this.plugin.renderGatewayURL(
+				EXAMPLE_URL,
+				config,
+			);
+			this.previewEl.setText(renderedURL);
+			this.previewEl.setCssStyles({
+				color: "var(--text-normal)",
+				fontStyle: "normal",
+				borderColor: "var(--background-modifier-border)",
+			});
+		} catch (error) {
+			this.previewEl.setText(
+				`${t("error")}: ${castError(error).message}`,
+			);
+			this.previewEl.setCssStyles({
+				color: "var(--text-error)",
+				fontStyle: "normal",
+				borderColor: "var(--color-red)",
+			});
+		}
 	}
 }
 

@@ -511,7 +511,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		};
 	}
 
-	private renderGatewayURL(rawURL: string, config: GatewayURLConfig): string {
+	renderGatewayURL(rawURL: string, config: GatewayURLConfig): string {
 		if (!rawURL || !config.urlTemplate) return "";
 		const templateData = this.prepareTemplateData(rawURL);
 		return mustache.render(config.urlTemplate, templateData, undefined, {
