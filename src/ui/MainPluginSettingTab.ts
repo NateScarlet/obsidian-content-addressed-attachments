@@ -274,7 +274,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			text: t("focusToPreview"),
 			cls: clsx`
 				font-mono text-sm text-muted italic break-all p-1 
-				bg-primary rounded border
+				bg-primary rounded-sm border
 				min-h-[20px]
 			`,
 		});
@@ -294,7 +294,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				"class",
 				clsx`
 				font-mono text-sm text-normal break-all p-1 
-				bg-primary rounded border
+				bg-primary rounded-sm border
 				min-h-[20px]
 			`,
 			);
@@ -306,7 +306,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				"class",
 				clsx`
 				font-mono text-sm text-error break-all p-1 
-				bg-primary rounded border border-color-red
+				bg-primary rounded-sm border border-color-red
 				min-h-[20px]
 			`,
 			);
