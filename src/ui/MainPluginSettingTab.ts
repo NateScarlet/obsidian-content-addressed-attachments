@@ -11,7 +11,6 @@ const EXAMPLE_URL =
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private previewContainer: HTMLElement;
 	private previewEl: HTMLElement;
-	private activeConfigIndex: number = -1;
 
 	constructor(private plugin: ContentAddressedAttachmentPlugin) {
 		super(plugin.app, plugin);
@@ -20,7 +19,6 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		this.activeConfigIndex = -1;
 
 		new Setting(containerEl)
 			.setName(t("localStorage"))
@@ -54,7 +52,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// 创建预览区域（放在所有配置项之后）
+		// 创建预览区域
 		this.createPreviewArea(containerEl);
 
 		this.plugin.settings.gatewayURLs.forEach((config, index) => {
@@ -83,9 +81,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							config.urlTemplate = value;
 							await this.plugin.saveSettings();
-							if (this.activeConfigIndex === index) {
-								this.updatePreview(config);
-							}
+							this.updatePreview(config);
 						});
 
 					input.inputEl.setCssStyles({
@@ -94,7 +90,6 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					});
 
 					input.inputEl.addEventListener("focus", () => {
-						this.activeConfigIndex = index;
 						this.updatePreview(config);
 					});
 
