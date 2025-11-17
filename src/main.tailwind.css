@@ -1,0 +1,85 @@
+@import "tailwindcss" source(".");
+
+@theme inline {
+	/* 颜色系统 - 映射 Obsidian 的主题变量 */
+	--color-normal: var(--text-normal);
+	--color-muted: var(--text-muted);
+	--color-faint: var(--text-faint);
+	--color-accent: var(--text-accent);
+	--color-accent-hover: var(--text-accent-hover);
+	--color-on-accent: var(--text-on-accent);
+	--color-error: var(--text-error);
+	--color-success: var(--text-success);
+	--color-warning: var(--text-warning);
+
+	--color-primary: var(--background-primary);
+	--color-secondary: var(--background-secondary);
+	--color-primary-alt: var(--background-primary-alt);
+	--color-secondary-alt: var(--background-secondary-alt);
+	--color-modifier-border: var(--background-modifier-border);
+	--color-modifier-form-field: var(--background-modifier-form-field);
+	--color-modifier-hover: var(--background-modifier-hover);
+	--color-modifier-active: var(--background-modifier-active);
+	--color-modifier-selected: var(--background-modifier-selected);
+
+	--color-interactive-normal: var(--interactive-normal);
+	--color-interactive-hover: var(--interactive-hover);
+	--color-interactive-accent: var(--interactive-accent);
+	--color-interactive-accent-hover: var(--interactive-accent-hover);
+	--color-interactive-success: var(--interactive-success);
+
+	/* 字体系统 */
+	--font-text: var(--font-text);
+	--font-interface: var(--font-interface);
+	--font-monospace: var(--font-monospace);
+
+	/* 字体大小 - 适配 Obsidian 的缩放系统 */
+	--text-xs: calc(var(--font-text-size) * 0.75);
+	--text-sm: calc(var(--font-text-size) * 0.875);
+	--text-base: var(--font-text-size);
+	--text-lg: calc(var(--font-text-size) * 1.125);
+	--text-xl: calc(var(--font-text-size) * 1.25);
+	--text-2xl: calc(var(--font-text-size) * 1.5);
+	--text-3xl: calc(var(--font-text-size) * 1.875);
+
+	/* 字体权重 */
+	--font-weight-normal: var(--font-normal);
+	--font-weight-medium: var(--font-medium);
+	--font-weight-semibold: var(--font-semibold);
+	--font-weight-bold: var(--font-bold);
+
+	/* 间距系统 - 基于 Obsidian 的 UI 比例 */
+	--spacing-1: var(--size-2-1);
+	--spacing-2: var(--size-2-2);
+	--spacing-3: var(--size-2-3);
+	--spacing-4: var(--size-2-4);
+	--spacing-5: var(--size-4-4);
+	--spacing-6: var(--size-4-5);
+	--spacing-8: var(--size-4-6);
+	--spacing-10: var(--size-4-8);
+
+	/* 圆角边框 */
+	--radius-sm: var(--radius-s);
+	--radius-md: var(--radius-m);
+	--radius-lg: var(--radius-l);
+
+	/* 阴影 - 适配 Obsidian 的阴影系统 */
+	--shadow-sm: var(--shadow-s);
+	--shadow-md: var(--shadow-m);
+	--shadow-lg: var(--shadow-l);
+
+	/* 动画曲线 */
+	--ease-in: var(--ease-in);
+	--ease-out: var(--ease-out);
+	--ease-in-out: var(--ease-in-out);
+
+	/* 断点系统 - 适配 Obsidian 的响应式设计 */
+	--breakpoint-mobile: 768px;
+	--breakpoint-tablet: 1024px;
+
+	/* 容器查询断点 */
+	--container-xs: 20rem;
+	--container-sm: 24rem;
+	--container-md: 28rem;
+	--container-lg: 32rem;
+}

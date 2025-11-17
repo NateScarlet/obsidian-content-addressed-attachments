@@ -84,10 +84,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							this.updatePreview(config);
 						});
 
-					input.inputEl.setCssStyles({
-						minWidth: "300px",
-						flexGrow: "1",
-					});
+					input.inputEl.className = "min-w-[300px] flex-grow";
 
 					input.inputEl.addEventListener("focus", () => {
 						this.updatePreview(config);
@@ -95,29 +92,25 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 
 					return input;
 				})
-				.addExtraButton((button) =>
-					button
-						.setIcon("settings")
-						.setTooltip(t("editHeaders"))
-						.onClick(() => {
-							new HeadersEditModal(
-								this.app,
-								config,
-								(newHeaders) => {
-									config.headers = newHeaders;
-									this.plugin
-										.saveSettings()
-										.catch(console.error);
-									this.display();
-								},
-							).open();
-						})
-						.extraSettingsEl.setCssStyles({
-							color:
-								config.headers.length > 0
-									? "var(--text-accent)"
-									: undefined,
-						}),
+				.addExtraButton(
+					(button) =>
+						(button
+							.setIcon("settings")
+							.setTooltip(t("editHeaders"))
+							.onClick(() => {
+								new HeadersEditModal(
+									this.app,
+									config,
+									(newHeaders) => {
+										config.headers = newHeaders;
+										this.plugin
+											.saveSettings()
+											.catch(console.error);
+										this.display();
+									},
+								).open();
+							}).extraSettingsEl.className =
+							config.headers.length > 0 ? "text-accent" : ""),
 				)
 				.addExtraButton((button) =>
 					button
@@ -132,22 +125,25 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 
 			const info = setting.settingEl.querySelector(".setting-item-info");
 			if (info instanceof HTMLElement) {
-				info.setCssStyles({ display: "none" });
+				info.className = "hidden";
 			}
 		});
 
 		//#region 模板语法说明
 		const mustacheHelp = containerEl.createEl("details");
+		mustacheHelp.className = "my-4";
 		mustacheHelp.createEl("summary", {
 			text: t("templateSyntaxHelp"),
 		});
 		const mustacheContent = mustacheHelp.createEl("div");
+		mustacheContent.className = "space-y-3";
 
 		mustacheContent.createEl("p", {
 			text: t("templateDescription"),
 		});
 
 		const mustacheList = mustacheContent.createEl("ul");
+		mustacheList.className = "list-disc list-inside space-y-1";
 
 		mustacheList.createEl("li", {
 			text: t("variableSubstitution"),
@@ -165,16 +161,19 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			text: t("comment"),
 		});
 
-		mustacheContent.createEl("p").createEl("a", {
+		const docLink = mustacheContent.createEl("p").createEl("a", {
 			text: t("viewDocumentation"),
 			href: "https://mustache.github.io/mustache.5.html",
 			attr: { target: "_blank" },
 		});
+		docLink.className = "text-accent hover:text-accent-hover underline";
 
 		// 转义规则说明
 		const escapeHelp = mustacheContent.createEl("details");
+		escapeHelp.className = "mt-3";
 		escapeHelp.createEl("summary", { text: t("encodingDescription") });
 		const escapeList = escapeHelp.createEl("ul");
+		escapeList.className = "list-disc list-inside space-y-1";
 
 		escapeList.createEl("li", {
 			text: t("doubleBrace"),
@@ -186,8 +185,10 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 
 		// 占位符说明
 		const placeholderHelp = containerEl.createEl("details");
+		placeholderHelp.className = "my-4";
 		placeholderHelp.createEl("summary", { text: t("availableVariables") });
 		const helpList = placeholderHelp.createEl("ul");
+		helpList.className = "list-disc list-inside space-y-1";
 
 		helpList.createEl("li", {
 			text: t("rawURL"),
@@ -234,67 +235,37 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			cls: "cas-url-preview",
 		});
 
-		this.previewContainer.setCssStyles({
-			margin: "10px 0",
-			padding: "10px",
-			border: "1px solid var(--background-modifier-border)",
-			borderRadius: "4px",
-			backgroundColor: "var(--background-secondary)",
-			fontSize: "0.9em",
-		});
+		this.previewContainer.className = `
+			my-4 p-3 border border-modifier-border rounded-md 
+			bg-secondary text-sm
+		`;
 
 		// 示例URL说明
 		const exampleDesc = this.previewContainer.createDiv();
 		exampleDesc.setText(t("exampleURL"));
-		exampleDesc.setCssStyles({
-			fontWeight: "bold",
-			marginBottom: "5px",
-			fontSize: "0.8em",
-			color: "var(--text-muted)",
-		});
+		exampleDesc.className = "font-semibold mb-1 text-xs text-muted";
 
 		// 示例URL显示
 		const exampleEl = this.previewContainer.createDiv({
 			text: EXAMPLE_URL,
 		});
-		exampleEl.setCssStyles({
-			fontFamily: "monospace",
-			fontSize: "0.8em",
-			color: "var(--text-faint)",
-			marginBottom: "10px",
-			wordBreak: "break-all",
-		});
+		exampleEl.className = `
+			font-mono text-xs text-faint mb-3 break-all
+		`;
 
 		// 预览标题
 		const previewTitle = this.previewContainer.createDiv();
 		previewTitle.setText(t("renderedURL"));
-		previewTitle.setCssStyles({
-			fontWeight: "bold",
-			marginBottom: "5px",
-			fontSize: "0.8em",
-			color: "var(--text-muted)",
-		});
+		previewTitle.className = "font-semibold mb-1 text-xs text-muted";
 
 		// 预览结果显示区域
 		this.previewEl = this.previewContainer.createDiv();
-		this.previewEl.setCssStyles({
-			fontFamily: "monospace",
-			fontSize: "0.9em",
-			color: "var(--text-normal)",
-			wordBreak: "break-all",
-			padding: "5px",
-			backgroundColor: "var(--background-primary)",
-			borderRadius: "3px",
-			border: "1px solid var(--background-modifier-border)",
-			minHeight: "20px",
-		});
-
-		// 初始状态显示提示信息
+		this.previewEl.className = `
+			font-mono text-sm text-muted italic break-all p-1 
+			bg-primary rounded border border-modifier-border
+			min-h-[20px]
+		`;
 		this.previewEl.setText(t("focusToPreview"));
-		this.previewEl.setCssStyles({
-			color: "var(--text-muted)",
-			fontStyle: "italic",
-		});
 	}
 
 	// 更新预览的方法
@@ -307,20 +278,20 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				config,
 			);
 			this.previewEl.setText(renderedURL);
-			this.previewEl.setCssStyles({
-				color: "var(--text-normal)",
-				fontStyle: "normal",
-				borderColor: "var(--background-modifier-border)",
-			});
+			this.previewEl.className = `
+				font-mono text-sm text-normal break-all p-1 
+				bg-primary rounded border border-modifier-border
+				min-h-[20px]
+			`;
 		} catch (error) {
 			this.previewEl.setText(
 				`${t("error")}: ${castError(error).message}`,
 			);
-			this.previewEl.setCssStyles({
-				color: "var(--text-error)",
-				fontStyle: "normal",
-				borderColor: "var(--color-red)",
-			});
+			this.previewEl.className = `
+				font-mono text-sm text-error break-all p-1 
+				bg-primary rounded border border-color-red
+				min-h-[20px]
+			`;
 		}
 	}
 }
