@@ -15,6 +15,10 @@ export class LocalCAS implements CAS {
 		private rootDir: () => string,
 	) {}
 
+	getNormalizePath(cid: CID): string {
+		return join(this.rootDir(), this.formatRelPath(cid));
+	}
+
 	async load(
 		cid: CID,
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined> {

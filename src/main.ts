@@ -11,6 +11,7 @@ import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 
 export interface CAS {
 	formatRelPath(cid: CID): string;
+	getNormalizePath(cid: CID): string;
 	trash(cid: CID, invalid?: boolean): Promise<void>;
 	load(
 		cid: CID,

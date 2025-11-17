@@ -136,7 +136,9 @@ export class URLResolver {
 											}
 											resolve({
 												url: this.app.vault.adapter.getResourcePath(
-													this.cas.formatRelPath(cid),
+													this.cas.getNormalizePath(
+														cid,
+													),
 												),
 											});
 										}
