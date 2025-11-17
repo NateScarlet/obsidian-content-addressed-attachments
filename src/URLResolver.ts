@@ -4,6 +4,7 @@ import { CID } from "multiformats/cid";
 import { CAS } from "./main";
 import isAbortError from "./utils/isAbortError";
 import type { Settings } from "./settings";
+import SingleFlightGroup from "./utils/SingleFlightGroup";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -38,6 +39,8 @@ export interface ResolveURLResult {
 }
 
 export class URLResolver {
+	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
+
 	constructor(
 		private app: App,
 		private cas: CAS,
@@ -45,8 +48,17 @@ export class URLResolver {
 	) {}
 
 	async resolveURL(rawURL: string): Promise<ResolveURLResult | undefined> {
-		using stack = new DisposableStack();
 		const data = this.prepareTemplateData(rawURL);
+		const { result } = await this.flight.do(data.cid.toString(), () => {
+			return this.doResolveURL(data);
+		});
+		return result;
+	}
+
+	async doResolveURL(
+		data: TemplateData,
+	): Promise<ResolveURLResult | undefined> {
+		using stack = new DisposableStack();
 		const match = await this.cas.load(data.cid);
 		if (match) {
 			return {
@@ -70,7 +82,7 @@ export class URLResolver {
 										return;
 									}
 									const url = this.renderGatewayURL(
-										rawURL,
+										data.rawURL,
 										config,
 									);
 									if (!url) {
@@ -154,7 +166,7 @@ export class URLResolver {
 								console.error(
 									"Failed to fetch",
 									config,
-									rawURL,
+									data.rawURL,
 								);
 							});
 						},
@@ -163,7 +175,7 @@ export class URLResolver {
 			);
 		} catch (err) {
 			if (!isAbortError(err)) {
-				console.error("解析 IPFS 网址失败", rawURL, err);
+				console.error("解析 IPFS 网址失败", data.rawURL, err);
 			}
 		}
 	}
