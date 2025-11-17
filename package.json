@@ -13,6 +13,7 @@
 	"keywords": [],
 	"author": "",
 	"devDependencies": {
+		"@codemirror/view": "^6.38.7",
 		"@types/node": "^16.11.6",
 		"@typescript-eslint/eslint-plugin": "8.46.4",
 		"@typescript-eslint/parser": "8.46.4",

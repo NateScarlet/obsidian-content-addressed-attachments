@@ -1,21 +1,14 @@
-import {
-	FileSystemAdapter,
-	MarkdownView,
-	Notice,
-	Plugin,
-	requestUrl,
-} from "obsidian";
+import { MarkdownView, Notice, Plugin, requestUrl } from "obsidian";
 import isAbortError from "./utils/isAbortError";
 import { LocalCAS } from "./LocalCAS";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
-import { dirname } from "path-browserify";
 import MainPluginSettingTab from "./MainPluginSettingTab";
-import openExternalURL from "./utils/openExternalLink";
 import { MigrationProgressModal } from "./MigrationProgressModal";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
 import castError from "./utils/castError";
+import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
 
 //#region 国际化字符串
 const { t } = defineLocales({
@@ -152,6 +145,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		// 初始化 MutationObserver 来监控所有模式下的 DOM 变化
 		this.setupMutationObserver();
 
+		// 注册 CodeMirror 扩展来处理编辑器中的链接点击
+		this.registerEditorExtension(
+			new IPFSLinkClickExtension(this).createExtension(),
+		);
+
 		// 添加设置选项卡
 		this.addSettingTab(new MainPluginSettingTab(this));
 
@@ -197,38 +195,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}),
 		);
 
-		this.registerDomEvent(
-			document,
-			"click",
-			async (e) => {
-				if (e.defaultPrevented) {
-					return;
-				}
-				const el = e.target;
-				if (el instanceof HTMLElement) {
-					const url = el.textContent;
-					if (url.startsWith("ipfs://")) {
-						e.preventDefault();
-						e.stopPropagation();
-
-						const resolved = await this.resolveURL(url);
-						if (
-							resolved?.path &&
-							this.app.vault.adapter instanceof FileSystemAdapter
-						) {
-							openExternalURL(
-								this.app.vault.adapter.getFilePath(
-									dirname(resolved.path),
-								),
-							);
-						} else {
-							openExternalURL(resolved?.url || url);
-						}
-					}
-				}
-			},
-			{ capture: true },
-		);
+		// 移除原有的全局点击事件监听，改为使用 MutationObserver 处理非编辑器模式
+		// 原有的 document 点击事件监听器已被移除
 
 		this.addCommand({
 			id: "insert-attachment",
@@ -376,7 +344,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		}
 	}
 
-	private async resolveURL(
+	async resolveURL(
 		rawURL: string,
 	): Promise<{ path?: string; url: string } | undefined> {
 		using stack = new DisposableStack();
