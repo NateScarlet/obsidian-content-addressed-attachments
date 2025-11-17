@@ -1,3 +1,4 @@
+//main.ts
 import { MarkdownView, Notice, Plugin } from "obsidian";
 import { LocalCAS } from "./LocalCAS";
 import { CID } from "multiformats/cid";
@@ -7,7 +8,7 @@ import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
 import castError from "./utils/castError";
 import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
-import { URLResolver } from "./URLResolver"; // 新增导入
+import { URLResolver } from "./URLResolver";
 
 //#region 国际化字符串
 const { t } = defineLocales({
@@ -42,7 +43,6 @@ const { t } = defineLocales({
 });
 //#endregion
 
-// 默认设置（国际化）
 function getDefaultSettings() {
 	return {
 		casDir: ".attachments/cas",
@@ -88,7 +88,6 @@ function getDefaultSettings() {
 	};
 }
 
-// 插件设置接口
 export interface Settings {
 	casDir: string;
 	gatewayURLs: GatewayURLConfig[];
@@ -126,17 +125,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.app,
 			this.cas,
 			() => this.settings,
-		); // 初始化 URLResolver
+		);
 
-		// 初始化 MutationObserver 来监控所有模式下的 DOM 变化
 		this.setupMutationObserver();
 
-		// 注册 CodeMirror 扩展来处理编辑器中的链接点击
 		this.registerEditorExtension(
 			new IPFSLinkClickExtension(this).createExtension(),
 		);
 
-		// 添加设置选项卡
 		this.addSettingTab(new MainPluginSettingTab(this));
 
 		this.registerEvent(
@@ -229,13 +225,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			callback: () => this.executeMigration("all"),
 		});
 
-		// 初始处理
 		this.process().catch(console.error);
 	}
 
 	private async executeMigration(scope: "current" | "all") {
 		const progressModal = new MigrationProgressModal(this.app, (result) => {
-			// 迁移完成后的处理
 			if (result.migrated > 0) {
 				new Notice(t("migrateComplete")(result.migrated));
 			} else if (result.skipped > 0) {
@@ -250,6 +244,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		progressModal.open();
 		const manager = new MigrationManager(this);
 
+		manager.setOnProgress((progress) => {
+			progressModal.updateProgress(progress);
+		});
+
+		progressModal.setOnCancel(() => {
+			manager.cancel();
+		});
+
 		try {
 			let result;
 			if (scope === "current") {
@@ -257,7 +259,12 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			} else {
 				result = await manager.migrateAllNotes();
 			}
-			progressModal.updateProgress(result);
+
+			if (!result.cancelled) {
+				progressModal.updateProgress(result);
+			} else {
+				progressModal.showCancelled();
+			}
 		} catch (error) {
 			progressModal.showError(castError(error).message);
 			console.error("迁移失败:", error);
@@ -327,7 +334,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		}
 	}
 
-	// 处理所有已存在的链接
 	private async process(parent: ParentNode = document): Promise<void> {
 		const match = parent.querySelectorAll<HTMLElement>(
 			'[src^="ipfs://"], [href^="ipfs://"]',

@@ -1,3 +1,4 @@
+//MigrationManager.ts
 import { App, TFile, LinkCache } from "obsidian";
 import ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
@@ -27,6 +28,7 @@ const { t } = defineLocales({
 		noMigrationNeeded: (path: string) =>
 			`Skipped note ${path}: no file links to migrate`,
 		noActiveNote: "No active note",
+		migrationCancelled: "Migration cancelled by user",
 	},
 	zh: {
 		externalLink: "外部链接",
@@ -50,75 +52,119 @@ const { t } = defineLocales({
 		noMigrationNeeded: (path: string) =>
 			`跳过笔记 ${path}: 没有可迁移的文件链接`,
 		noActiveNote: "没有活动的笔记",
+		migrationCancelled: "迁移已被用户取消",
 	},
 });
 //#endregion
 
-export interface MigrationResult {
-	success: boolean;
+export interface MigrationProgress {
+	status: "processing" | "completed" | "cancelled";
+	currentFile?: number;
+	totalFiles?: number;
+	currentFileName?: string;
 	migrated: number;
 	skipped: number;
 	errors: number;
 	details: string[];
+	cancelled?: boolean;
+}
+
+export interface MigrationResult extends MigrationProgress {
+	success: boolean;
 }
 
 export class MigrationManager {
 	private app: App;
+	private isCancelled = false;
+	private onProgress?: (progress: MigrationProgress) => void;
 
 	constructor(private plugin: ContentAddressedAttachmentPlugin) {
 		this.app = plugin.app;
 	}
 
-	/**
-	 * 迁移当前活动笔记中的文件
-	 */
+	setOnProgress(callback: (progress: MigrationProgress) => void) {
+		this.onProgress = callback;
+	}
+
+	cancel() {
+		this.isCancelled = true;
+	}
+
+	private updateProgress(progress: MigrationProgress) {
+		if (this.onProgress) {
+			this.onProgress({
+				...progress,
+				migrated: progress.migrated ?? -1,
+				status: "processing",
+			});
+		}
+	}
+
 	async migrateCurrentNote(): Promise<MigrationResult> {
 		const file = this.app.workspace.getActiveFile();
 		if (!file) {
 			throw new Error(t("noActiveNote"));
 		}
 
-		return this.migrateNote(file);
+		const progress = await this.migrateNote(file);
+		return {
+			...progress,
+			success: true,
+			status: "completed",
+		};
 	}
 
-	/**
-	 * 迁移所有笔记中的文件
-	 */
 	async migrateAllNotes(): Promise<MigrationResult> {
 		const files = this.app.vault.getMarkdownFiles();
-		const result: MigrationResult = {
-			success: true,
+		const result: MigrationProgress = {
+			status: "processing",
 			migrated: 0,
 			skipped: 0,
 			errors: 0,
 			details: [],
+			currentFile: 0,
+			totalFiles: files.length,
 		};
 
-		for (const file of files) {
+		this.updateProgress(result);
+
+		for (let i = 0; i < files.length; i++) {
+			if (this.isCancelled) {
+				result.status = "cancelled";
+				result.details.push(t("migrationCancelled"));
+				return { ...result, success: false, cancelled: true };
+			}
+
+			const file = files[i];
+			result.currentFile = i + 1;
+			result.currentFileName = file.name;
+
+			this.updateProgress(result);
+
 			try {
 				const noteResult = await this.migrateNote(file);
 				result.migrated += noteResult.migrated;
 				result.skipped += noteResult.skipped;
 				result.errors += noteResult.errors;
 				result.details.push(...noteResult.details);
+
+				this.updateProgress(result);
 			} catch (err) {
 				result.errors++;
 				result.details.push(
 					t("errorProcessingNote")(file.path, String(err)),
 				);
-				result.success = false;
+				this.updateProgress(result);
 			}
 		}
 
-		return result;
+		result.status = "completed";
+		return { ...result, success: result.errors === 0 };
 	}
 
-	/**
-	 * 迁移单个笔记中的文件
-	 */
-	private async migrateNote(file: TFile): Promise<MigrationResult> {
-		const result: MigrationResult = {
-			success: true,
+	private async migrateNote(file: TFile): Promise<MigrationProgress> {
+		const result: MigrationProgress = {
+			status: "processing",
 			migrated: 0,
 			skipped: 0,
 			errors: 0,
@@ -126,7 +172,11 @@ export class MigrationManager {
 		};
 
 		try {
-			// 获取笔记的元数据缓存
+			if (this.isCancelled) {
+				result.status = "cancelled";
+				return result;
+			}
+
 			const cache = this.app.metadataCache.getFileCache(file);
 			if (!cache) {
 				result.skipped++;
@@ -134,7 +184,6 @@ export class MigrationManager {
 				return result;
 			}
 
-			// 收集所有链接（包括嵌入文件）
 			const links: LinkCache[] = [];
 			if (cache.links) links.push(...cache.links);
 			if (cache.embeds) links.push(...cache.embeds);
@@ -145,16 +194,19 @@ export class MigrationManager {
 				return result;
 			}
 
-			// 读取原始内容
 			let content = await this.app.vault.read(file);
 			let migratedCount = 0;
 
-			// 从后往前处理链接，避免位置偏移
 			const sortedLinks = [...links].sort(
 				(a, b) => b.position.start.offset - a.position.start.offset,
 			);
 
 			for (const link of sortedLinks) {
+				if (this.isCancelled) {
+					result.status = "cancelled";
+					break;
+				}
+
 				try {
 					const migrationResult = await this.migrateLink(
 						link,
@@ -187,7 +239,7 @@ export class MigrationManager {
 				}
 			}
 
-			if (migratedCount > 0) {
+			if (migratedCount > 0 && !this.isCancelled) {
 				await this.app.vault.modify(file, content);
 				result.migrated = migratedCount;
 				result.details.unshift(
@@ -198,7 +250,6 @@ export class MigrationManager {
 				result.details.unshift(t("noMigrationNeeded")(file.path));
 			}
 		} catch (err) {
-			result.success = false;
 			result.errors++;
 			result.details.push(
 				t("errorProcessingNote")(file.path, String(err)),
@@ -208,9 +259,6 @@ export class MigrationManager {
 		return result;
 	}
 
-	/**
-	 * 迁移单个链接
-	 */
 	private async migrateLink(
 		link: LinkCache,
 		content: string,
@@ -221,7 +269,6 @@ export class MigrationManager {
 		url?: string;
 		reason?: string;
 	}> {
-		// 跳过外部链接和已经是 IPFS 的链接
 		if (link.link.startsWith("http")) {
 			return { success: false, reason: t("externalLink") };
 		}
@@ -230,7 +277,6 @@ export class MigrationManager {
 			return { success: false, reason: t("alreadyIPFS") };
 		}
 
-		// 解析文件路径
 		const file = this.app.metadataCache.getFirstLinkpathDest(
 			link.link,
 			notePath,
@@ -245,26 +291,22 @@ export class MigrationManager {
 				return { success: false, reason: t("excludedFile") };
 		}
 
-		// 检查文件是否存在
 		if (!file) {
 			console.debug("文件不存在", { link, notePath });
 			return { success: false, reason: t("fileNotExist") };
 		}
 
-		// 迁移文件到 IPFS
 		const result = await this.migrateFile(file);
 		if (!result.success) {
 			return { success: false, reason: t("fileMigrationFailed") };
 		}
 
-		// 替换链接
 		let newLinkText: string;
 		let title = link.link || file.basename;
 		if (link.displayText != title) {
 			title += `|${link.displayText}`;
 		}
 		if (link.original.startsWith("!")) {
-			// 图片链接
 			newLinkText = `![${title}](${result.url})`;
 		} else {
 			newLinkText = `[${title}](${result.url})`;
@@ -282,22 +324,17 @@ export class MigrationManager {
 		};
 	}
 
-	/**
-	 * 迁移单个文件到IPFS
-	 */
 	private async migrateFile(file: TFile): Promise<{
 		success: boolean;
 		url?: string;
 		error?: string;
 	}> {
 		try {
-			// 读取文件内容
 			const arrayBuffer = await this.app.vault.readBinary(file);
 
 			const blob = new Blob([arrayBuffer]);
 			const fileObj = new File([blob], file.name);
 
-			// 保存到CAS
 			const { cid } = await this.plugin.cas.save(fileObj);
 
 			const url = new URL(`ipfs://${cid.toString()}`);
