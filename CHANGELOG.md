@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.2](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.1...0.1.2) (2025-11-17)
+
+
+### Features
+
+* add image placeholder ([f6eaa37](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/f6eaa3739cbdbda887851fd3907399a4e44fd068))
+* avoid duplicated fetch ([31bdaed](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/31bdaedb89048d80aae571ba49bd591c822bddec))
+* live update migration progress ([30e6017](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/30e60175cb66563bbd000b019cb3815a760ec4e2))
+* localize external files ([0730f59](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/0730f59718c8163ed2823af04e42123d824d6eb0))
+
+
+### Bug Fixes
+
+* wrong cas load result if restored ([356ceaf](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/356ceaf239dd9bbd496280dfb0d946a1eea864ec))
+* wrong path used for external file ([d51000c](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/d51000c7cc30567331fc6f03d17e627d1c62cd74))
+
 ## [0.1.1](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.0...0.1.1) (2025-11-15)
 
 
