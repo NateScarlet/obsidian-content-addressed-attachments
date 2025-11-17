@@ -1,6 +1,8 @@
 /*! plugin: content-addressed-attachments */
 
-@import "tailwindcss" source(".");
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(".");
 
 @theme inline {
 	/* 颜色系统 - 映射 Obsidian 的主题变量 */
