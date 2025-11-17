@@ -1,6 +1,6 @@
 import { App, Modal } from "obsidian";
-import { MigrationResult } from "./MigrationManager";
-import defineLocales from "./utils/defineLocales";
+import { MigrationResult } from "../MigrationManager";
+import defineLocales from "../utils/defineLocales";
 
 //#region 国际化字符串
 const { t } = defineLocales({

@@ -1,8 +1,8 @@
 import { MarkdownView, Notice, Plugin } from "obsidian";
 import { LocalCAS } from "./LocalCAS";
 import { CID } from "multiformats/cid";
-import MainPluginSettingTab from "./MainPluginSettingTab";
-import { MigrationProgressModal } from "./MigrationProgressModal";
+import MainPluginSettingTab from "./ui/MainPluginSettingTab";
+import { MigrationProgressModal } from "./ui/MigrationProgressModal";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
 import castError from "./utils/castError";

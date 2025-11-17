@@ -5,10 +5,10 @@ import {
 	TextAreaComponent,
 	type App,
 } from "obsidian";
-import type ContentAddressedAttachmentPlugin from "./main";
-import defineLocales from "./utils/defineLocales";
-import type { GatewayURLConfig } from "./main";
-import castError from "./utils/castError";
+import type ContentAddressedAttachmentPlugin from "../main";
+import defineLocales from "../utils/defineLocales";
+import type { GatewayURLConfig } from "../main";
+import castError from "../utils/castError";
 
 const EXAMPLE_URL =
 	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
