@@ -3,10 +3,8 @@ import { MarkdownView, Notice, Plugin } from "obsidian";
 import { LocalCAS } from "./LocalCAS";
 import { CID } from "multiformats/cid";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
-import { MigrationProgressModal } from "./ui/MigrationProgressModal";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
-import castError from "./utils/castError";
 import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
 import { URLResolver } from "./URLResolver";
 
@@ -116,6 +114,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
+	private migrationManager: MigrationManager;
 
 	async onload() {
 		await this.loadSettings();
@@ -126,6 +125,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.cas,
 			() => this.settings,
 		);
+		this.migrationManager = this.stack.use(new MigrationManager(this));
 
 		this.setupMutationObserver();
 
@@ -216,59 +216,16 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.addCommand({
 			id: "migrate-current-note",
 			name: t("migrateCurrentNote"),
-			callback: () => this.executeMigration("current"),
+			callback: () => this.migrationManager.execute("current"),
 		});
 
 		this.addCommand({
 			id: "migrate-all-notes",
 			name: t("migrateAllNotes"),
-			callback: () => this.executeMigration("all"),
+			callback: () => this.migrationManager.execute("all"),
 		});
 
 		this.process().catch(console.error);
-	}
-
-	private async executeMigration(scope: "current" | "all") {
-		const progressModal = new MigrationProgressModal(this.app, (result) => {
-			if (result.migrated > 0) {
-				new Notice(t("migrateComplete")(result.migrated));
-			} else if (result.skipped > 0) {
-				new Notice(t("noMigrationNeeded"));
-			}
-
-			if (result.errors > 0) {
-				new Notice(t("migrationWithErrors")(result.errors));
-			}
-		});
-
-		progressModal.open();
-		const manager = new MigrationManager(this);
-
-		manager.setOnProgress((progress) => {
-			progressModal.updateProgress(progress);
-		});
-
-		progressModal.setOnCancel(() => {
-			manager.cancel();
-		});
-
-		try {
-			let result;
-			if (scope === "current") {
-				result = await manager.migrateCurrentNote();
-			} else {
-				result = await manager.migrateAllNotes();
-			}
-
-			if (!result.cancelled) {
-				progressModal.updateProgress(result);
-			} else {
-				progressModal.showCancelled();
-			}
-		} catch (error) {
-			progressModal.showError(castError(error).message);
-			console.error("迁移失败:", error);
-		}
 	}
 
 	private async generateMarkdownLink(file: File): Promise<string> {

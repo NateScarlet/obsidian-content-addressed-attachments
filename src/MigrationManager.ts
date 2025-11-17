@@ -1,7 +1,7 @@
-//MigrationManager.ts
 import { App, TFile, LinkCache } from "obsidian";
 import ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
+import { MigrationProgressModal } from "./ui/MigrationProgressModal";
 
 //#region 国际化字符串
 const { t } = defineLocales({
@@ -69,44 +69,79 @@ export interface MigrationProgress {
 	cancelled?: boolean;
 }
 
+interface MigrationContext {
+	signal: AbortSignal;
+	updateProgress(progress: MigrationProgress): void;
+}
+
 export interface MigrationResult extends MigrationProgress {
 	success: boolean;
 }
 
 export class MigrationManager {
 	private app: App;
-	private isCancelled = false;
-	private onProgress?: (progress: MigrationProgress) => void;
+	private currentStack: DisposableStack | undefined;
 
 	constructor(private plugin: ContentAddressedAttachmentPlugin) {
 		this.app = plugin.app;
 	}
 
-	setOnProgress(callback: (progress: MigrationProgress) => void) {
-		this.onProgress = callback;
-	}
+	async execute(scope: "current" | "all"): Promise<MigrationResult> {
+		this.currentStack?.dispose();
+		const stack = new DisposableStack();
+		this.currentStack = stack;
+		const ctr = stack.adopt(new AbortController(), (i) => i.abort());
+		const modal = stack.adopt(
+			new MigrationProgressModal(this.app, ctr),
+			(i) => i.close(),
+		);
+		modal.open();
 
-	cancel() {
-		this.isCancelled = true;
-	}
+		const ctx: MigrationContext = {
+			signal: ctr.signal,
+			updateProgress(progress) {
+				modal.updateProgress(progress);
+			},
+		};
 
-	private updateProgress(progress: MigrationProgress) {
-		if (this.onProgress) {
-			this.onProgress({
-				...progress,
-				migrated: progress.migrated ?? -1,
-				status: "processing",
-			});
+		try {
+			let result: MigrationResult;
+			if (scope === "current") {
+				result = await this.migrateCurrentNote(ctx);
+			} else {
+				result = await this.migrateAllNotes(ctx);
+			}
+			ctx.updateProgress(result);
+			if (result.cancelled) {
+				modal.showCancelled();
+			} else if (!result.success) {
+				modal.showError("Migration failed");
+			}
+
+			return result;
+		} catch (error) {
+			modal.showError(String(error));
+			throw error;
+		} finally {
+			if (this.currentStack === stack) {
+				this.currentStack = undefined; // 允许回收
+			}
 		}
 	}
 
-	async migrateCurrentNote(): Promise<MigrationResult> {
+	[Symbol.dispose]() {
+		this.currentStack?.dispose();
+	}
+
+	private async migrateCurrentNote(
+		ctx: MigrationContext,
+	): Promise<MigrationResult> {
 		const file = this.app.workspace.getActiveFile();
 		if (!file) {
 			throw new Error(t("noActiveNote"));
 		}
 
-		const progress = await this.migrateNote(file);
+		const progress = await this.migrateNote(ctx, file);
 		return {
 			...progress,
 			success: true,
@@ -114,7 +149,9 @@ export class MigrationManager {
 		};
 	}
 
-	async migrateAllNotes(): Promise<MigrationResult> {
+	private async migrateAllNotes(
+		ctx: MigrationContext,
+	): Promise<MigrationResult> {
 		const files = this.app.vault.getMarkdownFiles();
 		const result: MigrationProgress = {
 			status: "processing",
@@ -126,35 +163,36 @@ export class MigrationManager {
 			totalFiles: files.length,
 		};
 
-		this.updateProgress(result);
+		ctx.updateProgress(result);
 
 		for (let i = 0; i < files.length; i++) {
-			if (this.isCancelled) {
+			if (ctx.signal.aborted) {
 				result.status = "cancelled";
+				result.cancelled = true;
 				result.details.push(t("migrationCancelled"));
-				return { ...result, success: false, cancelled: true };
+				return { ...result, success: false };
 			}
 
 			const file = files[i];
 			result.currentFile = i + 1;
 			result.currentFileName = file.name;
 
-			this.updateProgress(result);
+			ctx.updateProgress(result);
 
 			try {
-				const noteResult = await this.migrateNote(file);
+				const noteResult = await this.migrateNote(ctx, file);
 				result.migrated += noteResult.migrated;
 				result.skipped += noteResult.skipped;
 				result.errors += noteResult.errors;
 				result.details.push(...noteResult.details);
 
-				this.updateProgress(result);
+				ctx.updateProgress(result);
 			} catch (err) {
 				result.errors++;
 				result.details.push(
 					t("errorProcessingNote")(file.path, String(err)),
 				);
-				this.updateProgress(result);
+				ctx.updateProgress(result);
 			}
 		}
 
@@ -162,7 +200,10 @@ export class MigrationManager {
 		return { ...result, success: result.errors === 0 };
 	}
 
-	private async migrateNote(file: TFile): Promise<MigrationProgress> {
+	private async migrateNote(
+		ctx: MigrationContext,
+		file: TFile,
+	): Promise<MigrationProgress> {
 		const result: MigrationProgress = {
 			status: "processing",
 			migrated: 0,
@@ -172,8 +213,9 @@ export class MigrationManager {
 		};
 
 		try {
-			if (this.isCancelled) {
+			if (ctx.signal.aborted) {
 				result.status = "cancelled";
+				result.cancelled = true;
 				return result;
 			}
 
@@ -202,13 +244,15 @@ export class MigrationManager {
 			);
 
 			for (const link of sortedLinks) {
-				if (this.isCancelled) {
+				if (ctx.signal.aborted) {
 					result.status = "cancelled";
+					result.cancelled = true;
 					break;
 				}
 
 				try {
 					const migrationResult = await this.migrateLink(
+						ctx,
 						link,
 						content,
 						file.path,
@@ -239,7 +283,7 @@ export class MigrationManager {
 				}
 			}
 
-			if (migratedCount > 0 && !this.isCancelled) {
+			if (migratedCount > 0 && !ctx.signal.aborted) {
 				await this.app.vault.modify(file, content);
 				result.migrated = migratedCount;
 				result.details.unshift(
@@ -260,6 +304,7 @@ export class MigrationManager {
 	}
 
 	private async migrateLink(
+		ctx: MigrationContext,
 		link: LinkCache,
 		content: string,
 		notePath: string,
@@ -269,6 +314,10 @@ export class MigrationManager {
 		url?: string;
 		reason?: string;
 	}> {
+		if (ctx.signal.aborted) {
+			return { success: false, reason: "Cancelled" };
+		}
+
 		if (link.link.startsWith("http")) {
 			return { success: false, reason: t("externalLink") };
 		}
@@ -296,7 +345,7 @@ export class MigrationManager {
 			return { success: false, reason: t("fileNotExist") };
 		}
 
-		const result = await this.migrateFile(file);
+		const result = await this.migrateFile(ctx, file);
 		if (!result.success) {
 			return { success: false, reason: t("fileMigrationFailed") };
 		}
@@ -324,11 +373,18 @@ export class MigrationManager {
 		};
 	}
 
-	private async migrateFile(file: TFile): Promise<{
+	private async migrateFile(
+		ctx: MigrationContext,
+		file: TFile,
+	): Promise<{
 		success: boolean;
 		url?: string;
 		error?: string;
 	}> {
+		if (ctx.signal.aborted) {
+			return { success: false, error: "Cancelled" };
+		}
+
 		try {
 			const arrayBuffer = await this.app.vault.readBinary(file);
 

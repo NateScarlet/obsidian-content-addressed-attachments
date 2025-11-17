@@ -1,5 +1,5 @@
 import { App, Modal } from "obsidian";
-import { MigrationResult, MigrationProgress } from "../MigrationManager";
+import { MigrationProgress } from "../MigrationManager";
 import defineLocales from "../utils/defineLocales";
 
 //#region 国际化字符串
@@ -45,23 +45,17 @@ const { t } = defineLocales({
 //#endregion
 
 export class MigrationProgressModal extends Modal {
-	private onComplete?: (result: MigrationResult) => void;
-	private onCancel?: () => void;
-	private isCancelled = false;
-
 	private progressTextEl: HTMLElement;
 	private progressStatsEl: HTMLElement;
 	private cancelButton: HTMLButtonElement;
 	private closeButton: HTMLButtonElement;
 	private buttonContainer: HTMLElement;
 
-	constructor(app: App, onComplete?: (result: MigrationResult) => void) {
+	constructor(
+		app: App,
+		private ctr: AbortController,
+	) {
 		super(app);
-		this.onComplete = onComplete;
-	}
-
-	setOnCancel(callback: () => void) {
-		this.onCancel = callback;
 	}
 
 	onOpen() {
@@ -113,7 +107,10 @@ export class MigrationProgressModal extends Modal {
 			flex: "1",
 		});
 		this.cancelButton.addEventListener("click", () => {
-			this.cancelMigration();
+			this.cancelButton.setText(t("cancelling"));
+			this.cancelButton.disabled = true;
+			this.progressTextEl.setText(t("migrationCancelled"));
+			this.ctr.abort();
 		});
 
 		this.closeButton = this.buttonContainer.createEl("button", {
@@ -229,21 +226,6 @@ export class MigrationProgressModal extends Modal {
 				});
 			});
 		}
-
-		if (this.onComplete) {
-			this.onComplete({ ...result, success: true });
-		}
-	}
-
-	private cancelMigration() {
-		this.isCancelled = true;
-		this.cancelButton.setText(t("cancelling"));
-		this.cancelButton.disabled = true;
-		this.progressTextEl.setText(t("migrationCancelled"));
-
-		if (this.onCancel) {
-			this.onCancel();
-		}
 	}
 
 	showCancelled() {
@@ -271,9 +253,5 @@ export class MigrationProgressModal extends Modal {
 
 		this.cancelButton.hide();
 		this.closeButton.show();
-	}
-
-	isMigrationCancelled(): boolean {
-		return this.isCancelled;
 	}
 }
