@@ -27,7 +27,7 @@ export class LocalCAS implements CAS {
 				didRestore: false,
 			};
 		}
-		// 尝试从回收站回复
+		// 尝试从回收站恢复
 		const src = join(root, LocalCAS.trashRelPath, relPath);
 		if (await this.app.vault.adapter.exists(src)) {
 			const content = await this.app.vault.adapter.readBinary(src);
@@ -58,8 +58,7 @@ export class LocalCAS implements CAS {
 		let dst = join(root, LocalCAS.trashRelPath, relPath);
 		if (invalid) {
 			dst = this.formatInvalidName(dst);
-		}
-		if (await this.app.vault.adapter.exists(dst)) {
+		} else if (await this.app.vault.adapter.exists(dst)) {
 			await this.app.vault.adapter.remove(dst);
 		}
 		return await this.app.vault.adapter.rename(src, dst);
