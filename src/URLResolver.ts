@@ -1,8 +1,9 @@
 import { App, requestUrl } from "obsidian";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
-import { CAS, GatewayURLConfig, Settings } from "./main";
+import { CAS } from "./main";
 import isAbortError from "./utils/isAbortError";
+import type { Settings } from "./settings";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -22,6 +23,13 @@ interface TemplateData {
 
 	// 辅助函数
 	encodeURI: TemplateLambda;
+}
+
+export interface GatewayURLConfig {
+	urlTemplate: string;
+	name: string;
+	headers: [key: string, value: string][];
+	enabled: boolean;
 }
 
 export interface ResolveURLResult {

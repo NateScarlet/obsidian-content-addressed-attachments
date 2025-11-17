@@ -1,4 +1,3 @@
-//main.ts
 import { MarkdownView, Notice, Plugin } from "obsidian";
 import { LocalCAS } from "./LocalCAS";
 import { CID } from "multiformats/cid";
@@ -7,96 +6,7 @@ import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
 import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
 import { URLResolver } from "./URLResolver";
-
-//#region 国际化字符串
-const { t } = defineLocales({
-	en: {
-		insertAttachment: "Insert attachment",
-		migrateComplete: (migrated: number) =>
-			`Migration complete: successfully migrated ${migrated} files`,
-		noMigrationNeeded: "No files need to be migrated",
-		migrationWithErrors: (errors: number) =>
-			`Migration completed with ${errors} errors`,
-		migrateFailed: "Migration failed",
-		migrateCurrentNote: "Migrate files in current note",
-		migrateAllNotes: "Migrate files in all notes",
-		noActiveNote: "No active note",
-		localGatewayExample: "Local Gateway Example",
-		githubExample: "Github Repository Example",
-	},
-	zh: {
-		insertAttachment: "插入附件",
-		migrateComplete: (migrated: number) =>
-			`迁移完成: 成功迁移 ${migrated} 个文件`,
-		noMigrationNeeded: "没有发现需要迁移的文件",
-		migrationWithErrors: (errors: number) =>
-			`迁移完成，但有 ${errors} 个错误`,
-		migrateFailed: "迁移失败",
-		migrateCurrentNote: "迁移当前笔记中的文件",
-		migrateAllNotes: "迁移所有笔记中的文件",
-		noActiveNote: "没有活动的笔记",
-		localGatewayExample: "本地网关示例",
-		githubExample: "Github 仓库示例",
-	},
-});
-//#endregion
-
-function getDefaultSettings() {
-	return {
-		casDir: ".attachments/cas",
-		gatewayURLs: [
-			{
-				name: "IPFS.io",
-				urlTemplate:
-					"https://ipfs.io/ipfs/{{cid}}{{{url.pathname}}}{{{url.search}}}",
-				headers: [],
-				enabled: true,
-			},
-			{
-				name: "dweb.link",
-				urlTemplate:
-					"https://{{cid}}.ipfs.dweb.link{{{url.pathname}}}{{{url.search}}}",
-				headers: [],
-				enabled: true,
-			},
-			{
-				name: "4EVERLAND",
-				urlTemplate:
-					"https://{{cid}}.ipfs.4everland.io{{{url.pathname}}}{{{url.search}}}",
-				headers: [],
-				enabled: false,
-			},
-			{
-				name: t("localGatewayExample"),
-				urlTemplate:
-					"http://127.0.0.1:8080/ipfs/{{cid}}{{{url.pathname}}}{{{url.search}}}",
-				headers: [],
-				enabled: false,
-			},
-			{
-				name: t("githubExample"),
-				urlTemplate:
-					"https://raw.githubusercontent.com/OWNER/REPO/main/{{{#encodeURI}}}{{{casPath}}}{{{/encodeURI}}}",
-				headers: [
-					["Authorization", "Token YOUR_PERSONAL_ACCESS_TOKEN"],
-				],
-				enabled: false,
-			},
-		],
-	};
-}
-
-export interface Settings {
-	casDir: string;
-	gatewayURLs: GatewayURLConfig[];
-}
-
-export interface GatewayURLConfig {
-	urlTemplate: string;
-	name: string;
-	headers: [key: string, value: string][];
-	enabled: boolean;
-}
+import { getDefaultSettings, type Settings } from "./settings";
 
 export interface CAS {
 	formatRelPath(cid: CID): string;
@@ -319,3 +229,18 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.stack.dispose();
 	}
 }
+
+//#region 国际化字符串
+const { t } = defineLocales({
+	en: {
+		insertAttachment: "Insert attachment",
+		migrateCurrentNote: "Migrate files in current note",
+		migrateAllNotes: "Migrate files in all notes",
+	},
+	zh: {
+		insertAttachment: "插入附件",
+		migrateCurrentNote: "迁移当前笔记中的文件",
+		migrateAllNotes: "迁移所有笔记中的文件",
+	},
+});
+//#endregion
