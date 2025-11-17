@@ -5,13 +5,65 @@ import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import { App, getBlobArrayBuffer } from "obsidian";
 import makeDirs from "./utils/makeDirs";
-import { dirname } from "path-browserify";
+import { dirname, join } from "path-browserify";
 
 export class LocalCAS implements CAS {
+	private static trashRelPath = ".trash";
+
 	constructor(
 		private app: App,
 		private rootDir: () => string,
 	) {}
+
+	async load(
+		cid: CID,
+	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined> {
+		const root = this.rootDir();
+		const relPath = this.formatRelPath(cid);
+		const dst = join(root, relPath);
+		if (await this.app.vault.adapter.exists(dst)) {
+			return {
+				normalizedPath: dst,
+				didRestore: false,
+			};
+		}
+		// 尝试从回收站回复
+		const src = join(root, LocalCAS.trashRelPath, relPath);
+		if (await this.app.vault.adapter.exists(src)) {
+			const content = await this.app.vault.adapter.readBinary(src);
+			if (!cid.equals(this.generateCID(content))) {
+				// 检查文件完整性
+				console.warn("发现损坏文件，标记为无效", src);
+				await this.app.vault.adapter.rename(
+					src,
+					this.formatInvalidName(src),
+				);
+				return;
+			}
+			await this.app.vault.adapter.rename(src, dst);
+			return {
+				normalizedPath: src,
+				didRestore: true,
+			};
+		}
+	}
+
+	async trash(cid: CID, invalid?: boolean): Promise<void> {
+		const root = this.rootDir();
+		const relPath = this.formatRelPath(cid);
+		const src = join(root, relPath);
+		if (!(await this.app.vault.adapter.exists(src))) {
+			return;
+		}
+		let dst = join(root, LocalCAS.trashRelPath, relPath);
+		if (invalid) {
+			dst = this.formatInvalidName(dst);
+		}
+		if (await this.app.vault.adapter.exists(dst)) {
+			await this.app.vault.adapter.remove(dst);
+		}
+		return await this.app.vault.adapter.rename(src, dst);
+	}
 
 	async save(file: File): Promise<{ cid: CID; didCreate: boolean }> {
 		const arrayBuffer = await getBlobArrayBuffer(file);
@@ -37,7 +89,7 @@ export class LocalCAS implements CAS {
 		return { cid, didCreate: true };
 	}
 
-	pathFromCID(cid: CID): string {
+	formatRelPath(cid: CID): string {
 		// 解析 CID
 
 		const h = cid.toString(base32upper).slice(1); // 第一个字母固定是 B 所以忽略
@@ -62,7 +114,11 @@ export class LocalCAS implements CAS {
 	}
 
 	private getFilePath(cid: CID): string {
-		const relativePath = this.pathFromCID(cid);
+		const relativePath = this.formatRelPath(cid);
 		return `${this.rootDir()}/${relativePath}`;
+	}
+
+	private formatInvalidName(src: string): string {
+		return `${src}~${Date.now()}.invalid`;
 	}
 }

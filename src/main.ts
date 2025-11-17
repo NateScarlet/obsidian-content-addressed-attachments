@@ -9,7 +9,7 @@ import isAbortError from "./utils/isAbortError";
 import { LocalCAS } from "./LocalCAS";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
-import { dirname, join } from "path-browserify";
+import { dirname } from "path-browserify";
 import MainPluginSettingTab from "./MainPluginSettingTab";
 import openExternalURL from "./utils/openExternalLink";
 import { MigrationProgressModal } from "./MigrationProgressModal";
@@ -130,7 +130,11 @@ export interface GatewayURLConfig {
 }
 
 export interface CAS {
-	pathFromCID(cid: CID): string;
+	formatRelPath(cid: CID): string;
+	trash(cid: CID, invalid?: boolean): Promise<void>;
+	load(
+		cid: CID,
+	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined>;
 	save(file: File): Promise<{ cid: CID; didCreate: boolean }>;
 }
 
@@ -218,7 +222,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 								),
 							);
 						} else {
-							openExternalURL(resolved?.href || url);
+							openExternalURL(resolved?.url || url);
 						}
 					}
 				}
@@ -363,7 +367,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				if (resolvedURL) {
 					console.debug("使用源:", resolvedURL);
 					el.setAttr(`data-original-${attr}`, value);
-					el.setAttr(attr, resolvedURL.href);
+					el.setAttr(attr, resolvedURL.url);
 				} else {
 					el.setAttr(attr, value);
 					console.warn("无可用源:", value);
@@ -374,17 +378,17 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	private async resolveURL(
 		rawURL: string,
-	): Promise<{ path?: string; href: string } | undefined> {
+	): Promise<{ path?: string; url: string } | undefined> {
 		using stack = new DisposableStack();
 		// const ctr = stack.adopt(new AbortController(), (i) => i.abort());
 		const data = this.prepareTemplateData(rawURL);
-
-		const localPath = join(this.settings.casDir, data.casPath());
-		console.debug("matching local path", localPath);
-		if (await this.app.vault.adapter.exists(localPath)) {
+		const match = await this.cas.load(data.cid);
+		if (match) {
 			return {
-				path: localPath,
-				href: this.app.vault.adapter.getResourcePath(localPath),
+				path: match.normalizedPath,
+				url: this.app.vault.adapter.getResourcePath(
+					match.normalizedPath,
+				),
 			};
 		}
 		let remaining = this.settings.gatewayURLs.length;
@@ -428,7 +432,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 								});
 								if (resp.status == 200) {
 									console.debug("GET", url);
-
 									const resp = await requestUrl({
 										url,
 										headers: headersRecord,
@@ -436,22 +439,35 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 									});
 									if (resp.status === 200) {
 										console.debug("GOT", resp.headers);
-										resolve({
-											href: this.stack.adopt(
-												URL.createObjectURL(
-													new Blob(
-														[resp.arrayBuffer],
-														{
-															type:
-																data.format() ||
-																resp.headers[
-																	"content-type"
-																] ||
-																undefined,
-														},
-													),
+										const { cid, didCreate } =
+											await this.cas.save(
+												new File(
+													[
+														new Blob(
+															[resp.arrayBuffer],
+															{},
+														),
+													],
+													data.filename() || "",
+													{
+														type:
+															resp.headers[
+																"content-type"
+															] ||
+															data.format() ||
+															undefined,
+													},
 												),
-												(i) => URL.revokeObjectURL(i),
+											);
+										if (!cid.equals(data.cid)) {
+											if (didCreate) {
+												await this.cas.trash(cid);
+											}
+											return;
+										}
+										resolve({
+											url: this.app.vault.adapter.getResourcePath(
+												this.cas.formatRelPath(cid),
 											),
 										});
 									}
@@ -499,8 +515,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		if (!cid) {
 			throw new Error(`invalid cid in url: '${url}'`);
 		}
-		const casPath = this.cas.pathFromCID(cid);
-
+		const casPath = this.cas.formatRelPath(cid);
 		return {
 			rawURL,
 			url,
