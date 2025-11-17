@@ -1,7 +1,11 @@
 /*! plugin: content-addressed-attachments */
 
 @layer theme, base, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
+
+@utility border {
+	border-color: var(--background-modifier-border);
+}
+
 @import "tailwindcss/utilities.css" layer(utilities) source(".");
 
 @theme inline {
@@ -20,11 +24,11 @@
 	--color-secondary: var(--background-secondary);
 	--color-primary-alt: var(--background-primary-alt);
 	--color-secondary-alt: var(--background-secondary-alt);
-	--color-modifier-border: var(--background-modifier-border);
-	--color-modifier-form-field: var(--background-modifier-form-field);
-	--color-modifier-hover: var(--background-modifier-hover);
-	--color-modifier-active: var(--background-modifier-active);
-	--color-modifier-selected: var(--background-modifier-selected);
+	--color-border: var(--background-modifier-border);
+	--color-form-field: var(--background-modifier-form-field);
+	--color-hover: var(--background-modifier-hover);
+	--color-active: var(--background-modifier-active);
+	--color-selected: var(--background-modifier-selected);
 
 	--color-interactive-normal: var(--interactive-normal);
 	--color-interactive-hover: var(--interactive-hover);
@@ -33,18 +37,15 @@
 	--color-interactive-success: var(--interactive-success);
 
 	/* 字体系统 */
-	--font-text: var(--font-text);
-	--font-interface: var(--font-interface);
-	--font-monospace: var(--font-monospace);
+	--font-text: var(--font-text-theme);
+	--font-interface: var(--font-interface-theme);
+	--font-mono: var(--font-monospace-theme);
 
-	/* 字体大小 - 适配 Obsidian 的缩放系统 */
-	--text-xs: calc(var(--font-text-size) * 0.75);
-	--text-sm: calc(var(--font-text-size) * 0.875);
+	/* 字体大小 */
+	--text-xs: var(--font-ui-smaller);
+	--text-sm: var(--font-ui-small);
 	--text-base: var(--font-text-size);
-	--text-lg: calc(var(--font-text-size) * 1.125);
-	--text-xl: calc(var(--font-text-size) * 1.25);
-	--text-2xl: calc(var(--font-text-size) * 1.5);
-	--text-3xl: calc(var(--font-text-size) * 1.875);
+	--text-lg: var(--font-ui-large);
 
 	/* 字体权重 */
 	--font-weight-normal: var(--font-normal);
@@ -72,18 +73,7 @@
 	--shadow-md: var(--shadow-m);
 	--shadow-lg: var(--shadow-l);
 
-	/* 动画曲线 */
-	--ease-in: var(--ease-in);
-	--ease-out: var(--ease-out);
-	--ease-in-out: var(--ease-in-out);
-
 	/* 断点系统 - 适配 Obsidian 的响应式设计 */
-	--breakpoint-mobile: 768px;
-	--breakpoint-tablet: 1024px;
-
-	/* 容器查询断点 */
-	--container-xs: 20rem;
-	--container-sm: 24rem;
-	--container-md: 28rem;
-	--container-lg: 32rem;
+	--breakpoint-tablet: 750px;
+	--breakpoint-desktop: 1000px;
 }

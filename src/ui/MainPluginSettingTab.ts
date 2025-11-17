@@ -244,7 +244,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 	private createPreviewArea(containerEl: HTMLElement): void {
 		this.previewContainer = containerEl.createDiv({
 			cls: clsx`
-				my-4 p-3 border border-modifier-border rounded-md 
+				my-4 p-3 border rounded-md 
 				bg-secondary text-sm
 			`,
 		});
@@ -274,7 +274,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			text: t("focusToPreview"),
 			cls: clsx`
 				font-mono text-sm text-muted italic break-all p-1 
-				bg-primary rounded border border-modifier-border
+				bg-primary rounded border
 				min-h-[20px]
 			`,
 		});
@@ -294,7 +294,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				"class",
 				clsx`
 				font-mono text-sm text-normal break-all p-1 
-				bg-primary rounded border border-modifier-border
+				bg-primary rounded border
 				min-h-[20px]
 			`,
 			);
