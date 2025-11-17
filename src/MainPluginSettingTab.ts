@@ -427,7 +427,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		if (!this.previewEl) return;
 
 		try {
-			const renderedURL = this.plugin.renderGatewayURL(
+			const renderedURL = this.plugin.urlResolver.renderGatewayURL(
 				EXAMPLE_URL,
 				config,
 			);

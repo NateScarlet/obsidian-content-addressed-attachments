@@ -82,7 +82,7 @@ export default class IPFSLinkClickExtension {
 		event.preventDefault();
 		event.stopPropagation();
 
-		const resolved = await this.plugin.resolveURL(url);
+		const resolved = await this.plugin.urlResolver.resolveURL(url);
 		if (
 			resolved?.path &&
 			this.plugin.app.vault.adapter instanceof FileSystemAdapter
