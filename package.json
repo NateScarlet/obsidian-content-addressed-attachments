@@ -15,7 +15,6 @@
 	"devDependencies": {
 		"@codemirror/view": "^6.38.7",
 		"@tailwindcss/cli": "^4.1.17",
-		"tailwindcss": "^4.1.17",
 		"@types/node": "^16.11.6",
 		"@typescript-eslint/eslint-plugin": "8.46.4",
 		"@typescript-eslint/parser": "8.46.4",
@@ -25,6 +24,7 @@
 		"globals": "^16.5.0",
 		"obsidian": "latest",
 		"prettier": "^3.6.2",
+		"tailwindcss": "^4.1.17",
 		"tslib": "2.4.0",
 		"typescript": "5.9.3"
 	},
@@ -32,6 +32,7 @@
 		"@mdi/js": "^7.4.47",
 		"@types/mustache": "^4.2.6",
 		"@types/path-browserify": "^1.0.3",
+		"clsx": "^2.1.1",
 		"multiformats": "^13.4.1",
 		"mustache": "^4.2.0",
 		"path-browserify": "^1.0.1"
