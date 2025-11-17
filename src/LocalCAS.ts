@@ -42,7 +42,7 @@ export class LocalCAS implements CAS {
 			}
 			await this.app.vault.adapter.rename(src, dst);
 			return {
-				normalizedPath: src,
+				normalizedPath: dst,
 				didRestore: true,
 			};
 		}
