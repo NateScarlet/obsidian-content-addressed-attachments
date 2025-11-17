@@ -7,6 +7,7 @@ import defineLocales from "./utils/defineLocales";
 import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
 import { URLResolver } from "./URLResolver";
 import { getDefaultSettings, type Settings } from "./settings";
+import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 
 export interface CAS {
 	formatRelPath(cid: CID): string;
@@ -26,8 +27,30 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	private stack = new DisposableStack();
 	private migrationManager: MigrationManager;
 
+	private placeholderImageURL: string;
+	private notFoundImageURL: string;
+
 	async onload() {
 		await this.loadSettings();
+		this.placeholderImageURL = this.stack.adopt(
+			URL.createObjectURL(
+				new Blob([createImagePlaceholderSVG(t("loading"), "loading")], {
+					type: "image/svg+xml",
+				}),
+			),
+			(i) => URL.revokeObjectURL(i),
+		);
+		this.notFoundImageURL = this.stack.adopt(
+			URL.createObjectURL(
+				new Blob(
+					[createImagePlaceholderSVG(t("fileNotFound"), "error")],
+					{
+						type: "image/svg+xml",
+					},
+				),
+			),
+			(i) => URL.revokeObjectURL(i),
+		);
 
 		this.cas = new LocalCAS(this.app, () => this.settings.casDir);
 		this.urlResolver = new URLResolver(
@@ -188,13 +211,20 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			const value = el.getAttribute(attr);
 			if (value?.startsWith("ipfs://")) {
 				console.debug("🖼️ 处理 URL:", value);
+				if (el instanceof HTMLImageElement && attr === "src") {
+					el.src = this.placeholderImageURL;
+				}
 				const resolvedURL = await this.urlResolver.resolveURL(value);
 				if (resolvedURL) {
 					console.debug("使用源:", resolvedURL);
 					el.setAttr(`data-original-${attr}`, value);
 					el.setAttr(attr, resolvedURL.url);
 				} else {
-					el.setAttr(attr, value);
+					if (el instanceof HTMLImageElement && attr === "src") {
+						el.src = this.notFoundImageURL;
+					} else {
+						el.setAttr(attr, value);
+					}
 					console.warn("无可用源:", value);
 				}
 			}
@@ -236,11 +266,15 @@ const { t } = defineLocales({
 		insertAttachment: "Insert attachment",
 		migrateCurrentNote: "Migrate files in current note",
 		migrateAllNotes: "Migrate files in all notes",
+		loading: "Loading",
+		fileNotFound: "File not found",
 	},
 	zh: {
 		insertAttachment: "插入附件",
 		migrateCurrentNote: "迁移当前笔记中的文件",
 		migrateAllNotes: "迁移所有笔记中的文件",
+		loading: "正在加载",
+		fileNotFound: "未找到文件",
 	},
 });
 //#endregion

@@ -27,6 +27,7 @@
 		"typescript": "5.9.3"
 	},
 	"dependencies": {
+		"@mdi/js": "^7.4.47",
 		"@types/mustache": "^4.2.6",
 		"@types/path-browserify": "^1.0.3",
 		"multiformats": "^13.4.1",
