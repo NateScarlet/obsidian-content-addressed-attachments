@@ -1,9 +1,9 @@
-import obsidian from "obsidian";
+import { getLanguage } from "obsidian";
 
 // obsidian 修改语言会要求重启，所以可以缓存
 const cachedResult = (() => {
-	if (typeof obsidian.getLanguage === "function") {
-		return obsidian.getLanguage();
+	if (typeof getLanguage === "function") {
+		return getLanguage();
 	}
 	if (typeof navigator.languages === "object") {
 		const zhIndex = navigator.languages.findIndex((i) =>
