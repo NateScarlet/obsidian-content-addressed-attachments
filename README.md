@@ -1,6 +1,6 @@
 # Obsidian Content-Addressed Attachments Plugin
 
-A powerful Obsidian plugin that implements content-addressed storage for attachments, providing IPFS-like functionality with local and external gateway/file-hosting support.
+Implements content-addressed storage for attachments, providing IPFS-like functionality with local and external gateway/file-hosting support.
 
 **Note**: This plugin is independent of the official IPFS network and operates entirely within your local Obsidian vault. External gateways are optional and configurable based on your needs.
 
