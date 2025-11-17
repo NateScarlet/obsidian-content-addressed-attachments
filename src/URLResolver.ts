@@ -55,7 +55,7 @@ export class URLResolver {
 		return result;
 	}
 
-	async doResolveURL(
+	private async doResolveURL(
 		data: TemplateData,
 	): Promise<ResolveURLResult | undefined> {
 		using stack = new DisposableStack();
