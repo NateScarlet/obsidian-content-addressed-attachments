@@ -181,9 +181,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}),
 		);
 
-		// 移除原有的全局点击事件监听，改为使用 MutationObserver 处理非编辑器模式
-		// 原有的 document 点击事件监听器已被移除
-
 		this.addCommand({
 			id: "insert-attachment",
 			name: t("insertAttachment"),
