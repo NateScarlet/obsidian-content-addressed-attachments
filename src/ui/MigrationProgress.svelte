@@ -23,6 +23,7 @@
 			cancelling: "Cancelling...",
 			remainingFiles: (remaining: number) =>
 				`${remaining} files remaining`,
+			migrationCancelledByUser: "Migration cancelled by user",
 		},
 		zh: {
 			migrationProgress: "文件迁移进度",
@@ -41,6 +42,7 @@
 			cancel: "取消",
 			cancelling: "取消中...",
 			remainingFiles: (remaining: number) => `剩余 ${remaining} 个文件`,
+			migrationCancelledByUser: "迁移已被用户取消",
 		},
 	});
 	//#endregion
@@ -143,7 +145,7 @@
 		{/if}
 
 		{#if isCancelled}
-			<p class="my-1 text-warning">迁移已被用户取消</p>
+			<p class="my-1 text-warning">{t("migrationCancelledByUser")}</p>
 		{/if}
 
 		{#if error}
