@@ -1,6 +1,9 @@
 import type { GatewayURLConfig } from "./URLResolver";
 import defineLocales from "./utils/defineLocales";
 
+export const EXAMPLE_URL =
+	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
+
 export interface Settings {
 	casDir: string;
 	gatewayURLs: GatewayURLConfig[];

@@ -1,17 +1,14 @@
 import { PluginSettingTab, Setting } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
-import castError from "../utils/castError";
-import type { GatewayURLConfig } from "src/URLResolver";
 import HeadersEditModal from "./HeadersEditModal";
 import clsx from "clsx";
-
-const EXAMPLE_URL =
-	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
+import TemplateSyntaxHelp from "./TemplateSyntaxHelp.svelte";
+import TemplatePreview from "./TemplatePreview.svelte";
+import { mount, unmount } from "svelte";
 
 export default class MainPluginSettingTab extends PluginSettingTab {
-	private previewContainer: HTMLElement;
-	private previewEl: HTMLElement;
+	private stack?: DisposableStack;
 
 	constructor(private plugin: ContentAddressedAttachmentPlugin) {
 		super(plugin.app, plugin);
@@ -20,6 +17,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+
+		// 清理之前的组件
+		this.stack?.dispose();
+		const stack = new DisposableStack();
+		this.stack = stack;
 
 		new Setting(containerEl)
 			.setName(t("localStorage"))
@@ -53,8 +55,17 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// 创建预览区域
-		this.createPreviewArea(containerEl);
+		// 创建模板预览组件
+		const previewContainer = containerEl.createDiv();
+		const preview = stack.adopt(
+			mount(TemplatePreview, {
+				target: previewContainer,
+				props: {
+					urlResolver: this.plugin.urlResolver,
+				},
+			}),
+			unmount,
+		);
 
 		this.plugin.settings.gatewayURLs.forEach((config, index) => {
 			const setting = new Setting(containerEl)
@@ -82,15 +93,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							config.urlTemplate = value;
 							await this.plugin.saveSettings();
-							this.updatePreview(config);
+							preview.config = config;
 						});
 
 					input.inputEl.className = clsx`min-w-[300px] grow`;
 
 					input.inputEl.addEventListener("focus", () => {
-						this.updatePreview(config);
+						preview.config = config;
 					});
-
 					return input;
 				})
 				.addExtraButton((button) => {
@@ -132,185 +142,18 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			}
 		});
 
-		//#region 模板语法说明
-		const mustacheHelp = containerEl.createEl("details", {
-			cls: clsx`my-4`,
-		});
-		mustacheHelp.createEl("summary", {
-			text: t("templateSyntaxHelp"),
-		});
-		const mustacheContent = mustacheHelp.createEl("div", {
-			cls: clsx`space-y-3`,
-		});
-
-		mustacheContent.createEl("p", {
-			text: t("templateDescription"),
-		});
-
-		const mustacheList = mustacheContent.createEl("ul", {
-			cls: clsx`list-disc list-inside space-y-1`,
-		});
-
-		mustacheList.createEl("li", {
-			text: t("variableSubstitution"),
-		});
-
-		mustacheList.createEl("li", {
-			text: t("rawContent"),
-		});
-
-		mustacheList.createEl("li", {
-			text: t("functionCall"),
-		});
-
-		mustacheList.createEl("li", {
-			text: t("comment"),
-		});
-
-		const docLinkContainer = mustacheContent.createEl("p");
-		const docLink = docLinkContainer.createEl("a", {
-			text: t("viewDocumentation"),
-			href: "https://mustache.github.io/mustache.5.html",
-			cls: clsx`text-accent hover:text-accent-hover underline`,
-		});
-		docLink.setAttr("target", "_blank");
-
-		// 转义规则说明
-		const escapeHelp = mustacheContent.createEl("details", {
-			cls: clsx`mt-3`,
-		});
-		escapeHelp.createEl("summary", { text: t("encodingDescription") });
-		const escapeList = escapeHelp.createEl("ul", {
-			cls: clsx`list-disc list-inside space-y-1`,
-		});
-
-		escapeList.createEl("li", {
-			text: t("doubleBrace"),
-		});
-
-		escapeList.createEl("li", {
-			text: t("tripleBrace"),
-		});
-
-		// 占位符说明
-		const placeholderHelp = containerEl.createEl("details", {
-			cls: clsx`my-4`,
-		});
-		placeholderHelp.createEl("summary", { text: t("availableVariables") });
-		const helpList = placeholderHelp.createEl("ul", {
-			cls: clsx`list-disc list-inside space-y-1`,
-		});
-
-		helpList.createEl("li", {
-			text: t("rawURL"),
-		});
-
-		helpList.createEl("li", {
-			text: t("urlObject"),
-		});
-
-		helpList.createEl("li", {
-			text: t("cid"),
-		});
-
-		helpList.createEl("li", {
-			text: t("pathname"),
-		});
-
-		helpList.createEl("li", {
-			text: t("search"),
-		});
-
-		helpList.createEl("li", {
-			text: t("filename"),
-		});
-
-		helpList.createEl("li", {
-			text: t("format"),
-		});
-
-		helpList.createEl("li", {
-			text: t("casPath"),
-		});
-
-		helpList.createEl("li", {
-			text: t("encodeFunction"),
-		});
-
-		// #endregion;
+		// 创建模板语法帮助组件
+		const helpContainer = containerEl.createDiv();
+		this.stack.adopt(
+			mount(TemplateSyntaxHelp, {
+				target: helpContainer,
+			}),
+			unmount,
+		);
 	}
 
-	// 创建预览区域
-	private createPreviewArea(containerEl: HTMLElement): void {
-		this.previewContainer = containerEl.createDiv({
-			cls: clsx`
-				my-4 p-3 border rounded-md 
-				bg-secondary text-sm
-			`,
-		});
-
-		// 示例URL说明
-		this.previewContainer.createDiv({
-			text: t("exampleURL"),
-			cls: clsx`font-semibold mb-1 text-xs text-muted`,
-		});
-
-		// 示例URL显示
-		this.previewContainer.createDiv({
-			text: EXAMPLE_URL,
-			cls: clsx`
-				font-mono text-xs text-faint mb-3 break-all
-			`,
-		});
-
-		// 预览标题
-		this.previewContainer.createDiv({
-			text: t("renderedURL"),
-			cls: clsx`font-semibold mb-1 text-xs text-muted`,
-		});
-
-		// 预览结果显示区域
-		this.previewEl = this.previewContainer.createDiv({
-			text: t("focusToPreview"),
-			cls: clsx`
-				font-mono text-sm text-muted italic break-all p-1 
-				bg-primary rounded-sm border
-				min-h-[20px]
-			`,
-		});
-	}
-
-	// 更新预览的方法
-	private updatePreview(config: GatewayURLConfig): void {
-		if (!this.previewEl) return;
-
-		try {
-			const renderedURL = this.plugin.urlResolver.renderGatewayURL(
-				EXAMPLE_URL,
-				config,
-			);
-			this.previewEl.setText(renderedURL);
-			this.previewEl.setAttr(
-				"class",
-				clsx`
-				font-mono text-sm text-normal break-all p-1 
-				bg-primary rounded-sm border
-				min-h-[20px]
-			`,
-			);
-		} catch (error) {
-			this.previewEl.setText(
-				`${t("error")}: ${castError(error).message}`,
-			);
-			this.previewEl.setAttr(
-				"class",
-				clsx`
-				font-mono text-sm text-error break-all p-1 
-				bg-primary rounded-sm border border-color-red
-				min-h-[20px]
-			`,
-			);
-		}
+	onClose(): void {
+		this.stack?.dispose();
 	}
 }
 
@@ -324,7 +167,6 @@ const { t } = defineLocales({
 		externalStorageDesc:
 			"Used to fetch files not available locally, defined using Mustache template syntax",
 		addExternalStorage: "Add External Storage",
-		templateSyntaxHelp: "Template Syntax Help",
 		editHeaders: "Edit Headers",
 		delete: "Delete",
 		newExternalStorage: "New External Storage",
@@ -332,40 +174,6 @@ const { t } = defineLocales({
 		urlTemplate: "URL Template (Mustache syntax)",
 		close: "Close",
 		examplePlaceholder: "e.g. .attachments/cas",
-		templateDescription:
-			"URL templates use Mustache template syntax. The current implementation uses URL encoding instead of HTML escaping.",
-		variableSubstitution:
-			"Variable substitution: {{variable}} - Automatically URL encoded (using encodeURIComponent)",
-		rawContent:
-			"Raw content: {{{variable}}} - No encoding, outputs raw value",
-		functionCall:
-			"Function call: {{#function}}content{{/function}} - Calls custom function to process content",
-		comment: "Comment: {{! comment }} - Not displayed in output",
-		viewDocumentation: "View complete Mustache syntax documentation",
-		encodingDescription: "Encoding Instructions",
-		doubleBrace:
-			"Double braces {{variable}} are automatically URL encoded (encodeURIComponent)",
-		tripleBrace:
-			"Triple braces {{{variable}}} preserve raw content without any encoding",
-		availableVariables: "Available Variables",
-		rawURL: "{{rawURL}} - Original URL used in the note",
-		urlObject: "{{url}} - Parsed JavaScript URL object",
-		cid: "{{cid}} - IPFS root content ID, multiformats CID object, can also be formatted directly as a string",
-		pathname: "{{url.pathname}} - IPFS optional subpath",
-		search: "{{url.search}} - URL parameter part",
-		filename: "{{filename}} - File name (obtained from URL parameters)",
-		format: "{{format}} - File format (obtained from URL parameters)",
-		casPath: "{{casPath}} - Local storage relative path",
-		encodeFunction:
-			"{{#encodeURI}}content{{/encodeURI}} - URI encoding helper function to avoid path separator escaping (default will be escaped)",
-		localGatewayExample: "Local Gateway Example",
-		githubExample: "GitHub Raw Example",
-		preview: "Preview",
-		previewDesc: "Real-time preview based on example IPFS URL",
-		exampleURL: "Example URL for preview",
-		renderedURL: "Rendered URL",
-		error: "Error",
-		focusToPreview: "Focus on a URL template input to see preview",
 	},
 	zh: {
 		localStorage: "本地存储",
@@ -374,7 +182,6 @@ const { t } = defineLocales({
 		externalStorageDesc:
 			"用于获取本地缺少的文件，使用 Mustache 模板语法定义 URL 格式",
 		addExternalStorage: "添加外部存储",
-		templateSyntaxHelp: "模板语法说明",
 		editHeaders: "编辑请求头",
 		delete: "删除",
 		newExternalStorage: "新外部存储",
@@ -382,39 +189,6 @@ const { t } = defineLocales({
 		urlTemplate: "URL模板（Mustache语法）",
 		close: "关闭",
 		examplePlaceholder: "例如: .attachments/cas",
-		headersDescription: "每行一个请求头，格式为: Header-Name: header value",
-		templateDescription:
-			"URL 模板使用 Mustache 模板语法，当前实现使用 URL 编码而非 HTML 转义。",
-		variableSubstitution:
-			"变量替换: {{variable}} - 自动进行 URL 编码（使用 encodeURIComponent）",
-		rawContent: "原始内容: {{{variable}}} - 不进行编码，直接输出原始值",
-		functionCall:
-			"函数调用: {{#function}}content{{/function}} - 调用自定义函数处理内容",
-		comment: "注释: {{! comment }} - 不会在输出中显示",
-		viewDocumentation: "查看完整的 Mustache 语法文档",
-		encodingDescription: "编码说明",
-		doubleBrace:
-			"双花括号 {{variable}} 会自动进行 URL 编码（encodeURIComponent）",
-		tripleBrace: "三花括号 {{{variable}}} 会保持原始内容，不进行任何编码",
-		availableVariables: "可用变量",
-		rawURL: "{{rawURL}} - 笔记中使用的原始URL",
-		urlObject: "{{url}} - 解析后的 JavaScript URL 对象",
-		cid: "{{cid}} - IPFS 根内容 ID, multiformats CID对象，也能直接格式化为字符串",
-		pathname: "{{url.pathname}} - IPFS 可选子路径",
-		search: "{{url.search}} - URL参数部分",
-		filename: "{{filename}} - 文件名（从URL参数获取）",
-		format: "{{format}} - 文件格式（从URL参数获取）",
-		casPath: "{{casPath}} - 本地存储相对路径",
-		encodeFunction:
-			"{{#encodeURI}}内容{{/encodeURI}} - URI编码辅助函数，用于避免路径分隔符被转义（默认会被转义）",
-		localGatewayExample: "本地网关示例",
-		githubExample: "GitHub Raw 示例",
-		preview: "预览",
-		previewDesc: "基于示例IPFS URL的实时预览",
-		exampleURL: "用于预览的示例URL",
-		renderedURL: "渲染后的URL",
-		error: "错误",
-		focusToPreview: "聚焦到URL模板输入框以查看预览",
 	},
 });
 //#endregion
