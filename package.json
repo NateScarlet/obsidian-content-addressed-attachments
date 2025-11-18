@@ -2,7 +2,7 @@
 	"name": "obsidian-content-addressed-attachments",
 	"license": "MIT",
 	"private": true,
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"description": "Manage attachments without consider about it's location in Obsidian (https://obsidian.md)",
 	"main": "main.js",
 	"scripts": {
