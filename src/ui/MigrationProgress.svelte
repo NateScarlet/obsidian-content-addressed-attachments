@@ -1,4 +1,5 @@
 <script lang="ts">
+	import clsx from "clsx";
 	import type { MigrationProgress } from "../MigrationManager";
 	import defineLocales from "../utils/defineLocales";
 
@@ -89,11 +90,6 @@
 		return t("scanningFiles");
 	});
 
-	const showCompletion = $derived(
-		progress.status === "completed" || isCancelled || error,
-	);
-	const showCancelButton = $derived(!showCompletion && !isCancelling);
-
 	const hasMeaningfulDetails = $derived.by(() => {
 		return (
 			progress.details.length > 0 &&
@@ -103,10 +99,82 @@
 		);
 	});
 
-	function handleCancel() {
-		isCancelling = true;
-		ctr.abort();
-	}
+	// 声明式统计信息配置 - 只在需要时生成元素
+	const statsItems = $derived([
+		// 处理中或完成时的统计信息
+		...(progress.status === "completed" || progress.status === "processing"
+			? [
+					{
+						text: t("migratedFiles")(progress.migrated),
+						class: clsx`text-normal`,
+					},
+					{
+						text: t("skippedFiles")(progress.skipped),
+						class: clsx`text-normal`,
+					},
+					...(progress.errors > 0
+						? [
+								{
+									text: t("errorFiles")(progress.errors),
+									class: clsx`text-error`,
+								},
+							]
+						: []),
+					...(progress.totalFiles && progress.currentFile
+						? [
+								{
+									text: t("remainingFiles")(
+										progress.totalFiles -
+											progress.currentFile,
+									),
+									class: clsx`text-muted`,
+								},
+							]
+						: []),
+				]
+			: []),
+
+		// 取消时的信息
+		...(isCancelled
+			? [
+					{
+						text: t("migrationCancelledByUser"),
+						class: clsx`text-warning`,
+					},
+				]
+			: []),
+
+		// 错误信息
+		...(error ? [{ text: error, class: clsx`text-error` }] : []),
+	]);
+
+	const buttonAttrs = $derived.by(() => {
+		if (progress.status === "completed") {
+			return {
+				text: t("close"),
+				onClick: onClose,
+				class: clsx`bg-interactive-normal text-on-accent hover:bg-interactive-hover`,
+				disabled: false,
+			};
+		}
+		if (isCancelling) {
+			return {
+				text: t("cancelling"),
+				onClick: null,
+				class: clsx`bg-form-field text-muted cursor-not-allowed`,
+				disabled: true,
+			};
+		}
+		return {
+			text: t("cancel"),
+			onClick: () => {
+				isCancelling = true;
+				ctr.abort();
+			},
+			class: clsx`bg-interactive-normal text-on-accent hover:bg-interactive-hover`,
+			disabled: false,
+		};
+	});
 
 	export { progress, isCancelled, error };
 </script>
@@ -120,39 +188,14 @@
 		{progressText}
 	</div>
 
+	<!-- 动态统计信息 -->
 	<div class="my-3 migration-stats">
-		{#if progress.status === "completed" || progress.status === "processing"}
-			<p class="my-1 text-normal">
-				{t("migratedFiles")(progress.migrated)}
-			</p>
-			<p class="my-1 text-normal">
-				{t("skippedFiles")(progress.skipped)}
-			</p>
-
-			{#if progress.errors > 0}
-				<p class="my-1 text-error">
-					{t("errorFiles")(progress.errors)}
-				</p>
-			{/if}
-
-			{#if progress.totalFiles && progress.currentFile}
-				<p class="my-1 text-muted">
-					{t("remainingFiles")(
-						progress.totalFiles - progress.currentFile,
-					)}
-				</p>
-			{/if}
-		{/if}
-
-		{#if isCancelled}
-			<p class="my-1 text-warning">{t("migrationCancelledByUser")}</p>
-		{/if}
-
-		{#if error}
-			<p class="my-1 text-error">{error}</p>
-		{/if}
+		{#each statsItems as item}
+			<p class="my-1 {item.class}">{item.text}</p>
+		{/each}
 	</div>
 
+	<!-- 动态详情区域 -->
 	{#if progress.status === "completed" && hasMeaningfulDetails}
 		<details class="mt-3 migration-details">
 			<summary
@@ -170,30 +213,14 @@
 		</details>
 	{/if}
 
+	<!-- 按钮 -->
 	<div class="flex gap-3 mt-4 modal-button-container">
-		{#if showCancelButton}
-			<button
-				class="flex-1 px-4 py-2 bg-interactive-normal text-on-accent rounded-md hover:bg-interactive-hover transition-colors"
-				onclick={handleCancel}
-			>
-				{t("cancel")}
-			</button>
-		{:else if isCancelling}
-			<button
-				class="flex-1 px-4 py-2 bg-form-field text-muted rounded-md cursor-not-allowed"
-				disabled
-			>
-				{t("cancelling")}
-			</button>
-		{/if}
-
-		{#if showCompletion}
-			<button
-				class="flex-1 px-4 py-2 bg-interactive-normal text-on-accent rounded-md hover:bg-interactive-hover transition-colors"
-				onclick={onClose}
-			>
-				{t("close")}
-			</button>
-		{/if}
+		<button
+			class="flex-1 px-4 py-2 rounded-md transition-colors {buttonAttrs.class}"
+			onclick={buttonAttrs.onClick}
+			disabled={buttonAttrs.disabled}
+		>
+			{buttonAttrs.text}
+		</button>
 	</div>
 </div>
