@@ -10,6 +10,19 @@
 
 @theme inline {
 	/* 颜色系统 - 映射 Obsidian 的主题变量 */
+	--color-base-0: var(--color-base-00);
+	--color-base-50: var(--color-base-05);
+	--color-base-100: var(--color-base-10);
+	--color-base-200: var(--color-base-20);
+	--color-base-250: var(--color-base-25);
+	--color-base-300: var(--color-base-30);
+	--color-base-350: var(--color-base-35);
+	--color-base-400: var(--color-base-40);
+	--color-base-500: var(--color-base-50);
+	--color-base-600: var(--color-base-60);
+	--color-base-700: var(--color-base-70);
+	--color-base-900: var(--color-base-100);
+
 	--color-normal: var(--text-normal);
 	--color-muted: var(--text-muted);
 	--color-faint: var(--text-faint);
@@ -44,24 +57,40 @@
 	/* 字体大小 */
 	--text-xs: var(--font-ui-smaller);
 	--text-sm: var(--font-ui-small);
-	--text-base: var(--font-text-size);
+	--text-base: var(--font-ui-medium);
 	--text-lg: var(--font-ui-large);
+	--text-editor-base: var(--font-text-size);
+	--text-editor-sm: var(--font-small);
+	--text-editor-xs: var(--font-smaller);
+	--text-editor-2xs: var(--font-smallest);
 
 	/* 字体权重 */
+	--font-weight-thin: var(--font-thin);
+	--font-weight-extralight: var(--font-extralight);
+	--font-weight-light: var(--font-light);
 	--font-weight-normal: var(--font-normal);
 	--font-weight-medium: var(--font-medium);
 	--font-weight-semibold: var(--font-semibold);
 	--font-weight-bold: var(--font-bold);
+	--font-weight-extrabold: var(--font-extrabold);
+	--font-weight-black: var(--font-black);
 
-	/* 间距系统 - 基于 Obsidian 的 UI 比例 */
-	--spacing-1: var(--size-2-1);
-	--spacing-2: var(--size-2-2);
-	--spacing-3: var(--size-2-3);
-	--spacing-4: var(--size-2-4);
-	--spacing-5: var(--size-4-4);
-	--spacing-6: var(--size-4-5);
-	--spacing-8: var(--size-4-6);
-	--spacing-10: var(--size-4-8);
+	/* 间距系统 */
+	--spacing: var(--size-4-1);
+	--spacing-2-1: var(--size-2-1);
+	--spacing-2-2: var(--size-2-2);
+	--spacing-2-3: var(--size-2-3);
+	--spacing-1: var(--size-4-1);
+	--spacing-2: var(--size-4-2);
+	--spacing-3: var(--size-4-3);
+	--spacing-4: var(--size-4-4);
+	--spacing-5: var(--size-4-5);
+	--spacing-6: var(--size-4-6);
+	--spacing-8: var(--size-4-8);
+	--spacing-9: var(--size-4-9);
+	--spacing-12: var(--size-4-12);
+	--spacing-16: var(--size-4-16);
+	--spacing-18: var(--size-4-18);
 
 	/* 圆角边框 */
 	--radius-sm: var(--radius-s);

@@ -67,7 +67,7 @@
 	</div>
 
 	<!-- 示例URL显示 -->
-	<div class="font-mono text-xs text-faint mb-3 break-all">
+	<div class="font-mono text-xs text-base-600 mb-3 break-all">
 		{EXAMPLE_URL}
 	</div>
 

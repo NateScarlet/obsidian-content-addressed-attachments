@@ -20,7 +20,7 @@
 				"Double braces {{variable}} are automatically URL encoded (encodeURIComponent)",
 			tripleBrace:
 				"Triple braces {{{variable}}} preserve raw content without any encoding",
-			availableVariables: "Available Variables",
+			availableVariables: "Available Template Variables",
 			rawURL: "{{rawURL}} - Original URL used in the note",
 			urlObject: "{{url}} - Parsed JavaScript URL object",
 			cid: "{{cid}} - IPFS root content ID, multiformats CID object, can also be formatted directly as a string",
@@ -48,7 +48,7 @@
 				"双花括号 {{variable}} 会自动进行 URL 编码（encodeURIComponent）",
 			tripleBrace:
 				"三花括号 {{{variable}}} 会保持原始内容，不进行任何编码",
-			availableVariables: "可用变量",
+			availableVariables: "可用模版变量",
 			rawURL: "{{rawURL}} - 笔记中使用的原始URL",
 			urlObject: "{{url}} - 解析后的 JavaScript URL 对象",
 			cid: "{{cid}} - IPFS 根内容 ID, multiformats CID对象，也能直接格式化为字符串",
@@ -69,47 +69,37 @@
 	<!-- Mustache 语法说明 -->
 	<details class="my-4">
 		<summary
-			class="cursor-pointer text-accent hover:text-accent-hover font-medium"
+			class="cursor-pointer text-normal hover:bg-hover font-medium"
 		>
 			{t("templateSyntaxHelp")}
 		</summary>
 		<div class="mt-3 space-y-3 pl-4 border-l-2 border-border">
-			<p class="text-sm text-normal">{t("templateDescription")}</p>
+			<span class="text-sm text-normal whitespace-pre-wrap"
+				>{t("templateDescription")}</span
+			>
+			<a
+				href="https://mustache.github.io/mustache.5.html"
+				target="_blank"
+				class="text-accent hover:text-accent-hover underline text-sm"
+			>
+				{t("viewDocumentation")}
+			</a>
 
 			<ul class="list-disc list-inside space-y-1 text-sm text-normal">
 				<li>{t("variableSubstitution")}</li>
 				<li>{t("rawContent")}</li>
 				<li>{t("functionCall")}</li>
 				<li>{t("comment")}</li>
+				<li>{t("doubleBrace")}</li>
+				<li>{t("tripleBrace")}</li>
 			</ul>
-
-			<a
-				href="https://mustache.github.io/mustache.5.html"
-				target="_blank"
-				class="inline-block text-accent hover:text-accent-hover underline text-sm"
-			>
-				{t("viewDocumentation")}
-			</a>
-
-			<!-- 转义规则说明 -->
-			<details class="mt-3">
-				<summary class="cursor-pointer text-muted text-sm">
-					{t("encodingDescription")}
-				</summary>
-				<ul
-					class="list-disc list-inside space-y-1 mt-2 text-sm text-normal"
-				>
-					<li>{t("doubleBrace")}</li>
-					<li>{t("tripleBrace")}</li>
-				</ul>
-			</details>
 		</div>
 	</details>
 
 	<!-- 可用变量说明 -->
 	<details class="my-4">
 		<summary
-			class="cursor-pointer text-accent hover:text-accent-hover font-medium"
+			class="cursor-pointer text-normal hover:bg-hover font-medium"
 		>
 			{t("availableVariables")}
 		</summary>
