@@ -1,4 +1,4 @@
-import { App, TFile, LinkCache } from "obsidian";
+import { App, TFile, type LinkCache } from "obsidian";
 import ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
 import { MigrationProgressModal } from "./ui/MigrationProgressModal";

@@ -12,7 +12,9 @@
 		"isolatedModules": true,
 		"allowSyntheticDefaultImports": true,
 		"strictNullChecks": true,
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true,
 		"lib": ["DOM", "ESNext"]
 	},
-	"include": ["**/*.ts"]
+	"include": ["**/*.ts", "**/*.svelte"]
 }

@@ -24,5 +24,8 @@ export default defineConfig([
 			obsidianmd,
 			"@typescript-eslint": tsPlugin,
 		},
+		rules: {
+			"no-undef": false,
+		},
 	},
 ]);
