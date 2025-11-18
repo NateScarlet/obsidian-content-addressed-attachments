@@ -51,7 +51,7 @@
 
 	/* 字体系统 */
 	--font-editor: var(--font-text);
-	--font-ui: var(--font-interface);
+	--font-base: var(--font-interface);
 	--font-mono: var(--font-monospace);
 
 	/* 字体大小 */
