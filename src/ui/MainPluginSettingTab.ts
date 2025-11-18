@@ -77,15 +77,15 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 				)
-				.addText((text) =>
-					text
-						.setPlaceholder(t("configurationName"))
+				.addText((text) => {
+					text.setPlaceholder(t("configurationName"))
 						.setValue(config.name)
 						.onChange(async (value) => {
 							config.name = value;
 							await this.plugin.saveSettings();
-						}),
-				)
+						});
+					text.inputEl.className = clsx`min-w-32 max-w-full flex-1 grow`;
+				})
 				.addText((text) => {
 					const input = text
 						.setPlaceholder(t("urlTemplate"))
@@ -96,7 +96,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							preview.config = config;
 						});
 
-					input.inputEl.className = clsx`min-w-[300px] grow`;
+					input.inputEl.className = clsx`flex-1/2 max-w-full grow`;
 
 					input.inputEl.addEventListener("focus", () => {
 						preview.config = config;
@@ -136,6 +136,12 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						}),
 				);
 
+			const control = setting.settingEl.querySelector(
+				".setting-item-control",
+			);
+			if (control instanceof HTMLElement) {
+				control.className = clsx(control.className, "flex-wrap");
+			}
 			const info = setting.settingEl.querySelector(".setting-item-info");
 			if (info instanceof HTMLElement) {
 				info.className = clsx`hidden`;
