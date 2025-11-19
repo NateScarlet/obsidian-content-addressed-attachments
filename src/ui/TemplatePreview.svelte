@@ -1,9 +1,5 @@
-<script lang="ts">
-	import clsx from "clsx";
+<script module lang="ts">
 	import defineLocales from "../utils/defineLocales";
-	import type { GatewayURLConfig, URLResolver } from "src/URLResolver";
-	import castError from "../utils/castError";
-	import { EXAMPLE_URL } from "src/settings";
 
 	//#region 国际化字符串
 	const { t } = defineLocales({
@@ -25,6 +21,13 @@
 		},
 	});
 	//#endregion
+</script>
+
+<script lang="ts">
+	import clsx from "clsx";
+	import type { GatewayURLConfig, URLResolver } from "src/URLResolver";
+	import castError from "../utils/castError";
+	import { EXAMPLE_URL } from "src/settings";
 
 	const config: GatewayURLConfig | undefined = $state();
 	const { urlResolver }: { urlResolver: URLResolver } = $props();

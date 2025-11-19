@@ -1,6 +1,4 @@
-<script lang="ts">
-	import clsx from "clsx";
-	import type { MigrationProgress } from "../MigrationManager";
+<script module lang="ts">
 	import defineLocales from "../utils/defineLocales";
 
 	//#region 国际化字符串
@@ -47,6 +45,11 @@
 		},
 	});
 	//#endregion
+</script>
+
+<script lang="ts">
+	import clsx from "clsx";
+	import type { MigrationProgress } from "../MigrationManager";
 
 	const progress: MigrationProgress = $state({
 		migrated: 0,

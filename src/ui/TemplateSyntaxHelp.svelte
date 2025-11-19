@@ -1,4 +1,4 @@
-<script lang="ts">
+<script module lang="ts">
 	import defineLocales from "../utils/defineLocales";
 
 	//#region 国际化字符串
@@ -62,15 +62,12 @@
 		},
 	});
 	//#endregion
-	export {};
 </script>
 
 <div class="space-y-4 template-syntax-help">
 	<!-- Mustache 语法说明 -->
 	<details class="my-4">
-		<summary
-			class="cursor-pointer text-normal hover:bg-hover font-medium"
-		>
+		<summary class="cursor-pointer text-normal hover:bg-hover font-medium">
 			{t("templateSyntaxHelp")}
 		</summary>
 		<div class="mt-3 space-y-3 pl-4 border-l-2 border-border">
@@ -98,9 +95,7 @@
 
 	<!-- 可用变量说明 -->
 	<details class="my-4">
-		<summary
-			class="cursor-pointer text-normal hover:bg-hover font-medium"
-		>
+		<summary class="cursor-pointer text-normal hover:bg-hover font-medium">
 			{t("availableVariables")}
 		</summary>
 		<ul class="list-disc list-inside space-y-1 mt-3 text-sm text-normal">
