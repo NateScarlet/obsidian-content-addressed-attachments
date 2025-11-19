@@ -23,7 +23,7 @@ await Promise.all([
 			},
 			plugins: [
 				esbuildSvelte({
-					compilerOptions: { css: "injected" },
+					compilerOptions: { css: "injected", runes: true },
 					preprocess: sveltePreprocess(),
 				}),
 			],
