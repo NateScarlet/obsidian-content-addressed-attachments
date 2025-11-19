@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.3...0.1.4) (2025-11-19)
+
+
+### Bug Fixes
+
+* correct monospace font setting ([fead2e9](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/fead2e984b2e0c95b2de6ba78cf0e580c5b8e7bb))
+
 ## [0.1.3](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.2...0.1.3) (2025-11-18)
 
 
