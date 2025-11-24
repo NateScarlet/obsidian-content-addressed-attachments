@@ -27,7 +27,8 @@
 <script lang="ts">
 	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
 
-	const { cas, app, trashFile, deleteFile, goToReference } = getContext();
+	const { cas, app, lastActivityAt, trashFile, deleteFile, goToReference } =
+		getContext();
 
 	let {
 		file,
@@ -106,6 +107,7 @@
 					onclick={async () => {
 						await cas.load(file.cid);
 						file.trashedAt = undefined;
+						lastActivityAt.value = new Date();
 					}}
 				>
 					{t("restore")}

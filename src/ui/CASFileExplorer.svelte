@@ -30,6 +30,7 @@
 	interface CASFileExplorerContext {
 		// 依赖
 		cas: CAS;
+		casMetadata: CASMetadata;
 		app: App;
 
 		// 状态
@@ -38,6 +39,7 @@
 		loading: { readonly value: boolean };
 		files: { readonly value: FileItem[] };
 		hasNextPage: { readonly value: boolean };
+		lastActivityAt: { value: Date };
 
 		// 操作方法
 		loadFiles: (reset?: boolean) => Promise<void>;
@@ -106,6 +108,7 @@
 	let searchQuery = $state("");
 	let isLoading = $state(false);
 	let nextCursor = $state<string>();
+	let lastActivityAt = $state(new Date());
 
 	// 文件列表
 	let files = $state<FileItem[]>([]);
@@ -121,8 +124,6 @@
 			result = result.filter(
 				(file) => file.references === 0 && !file.trashedAt,
 			);
-		} else {
-			result = result.filter((file) => !file.trashedAt);
 		}
 
 		// 根据搜索查询过滤
@@ -148,6 +149,7 @@
 				if (index !== -1) {
 					files[index].trashedAt = new Date();
 				}
+				lastActivityAt = new Date();
 			}
 		} catch (error) {
 			console.error("Failed to move file to trash:", error);
@@ -162,6 +164,7 @@
 			await cas.delete(cid);
 			// 从列表中移除
 			files = files.filter((f) => f.cid.equals(cid));
+			lastActivityAt = new Date();
 		} catch (error) {
 			console.error("Failed to delete file:", error);
 			new Notice(t("operationFailed"));
@@ -334,7 +337,16 @@
 	// 提供 context
 	setContext({
 		cas,
+		casMetadata,
 		app,
+		lastActivityAt: {
+			get value() {
+				return lastActivityAt;
+			},
+			set value(v) {
+				lastActivityAt = v;
+			},
+		},
 		mode: {
 			get value() {
 				return currentView;
@@ -375,6 +387,8 @@
 		deleteFile,
 		goToReference,
 	});
+
+	export { lastActivityAt };
 </script>
 
 <div class="h-full flex flex-col cas-file-explorer">

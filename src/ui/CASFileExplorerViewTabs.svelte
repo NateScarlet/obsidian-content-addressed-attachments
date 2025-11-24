@@ -1,4 +1,5 @@
 <script module lang="ts">
+	import formatFileSize from "src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
 
@@ -19,8 +20,12 @@
 </script>
 
 <script lang="ts">
-	const { mode } = getContext();
-
+	const { casMetadata, mode, lastActivityAt } = getContext();
+	let estimateStorage = $state(casMetadata.estimateStorage());
+	$effect(() => {
+		const _ = lastActivityAt.value;
+		estimateStorage = casMetadata.estimateStorage();
+	});
 	const views = [Mode.ALL, Mode.UNREFERENCED, Mode.TRASHED];
 	function handleKeydown(event: KeyboardEvent, view: Mode) {
 		const currentIndex = views.indexOf(mode.value);
@@ -54,12 +59,20 @@
 				break;
 		}
 	}
-
+	const totalBytes = $derived.by(async () => {
+		const { normalBytes, trashBytes } = await estimateStorage;
+		return normalBytes + trashBytes;
+	});
+	const trashBytes = $derived.by(async () => {
+		const { trashBytes } = await estimateStorage;
+		return trashBytes;
+	});
 	// 定义标签配置，只包含每个标签特有的属性
 	const tabs = [
 		{
 			mode: Mode.ALL,
 			translationKey: "allFiles" as const,
+			size: () => totalBytes,
 			attrs: {
 				"aria-controls": "all-files-panel",
 				id: "all-files-tab",
@@ -75,6 +88,7 @@
 		},
 		{
 			mode: Mode.TRASHED,
+			size: () => trashBytes,
 			translationKey: "trashedFiles" as const,
 			attrs: {
 				"aria-controls": "trashed-files-panel",
@@ -107,6 +121,11 @@
 			onkeydown={(e) => handleKeydown(e, tab.mode)}
 		>
 			{t(tab.translationKey)}
+			{#if tab.size}
+				{#await tab.size() then size}
+					{formatFileSize(size)}
+				{/await}
+			{/if}
 		</div>
 	{/each}
 </div>
