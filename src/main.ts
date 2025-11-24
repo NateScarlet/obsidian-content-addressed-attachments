@@ -1,6 +1,4 @@
 import { MarkdownView, Notice, Plugin } from "obsidian";
-import { LocalCAS } from "./LocalCAS";
-import { CID } from "multiformats/cid";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -8,21 +6,23 @@ import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
 import { URLResolver } from "./URLResolver";
 import { getDefaultSettings, type Settings } from "./settings";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
-
-export interface CAS {
-	formatRelPath(cid: CID): string;
-	formatNormalizePath(cid: CID): string;
-	trash(cid: CID, invalid?: boolean): Promise<void>;
-	load(
-		cid: CID,
-	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined>;
-	save(file: File): Promise<{ cid: CID; didCreate: boolean }>;
-}
+import {
+	CASFileExplorerView,
+	CAS_FILE_EXPLORER_VIEW_TYPE,
+} from "./ui/CASFileExplorerView";
+import type { CASMetadata } from "./types/CASMetadata";
+import { CASMetadataImpl } from "./infrastructure/indexed-db/CASMetadataImpl";
+import { CASImpl } from "./infrastructure/local/CASImpl";
+import type { CAS } from "./types/CAS";
+import ReferenceManager from "./ReferenceManager";
+import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
 	public cas: CAS;
+	public casMetadata: CASMetadata;
 	public urlResolver: URLResolver;
+	public referenceManger = new ReferenceManager(this);
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
@@ -53,7 +53,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			(i) => URL.revokeObjectURL(i),
 		);
 
-		this.cas = new LocalCAS(this.app, () => this.settings.casDir);
+		this.casMetadata = new CASMetadataImpl(
+			new CASMetadataObjectFilterBuilder(),
+		);
+		this.cas = new CASImpl(
+			this.app,
+			this.casMetadata,
+			() => this.settings.casDir,
+		);
 		this.urlResolver = new URLResolver(
 			this.app,
 			this.cas,
@@ -159,7 +166,35 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			callback: () => this.migrationManager.execute("all"),
 		});
 
+		// 注册文件管理器视图
+		this.registerView(
+			CAS_FILE_EXPLORER_VIEW_TYPE,
+			(leaf) => new CASFileExplorerView(leaf, this),
+		);
+
+		// 添加打开文件管理器的命令
+		this.addCommand({
+			id: "open-cas-explorer",
+			name: t("openCASExplorer"),
+			callback: () => {
+				this.activateView();
+			},
+		});
+
 		this.process().catch(console.error);
+	}
+
+	private async activateView(): Promise<void> {
+		const { workspace } = this.app;
+		let leaf =
+			workspace.getLeavesOfType(CAS_FILE_EXPLORER_VIEW_TYPE)[0] ??
+			workspace.getRightLeaf(false);
+
+		await leaf.setViewState({
+			type: CAS_FILE_EXPLORER_VIEW_TYPE,
+			active: true,
+		});
+		workspace.revealLeaf(leaf);
 	}
 
 	private async generateMarkdownLink(file: File): Promise<string> {
@@ -269,6 +304,7 @@ const { t } = defineLocales({
 		migrateAllNotes: "Migrate files in all notes",
 		loading: "Loading",
 		fileNotFound: "File not found",
+		openCASExplorer: "Open CAS File Explorer",
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -276,6 +312,7 @@ const { t } = defineLocales({
 		migrateAllNotes: "迁移所有笔记中的文件",
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
+		openCASExplorer: "打开 CAS 文件管理器",
 	},
 });
 //#endregion
