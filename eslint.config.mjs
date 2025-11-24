@@ -25,7 +25,7 @@ export default defineConfig([
 			"@typescript-eslint": tsPlugin,
 		},
 		rules: {
-			"no-undef": false,
+			"no-undef": "off",
 		},
 	},
 ]);
