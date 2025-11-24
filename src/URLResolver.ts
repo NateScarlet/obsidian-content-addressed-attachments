@@ -1,10 +1,10 @@
 import { App, requestUrl } from "obsidian";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
-import type { CAS } from "./main";
 import isAbortError from "./utils/isAbortError";
 import type { Settings } from "./settings";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
+import type { CAS } from "./types/CAS";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
