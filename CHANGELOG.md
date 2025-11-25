@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.3...0.1.4) (2025-11-25)
+
+
+### Features
+
+* add file explorer ([e6afd6a](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/e6afd6a9b610645f3ae65d8579c481786d5ff41c))
+* change file explorer to grid layout ([95bb502](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/95bb5022b41fe15896736d0fa6318ec76ee971ca))
+* live update file explorer ([77945d3](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/77945d331dd2b3b694f3e9858587faf9f7ba1838))
+* show estimate storage ([3e241b7](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/3e241b77d60d17332da4e39201ef55c06268e95a))
+
+
+### Bug Fixes
+
+* correct monospace font setting ([fead2e9](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/fead2e984b2e0c95b2de6ba78cf0e580c5b8e7bb))
+* should record file size on load ([bc3443f](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/bc3443fef82864499bb292345b513a626dddab1f))
+* wrong live update result after delete file ([8fce9fd](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/8fce9fd8a461de48295d8cce365f31dd5a73a5c8))
+
 ## [0.1.3](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.2...0.1.3) (2025-11-18)
 
 
