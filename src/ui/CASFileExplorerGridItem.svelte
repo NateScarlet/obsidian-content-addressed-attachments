@@ -125,16 +125,15 @@
 			{/if}
 			<div class="flex justify-between">
 				<span>{t("references")}:</span>
-				<a
-					href="#top"
+				<span
 					class={[
 						file.references &&
-							"underline text-interactive-normal cursor-pointer",
+							"underline text-interactive-accent cursor-pointer",
 					]}
 					onclick={() => goToReference(file.cid)}
 				>
 					{file.references}
-				</a>
+				</span>
 			</div>
 		</div>
 
