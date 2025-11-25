@@ -67,9 +67,7 @@ export default class IPFSLinkClickExtension {
 							pos <= line.from + end
 						) {
 							const url = match[0];
-							this.handleIPFSClick(url, event).catch(
-								console.error,
-							);
+							this.handleIPFSClick(url, event).catch(showError);
 							break;
 						}
 					}
