@@ -28,7 +28,7 @@ export class CASFileExplorerView extends ItemView {
 		return "files";
 	}
 
-	async onOpen(): Promise<void> {
+	onOpen(): Promise<void> {
 		this.component = mount(CASFileExplorer, {
 			target: this.contentEl,
 			props: {
@@ -38,11 +38,12 @@ export class CASFileExplorerView extends ItemView {
 				referenceManager: this.plugin.referenceManger,
 			},
 		});
+		return Promise.resolve();
 	}
 
 	async onClose(): Promise<void> {
 		if (this.component) {
-			void unmount(this.component);
+			await unmount(this.component);
 		}
 	}
 }
