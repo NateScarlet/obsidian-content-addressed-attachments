@@ -147,6 +147,7 @@ export class CASImpl implements CAS {
 				...existingMeta,
 				trashedAt: undefined,
 				cid: cid,
+				size: content.byteLength,
 				indexedAt: new Date(),
 			});
 
