@@ -132,12 +132,24 @@ export class URLResolver {
 														],
 														data.filename() || "",
 														{
-															type:
-																resp.headers[
-																	"content-type"
-																] ||
-																data.format() ||
-																undefined,
+															type: (() => {
+																const ct =
+																	resp
+																		.headers[
+																		"content-type"
+																	];
+																if (
+																	ct &&
+																	ct !==
+																		"application/octet-stream"
+																) {
+																	return ct;
+																}
+																return (
+																	data.format() ||
+																	undefined
+																);
+															})(),
 														},
 													),
 												);
