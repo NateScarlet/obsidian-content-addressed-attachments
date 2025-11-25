@@ -12,6 +12,7 @@
 			size: "Size",
 			indexedAt: "Indexed",
 			references: "References",
+			trashedAt: "Trashed",
 		},
 		zh: {
 			filename: "文件名",
@@ -22,6 +23,7 @@
 			moveToTrash: "移至回收站",
 			restore: "还原",
 			permanentlyDelete: "永久删除",
+			trashedAt: "删除时间",
 		},
 	});
 
@@ -90,7 +92,13 @@
 	<!-- 文件信息 -->
 	<div class="space-y-2">
 		<!-- 文件名 -->
-		<div class="font-semibold text-normal truncate" title={file.filename}>
+		<div
+			class={[
+				"font-semibold text-normal truncate",
+				file.trashedAt ? "line-through" : "",
+			]}
+			title={file.filename}
+		>
 			{file.filename}
 		</div>
 
@@ -109,6 +117,12 @@
 				<span>{t("indexedAt")}:</span>
 				<span>{formatDate(file.indexedAt)}</span>
 			</div>
+			{#if file.trashedAt}
+				<div class="flex justify-between">
+					<span>{t("trashedAt")}:</span>
+					<span>{formatDate(file.trashedAt)}</span>
+				</div>
+			{/if}
 			<div class="flex justify-between">
 				<span>{t("references")}:</span>
 				<a
