@@ -4,7 +4,7 @@ import CASFileExplorer from "./CASFileExplorer.svelte";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 
-export const CAS_FILE_EXPLORER_VIEW_TYPE = "cas-file-explorer";
+export const CAS_FILE_EXPLORER_VIEW_TYPE = "cas-file-explorer-8974b7f23c81";
 
 export class CASFileExplorerView extends ItemView {
 	private component?: CASFileExplorer;
