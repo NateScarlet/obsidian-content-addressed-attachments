@@ -27,8 +27,7 @@
 <script lang="ts">
 	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
 
-	const { cas, app, lastActivityAt, trashFile, deleteFile, goToReference } =
-		getContext();
+	const { cas, app, trashFile, deleteFile, goToReference } = getContext();
 
 	let {
 		file,
@@ -97,18 +96,14 @@
 			{#if !file.trashedAt}
 				<button
 					class="px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
-					onclick={() => trashFile(file.cid, file.filename)}
+					onclick={() => trashFile(file.cid)}
 				>
 					{t("moveToTrash")}
 				</button>
 			{:else}
 				<button
 					class="px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
-					onclick={async () => {
-						await cas.load(file.cid);
-						file.trashedAt = undefined;
-						lastActivityAt.value = new Date();
-					}}
+					onclick={() => cas.load(file.cid)}
 				>
 					{t("restore")}
 				</button>

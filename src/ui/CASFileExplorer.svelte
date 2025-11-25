@@ -39,14 +39,13 @@
 		loading: { readonly value: boolean };
 		files: { readonly value: FileItem[] };
 		hasNextPage: { readonly value: boolean };
-		lastActivityAt: { value: Date };
 
 		// 操作方法
 		loadFiles: (reset?: boolean) => Promise<void>;
 		emptyTrash: () => Promise<void>;
 		cleanUnreferenced: () => Promise<void>;
 		rebuildIndex: () => Promise<void>;
-		trashFile: (cid: CID, filename: string) => Promise<void>;
+		trashFile: (cid: CID) => Promise<void>;
 		deleteFile: (cid: CID, filename: string) => Promise<void>;
 		goToReference: (cid: CID) => Promise<void>;
 	}
@@ -110,7 +109,6 @@
 	let searchQuery = $state("");
 	let isLoading = $state(false);
 	let nextCursor = $state<string>();
-	let lastActivityAt = $state(new Date());
 
 	// 文件列表
 	let files = $state<FileItem[]>([]);
@@ -142,17 +140,9 @@
 	});
 
 	// 文件操作方法
-	async function trashFile(cid: CID, filename: string) {
+	async function trashFile(cid: CID) {
 		try {
-			const success = await cas.trash(cid);
-			if (success) {
-				// 更新本地状态
-				const index = files.findIndex((f) => f.cid.equals(cid));
-				if (index !== -1) {
-					files[index].trashedAt = new Date();
-				}
-				lastActivityAt = new Date();
-			}
+			await cas.trash(cid);
 		} catch (error) {
 			console.error("Failed to move file to trash:", error);
 			new Notice(t("operationFailed"));
@@ -166,7 +156,6 @@
 			await cas.delete(cid);
 			// 从列表中移除
 			files = files.filter((f) => f.cid.equals(cid));
-			lastActivityAt = new Date();
 		} catch (error) {
 			console.error("Failed to delete file:", error);
 			new Notice(t("operationFailed"));
@@ -346,14 +335,6 @@
 		cas,
 		casMetadata,
 		app,
-		lastActivityAt: {
-			get value() {
-				return lastActivityAt;
-			},
-			set value(v) {
-				lastActivityAt = v;
-			},
-		},
 		mode: {
 			get value() {
 				return currentView;
@@ -400,7 +381,6 @@
 			void loadFile(e.detail);
 		});
 	});
-	export { lastActivityAt };
 </script>
 
 <div class="h-full flex flex-col cas-file-explorer">

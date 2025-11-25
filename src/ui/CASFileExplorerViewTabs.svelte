@@ -2,6 +2,8 @@
 	import formatFileSize from "src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
+	import { casMetadataSaved } from "src/events";
+	import { debounce } from "obsidian";
 
 	const { t } = defineLocales({
 		en: {
@@ -20,11 +22,15 @@
 </script>
 
 <script lang="ts">
-	const { casMetadata, mode, lastActivityAt } = getContext();
+	const { casMetadata, mode } = getContext();
 	let estimateStorage = $state(casMetadata.estimateStorage());
-	$effect(() => {
-		lastActivityAt.value;
+	const updateEstimateStorage = debounce(() => {
 		estimateStorage = casMetadata.estimateStorage();
+	}, 1e3);
+	$effect(() => {
+		return casMetadataSaved.subscribe(() => {
+			updateEstimateStorage();
+		});
 	});
 	const views = [Mode.ALL, Mode.UNREFERENCED, Mode.TRASHED];
 	function handleKeydown(event: KeyboardEvent, view: Mode) {
