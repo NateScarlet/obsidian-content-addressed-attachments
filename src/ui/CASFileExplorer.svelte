@@ -66,7 +66,7 @@
 </script>
 
 <script lang="ts">
-	import { createContext } from "svelte";
+	import { createContext, untrack } from "svelte";
 	import { CID } from "multiformats/cid";
 	import { MarkdownView, Notice, type App } from "obsidian";
 	import type { CASMetadata, CASMetadataObject } from "src/types/CASMetadata";
@@ -328,7 +328,12 @@
 		}
 	}
 
-	loadFiles(true);
+	$effect(() => {
+		void currentView;
+		untrack(() => {
+			void loadFiles(true);
+		});
+	});
 
 	// 提供 context
 	setContext({
