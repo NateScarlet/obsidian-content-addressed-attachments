@@ -111,11 +111,11 @@
 	let nextCursor = $state<string>();
 
 	// 文件列表
-	let files = $state<FileItem[]>([]);
+	let rawFiles = $state<FileItem[]>([]);
 
 	// 过滤后的文件列表
-	const filteredFiles = $derived.by(() => {
-		let result = files;
+	const files = $derived.by(() => {
+		let result = rawFiles;
 
 		// 根据视图过滤
 		if (currentView === Mode.TRASHED) {
@@ -136,7 +136,9 @@
 			);
 		}
 
-		return result;
+		return result
+			.slice()
+			.sort((a, b) => -(a.indexedAt.getTime() - b.indexedAt.getTime()));
 	});
 
 	// 文件操作方法
@@ -201,8 +203,8 @@
 			}
 		}
 
-		files = replaceArrayItemBy(
-			files,
+		rawFiles = replaceArrayItemBy(
+			rawFiles,
 			(i) => i.cid.equals(obj.cid),
 			{
 				cid: obj.cid,
@@ -213,14 +215,14 @@
 				references: referenceCount,
 				trashedAt: obj.trashedAt,
 			},
-			{ whenNoMatch: "prepend" },
+			{ whenNoMatch: "append" },
 		);
 	}
 
 	// 加载文件
 	async function loadFiles(reset: boolean = true) {
 		if (reset) {
-			files = [];
+			rawFiles = [];
 			nextCursor = undefined;
 			hasNextPage = false;
 		}
@@ -270,7 +272,7 @@
 
 	// 批量操作函数
 	async function emptyTrash() {
-		const trashedFiles = files.filter((f) => f.trashedAt);
+		const trashedFiles = rawFiles.filter((f) => f.trashedAt);
 		if (trashedFiles.length === 0) return;
 
 		if (!confirm(t("confirmEmptyTrash")(trashedFiles.length))) return;
@@ -280,7 +282,7 @@
 				await cas.delete(file.cid);
 			}
 			// 从列表中移除所有已删除的文件
-			files = files.filter((f) => !f.trashedAt);
+			rawFiles = rawFiles.filter((f) => !f.trashedAt);
 		} catch (error) {
 			console.error("Failed to empty trash:", error);
 			new Notice(t("operationFailed"));
@@ -288,7 +290,7 @@
 	}
 
 	async function cleanUnreferenced() {
-		const unreferencedFiles = files.filter(
+		const unreferencedFiles = rawFiles.filter(
 			(f) => f.references === 0 && !f.trashedAt,
 		);
 		if (unreferencedFiles.length === 0) return;
@@ -300,11 +302,11 @@
 			for (const file of unreferencedFiles) {
 				const success = await cas.trash(file.cid);
 				if (success) {
-					const index = files.findIndex(
+					const index = rawFiles.findIndex(
 						(f) => f.cid.toString() === file.cid.toString(),
 					);
 					if (index !== -1) {
-						files[index].trashedAt = new Date();
+						rawFiles[index].trashedAt = new Date();
 					}
 				}
 			}
@@ -357,7 +359,7 @@
 		},
 		files: {
 			get value() {
-				return filteredFiles;
+				return files;
 			},
 		},
 		hasNextPage: {
@@ -381,7 +383,7 @@
 	});
 	$effect(() => {
 		return casMetadataDelete.subscribe((e) => {
-			files = files.filter((i) => !i.cid.equals(e.detail.cid));
+			rawFiles = rawFiles.filter((i) => !i.cid.equals(e.detail.cid));
 		});
 	});
 </script>
