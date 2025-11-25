@@ -1,6 +1,6 @@
 export default function defineCustomEvent<T>(
 	type: string,
-	target: EventTarget = document,
+	target: EventTarget = window,
 ) {
 	function dispatch(detail: T) {
 		const e = new CustomEvent(type, {
