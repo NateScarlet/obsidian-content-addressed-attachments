@@ -2,7 +2,7 @@
 	import formatFileSize from "src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
-	import { casMetadataSaved } from "src/events";
+	import { casMetadataSave } from "src/events";
 	import { debounce } from "obsidian";
 
 	const { t } = defineLocales({
@@ -28,7 +28,7 @@
 		estimateStorage = casMetadata.estimateStorage();
 	}, 100);
 	$effect(() => {
-		return casMetadataSaved.subscribe(() => {
+		return casMetadataSave.subscribe(() => {
 			updateEstimateStorage();
 		});
 	});

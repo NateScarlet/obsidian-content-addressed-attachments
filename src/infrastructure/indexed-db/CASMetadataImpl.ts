@@ -7,7 +7,7 @@ import type {
 import type CASMetadataObjectFilterBuilder from "src/CASMetadataObjectFilterBuilder";
 import executeIDBRequest from "src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
-import { casMetadataSaved } from "src/events";
+import { casMetadataDelete, casMetadataSave } from "src/events";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
 const DB_VERSION = 1;
@@ -188,22 +188,29 @@ export class CASMetadataImpl implements CASMetadata {
 				return { didCreate: !existing };
 			},
 		);
-		casMetadataSaved.dispatch(obj);
+		casMetadataSave.dispatch(obj);
 		return result;
 	}
 
 	async delete(cid: CID): Promise<void> {
-		return await this.tx("readwrite", async ({ store, recordChange }) => {
-			const cidStr = cid.toString();
-			const existing = await executeIDBRequest(
-				store.get(cidStr) as IDBRequest<PO | undefined>,
-			);
-			if (!existing) {
-				return;
-			}
-			recordChange(undefined, existing); // 记录删除
-			await executeIDBRequest(store.delete(cidStr));
-		});
+		const existing = await this.tx(
+			"readwrite",
+			async ({ store, recordChange }) => {
+				const cidStr = cid.toString();
+				const existing = await executeIDBRequest(
+					store.get(cidStr) as IDBRequest<PO | undefined>,
+				);
+				if (!existing) {
+					return;
+				}
+				recordChange(undefined, existing); // 记录删除
+				await executeIDBRequest(store.delete(cidStr));
+				return existing;
+			},
+		);
+		if (existing) {
+			casMetadataDelete.dispatch(this.decode(existing));
+		}
 	}
 
 	async *find(

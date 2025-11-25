@@ -1,8 +1,12 @@
 import type { CASMetadataObject } from "./types/CASMetadata";
 import defineCustomEvent from "./utils/defineCustomEvent";
 
-const prefix = "plugin:content-addressed-attachments:";
+const PREFIX = "plugin:content-addressed-attachments:";
 
-export const casMetadataSaved = defineCustomEvent<CASMetadataObject>(
-	`${prefix}cas-metadata-saved`,
+export const casMetadataSave = defineCustomEvent<CASMetadataObject>(
+	`${PREFIX}cas-metadata-save`,
+);
+
+export const casMetadataDelete = defineCustomEvent<CASMetadataObject>(
+	`${PREFIX}cas-metadata-delete`,
 );

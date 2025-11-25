@@ -77,7 +77,7 @@
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerViewTabs.svelte";
 	import CASFileExplorerTable from "./CASFileExplorerTable.svelte";
-	import { casMetadataSaved } from "src/events";
+	import { casMetadataDelete, casMetadataSave } from "src/events";
 	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
 
 	// 定义文件项接口（移除方法）
@@ -154,8 +154,6 @@
 
 		try {
 			await cas.delete(cid);
-			// 从列表中移除
-			files = files.filter((f) => f.cid.equals(cid));
 		} catch (error) {
 			console.error("Failed to delete file:", error);
 			new Notice(t("operationFailed"));
@@ -377,8 +375,13 @@
 	});
 
 	$effect(() => {
-		return casMetadataSaved.subscribe((e) => {
+		return casMetadataSave.subscribe((e) => {
 			void loadFile(e.detail);
+		});
+	});
+	$effect(() => {
+		return casMetadataDelete.subscribe((e) => {
+			files = files.filter((i) => !i.cid.equals(e.detail.cid));
 		});
 	});
 </script>
