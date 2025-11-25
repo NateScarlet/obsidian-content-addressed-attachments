@@ -33,6 +33,9 @@
 
 	let imgSrc = $state("");
 	$effect(() => {
+		if (file.trashedAt) {
+			return;
+		}
 		const path = cas.formatNormalizePath(file.cid);
 		const src = app.vault.adapter.getResourcePath(path);
 		if (file.format.startsWith("image/")) {
