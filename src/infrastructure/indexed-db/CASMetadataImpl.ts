@@ -176,6 +176,7 @@ export class CASMetadataImpl implements CASMetadata {
 
 				if (existing) {
 					po.indexedAt = existing.indexedAt;
+					po.format = po.format || existing.format || undefined;
 					if (po.trashedAt != null && existing.trashedAt != null) {
 						po.trashedAt = Math.max(
 							po.trashedAt,
