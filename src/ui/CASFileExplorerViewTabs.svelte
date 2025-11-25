@@ -26,7 +26,7 @@
 	let estimateStorage = $state(casMetadata.estimateStorage());
 	const updateEstimateStorage = debounce(() => {
 		estimateStorage = casMetadata.estimateStorage();
-	}, 1e3);
+	}, 100);
 	$effect(() => {
 		return casMetadataSaved.subscribe(() => {
 			updateEstimateStorage();

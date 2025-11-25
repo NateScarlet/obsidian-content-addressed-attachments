@@ -7,15 +7,11 @@
 			moveToTrash: "Move to Trash",
 			restore: "Restore",
 			permanentlyDelete: "Permanently Delete",
-			file: "File",
-			files: "Files",
 		},
 		zh: {
 			moveToTrash: "移至回收站",
 			restore: "还原",
 			permanentlyDelete: "永久删除",
-			file: "文件",
-			files: "文件",
 		},
 	});
 
@@ -89,7 +85,6 @@
 		onclick={() => goToReference(file.cid)}
 	>
 		{file.references}
-		{file.references === 1 ? t("file") : t("files")}
 	</td>
 	<td class="p-3">
 		<div class="flex gap-2">
