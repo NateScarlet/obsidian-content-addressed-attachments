@@ -3,6 +3,7 @@ import { FileSystemAdapter } from "obsidian";
 import { dirname } from "path-browserify";
 import type ContentAddressedAttachmentPlugin from "./main";
 import openExternalURL from "./utils/openExternalLink";
+import showError from "./utils/showError";
 
 // CodeMirror 扩展：处理编辑器中的 IPFS 链接点击
 export default class IPFSLinkClickExtension {
@@ -37,7 +38,7 @@ export default class IPFSLinkClickExtension {
 					// 检查点击是否在链接范围内
 					if (pos >= line.from + start && pos <= line.from + end) {
 						const url = match[0];
-						this.handleIPFSClick(url, event).catch(console.error);
+						this.handleIPFSClick(url, event).catch(showError);
 						break;
 					}
 				}

@@ -1,3 +1,4 @@
+import castError from "./castError";
 import createEventListeners from "./createEventListeners";
 
 export default async function executeIDBRequest<T>(
@@ -23,7 +24,7 @@ export default async function executeIDBRequest<T>(
 				ctx.on(
 					"error",
 					() => {
-						reject(request.error);
+						reject(castError(request.error));
 					},
 					{ once: true },
 				);

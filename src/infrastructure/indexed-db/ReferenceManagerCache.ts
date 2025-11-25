@@ -126,7 +126,9 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 					cursor;
 					cursor = await (async function next() {
 						cursor.continue();
-						return executeIDBRequest(cursor.request);
+						return executeIDBRequest(
+							cursor.request as IDBRequest<IDBCursorWithValue | null>,
+						);
 					})()
 				) {
 					const po = cursor.value as ReferencePO;
@@ -145,8 +147,8 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 	async cutoffAt(): Promise<Date> {
 		return await this.tx("readonly", [STORE_META], async (stores) => {
 			const store = stores.get(STORE_META)!;
-			const meta: MetaPO | undefined = await executeIDBRequest(
-				store.get("cutoffAt"),
+			const meta = await executeIDBRequest(
+				store.get("cutoffAt") as IDBRequest<MetaPO | undefined>,
 			);
 
 			if (meta) {

@@ -37,16 +37,14 @@ export default class ReferenceManager {
 	}
 
 	async *findFilePath(cid: CID): AsyncIterableIterator<string> {
-		let count = 0;
 		const prefix = `ipfs://${cid.toString()}`;
 		for await (const normalizedPath of this.cache.find(cid)) {
-			if (await this.verifyReference(normalizedPath, prefix)) {
-				count += 1;
-			} else {
+			if (!(await this.verifyReference(normalizedPath, prefix))) {
 				// 缓存过时了，后台进行重建
-				this.loadFile(normalizedPath).then((err) => {
+				this.loadFile(normalizedPath).catch((err) => {
 					console.error(`load latest file to cache failed`, err);
 				});
+				continue;
 			}
 			yield normalizedPath;
 		}
@@ -110,7 +108,7 @@ export default class ReferenceManager {
 		for await (const normalizedPath of this.cache.find(cid)) {
 			const file = vault.getFileByPath(normalizedPath);
 			if (!file) {
-				this.loadFile(normalizedPath).then((err) => {
+				this.loadFile(normalizedPath).catch((err) => {
 					console.error(`load latest file to cache failed`, err);
 				});
 				continue;
@@ -141,7 +139,7 @@ export default class ReferenceManager {
 		for await (const normalizedPath of this.cache.find(cid)) {
 			const file = vault.getFileByPath(normalizedPath);
 			if (!file) {
-				this.loadFile(normalizedPath).then((err) => {
+				this.loadFile(normalizedPath).catch((err) => {
 					console.error(`load latest file to cache failed`, err);
 				});
 				continue;

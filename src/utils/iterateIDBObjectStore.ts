@@ -25,7 +25,9 @@ export default async function* iterateIDBObjectStore<TData, TResult>({
 			while (cursor && (batchSize <= 0 || batch.length < batchSize)) {
 				batch.push(cursor.value as TData);
 				cursor.continue();
-				cursor = await executeIDBRequest(cursor.request);
+				cursor = await executeIDBRequest(
+					cursor.request as IDBRequest<IDBCursorWithValue | null>,
+				);
 			}
 		} finally {
 			close();

@@ -5,6 +5,7 @@ import isAbortError from "./utils/isAbortError";
 import type { Settings } from "./settings";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
+import showError from "./utils/showError";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -162,13 +163,7 @@ export class URLResolver {
 										resolve(undefined);
 									}
 								}
-							})().catch((err) => {
-								console.error(
-									"Failed to fetch",
-									config,
-									data.rawURL,
-								);
-							});
+							})().catch(showError);
 						},
 					);
 				}),

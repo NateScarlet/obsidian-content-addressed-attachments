@@ -16,6 +16,7 @@ import { CASImpl } from "./infrastructure/local/CASImpl";
 import type { CAS } from "./types/CAS";
 import ReferenceManager from "./ReferenceManager";
 import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
+import showError from "./utils/showError";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -177,11 +178,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "open-cas-explorer",
 			name: t("openCASExplorer"),
 			callback: () => {
-				this.activateView();
+				this.activateView().catch(showError);
 			},
 		});
 
-		this.process().catch(console.error);
+		this.process().catch(showError);
 	}
 
 	private async activateView(): Promise<void> {
@@ -194,7 +195,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			type: CAS_FILE_EXPLORER_VIEW_TYPE,
 			active: true,
 		});
-		workspace.revealLeaf(leaf);
+		await workspace.revealLeaf(leaf);
 	}
 
 	private async generateMarkdownLink(file: File): Promise<string> {
@@ -218,11 +219,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			new MutationObserver((mutations) => {
 				mutations.forEach((mutation) => {
 					if (mutation.target instanceof HTMLElement) {
-						this.process(mutation.target).catch(console.error);
+						this.process(mutation.target).catch(showError);
 					}
 					mutation.addedNodes.forEach((node) => {
 						if (node instanceof HTMLElement) {
-							this.process(node).catch(console.error);
+							this.process(node).catch(showError);
 						}
 					});
 				});

@@ -1,5 +1,3 @@
-import tsParser from "@typescript-eslint/parser";
-import tsPlugin from "@typescript-eslint/eslint-plugin";
 import svelte from "eslint-plugin-svelte";
 import ts from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -11,6 +9,13 @@ export default defineConfig([
 	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json"]),
 	...obsidianmd.configs.recommended,
 	...svelte.configs.recommended,
+	{
+		languageOptions: {
+			globals: {
+				...globals.browser,
+			},
+		},
+	},
 	{
 		files: ["**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
 		// See more details at: https://typescript-eslint.io/packages/parser/
@@ -29,10 +34,6 @@ export default defineConfig([
 	{
 		files: ["**/*.ts"],
 		languageOptions: {
-			globals: {
-				...globals.browser,
-				...globals.node,
-			},
 			parser: ts.parser,
 			parserOptions: {
 				sourceType: "module",
@@ -44,7 +45,24 @@ export default defineConfig([
 			"@typescript-eslint": ts.plugin,
 		},
 		rules: {
+			"@typescript-eslint/no-unused-vars": [
+				"error",
+				{
+					args: "all",
+					argsIgnorePattern: "^_",
+					caughtErrors: "all",
+					caughtErrorsIgnorePattern: "^_",
+					destructuredArrayIgnorePattern: "^_",
+					varsIgnorePattern: "^_",
+					ignoreRestSiblings: true,
+				},
+			],
+		},
+	},
+	{
+		rules: {
 			"no-undef": "off",
+			"no-unused-vars": "off",
 		},
 	},
 ]);

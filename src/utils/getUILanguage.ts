@@ -1,7 +1,7 @@
 // obsidian 修改语言会要求重启，所以可以缓存
 const cachedResult = (() => {
 	try {
-		// eslint-disable-next-line @typescript-eslint/no-require-imports
+		// eslint-disable-next-line @typescript-eslint/no-require-imports -- 兼容低版本
 		const obsidian = require("obsidian") as typeof import("obsidian");
 		return obsidian.getLanguage();
 	} catch {

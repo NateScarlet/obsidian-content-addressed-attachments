@@ -4,7 +4,11 @@ import MigrationProgressComponent from "./MigrationProgress.svelte";
 import { mount, unmount } from "svelte";
 
 export class MigrationProgressModal extends Modal {
-	private component?: MigrationProgressComponent;
+	private component?: MigrationProgressComponent & {
+		progress: MigrationProgress;
+		isCancelled: boolean;
+		error: string;
+	};
 
 	constructor(
 		app: App,
@@ -25,7 +29,7 @@ export class MigrationProgressModal extends Modal {
 
 	onClose(): void {
 		if (this.component) {
-			unmount(this.component);
+			void unmount(this.component);
 		}
 	}
 

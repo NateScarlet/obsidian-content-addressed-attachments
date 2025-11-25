@@ -55,7 +55,9 @@ export class CASMetadataImpl implements CASMetadata {
 		const transaction = db.transaction([STATS_STORE_NAME], "readonly");
 		const store = transaction.objectStore(STATS_STORE_NAME);
 
-		const stats = await executeIDBRequest(store.get(STATS_KEY));
+		const stats = await executeIDBRequest(
+			store.get(STATS_KEY) as IDBRequest<Stats | undefined>,
+		);
 		return stats || { normalBytes: 0, trashBytes: 0 };
 	}
 
@@ -104,7 +106,7 @@ export class CASMetadataImpl implements CASMetadata {
 		changes: { newValue?: PO; oldValue?: PO }[],
 	): Promise<void> {
 		const currentStats = (await executeIDBRequest(
-			statsStore.get(STATS_KEY),
+			statsStore.get(STATS_KEY) as IDBRequest<Stats | undefined>,
 		)) || { id: STATS_KEY, normalBytes: 0, trashBytes: 0 };
 
 		let normalBytesDelta = 0;
@@ -152,7 +154,9 @@ export class CASMetadataImpl implements CASMetadata {
 
 	async get(cid: CID): Promise<CASMetadataObject | undefined> {
 		return this.tx("readonly", async ({ store }) => {
-			const po: PO = await executeIDBRequest(store.get(cid.toString()));
+			const po = await executeIDBRequest(
+				store.get(cid.toString()) as IDBRequest<PO | undefined>,
+			);
 			if (po) {
 				return this.decode(po);
 			}
@@ -162,8 +166,8 @@ export class CASMetadataImpl implements CASMetadata {
 	async save(obj: CASMetadataObject): Promise<{ didCreate: boolean }> {
 		return this.tx("readwrite", async ({ store, recordChange }) => {
 			const cidStr = obj.cid.toString();
-			const existing: PO | undefined = await executeIDBRequest(
-				store.get(cidStr),
+			const existing = await executeIDBRequest(
+				store.get(cidStr) as IDBRequest<PO | undefined>,
 			);
 			const po: PO = this.encode(obj);
 
@@ -182,8 +186,8 @@ export class CASMetadataImpl implements CASMetadata {
 	async delete(cid: CID): Promise<void> {
 		return await this.tx("readwrite", async ({ store, recordChange }) => {
 			const cidStr = cid.toString();
-			const existing: PO | undefined = await executeIDBRequest(
-				store.get(cidStr),
+			const existing = await executeIDBRequest(
+				store.get(cidStr) as IDBRequest<PO | undefined>,
 			);
 			if (!existing) {
 				return;
@@ -279,4 +283,9 @@ interface PO {
 	format?: string;
 	size?: number;
 	trashedAt?: number;
+}
+
+interface Stats {
+	normalBytes: number;
+	trashBytes: number;
 }

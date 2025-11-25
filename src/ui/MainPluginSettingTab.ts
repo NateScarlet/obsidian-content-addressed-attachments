@@ -6,6 +6,7 @@ import clsx from "clsx";
 import TemplateSyntaxHelp from "./TemplateSyntaxHelp.svelte";
 import TemplatePreview from "./TemplatePreview.svelte";
 import { mount, unmount } from "svelte";
+import showError from "src/utils/showError";
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
@@ -64,7 +65,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					urlResolver: this.plugin.urlResolver,
 				},
 			}),
-			unmount,
+			(i) => void unmount(i),
 		);
 
 		this.plugin.settings.gatewayURLs.forEach((config, index) => {
@@ -113,9 +114,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								config,
 								(newHeaders) => {
 									config.headers = newHeaders;
-									this.plugin
-										.saveSettings()
-										.catch(console.error);
+									this.plugin.saveSettings().catch(showError);
 									this.display();
 								},
 							).open();
@@ -154,7 +153,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			mount(TemplateSyntaxHelp, {
 				target: helpContainer,
 			}),
-			unmount,
+			(i) => void unmount(i),
 		);
 	}
 

@@ -23,7 +23,7 @@
 	const { casMetadata, mode, lastActivityAt } = getContext();
 	let estimateStorage = $state(casMetadata.estimateStorage());
 	$effect(() => {
-		const _ = lastActivityAt.value;
+		lastActivityAt.value;
 		estimateStorage = casMetadata.estimateStorage();
 	});
 	const views = [Mode.ALL, Mode.UNREFERENCED, Mode.TRASHED];
@@ -37,18 +37,20 @@
 				mode.value = view;
 				break;
 			case "ArrowLeft":
-			case "ArrowUp":
+			case "ArrowUp": {
 				event.preventDefault();
 				const prevIndex =
 					(currentIndex - 1 + views.length) % views.length;
 				mode.value = views[prevIndex];
 				break;
+			}
 			case "ArrowRight":
-			case "ArrowDown":
+			case "ArrowDown": {
 				event.preventDefault();
 				const nextIndex = (currentIndex + 1) % views.length;
 				mode.value = views[nextIndex];
 				break;
+			}
 			case "Home":
 				event.preventDefault();
 				mode.value = views[0];
@@ -103,7 +105,7 @@
 	aria-label={t("fileViews")}
 	class="flex border-b border-border"
 >
-	{#each tabs as tab, index}
+	{#each tabs as tab, index (tab.mode)}
 		<div
 			{...tab.attrs}
 			role="tab"

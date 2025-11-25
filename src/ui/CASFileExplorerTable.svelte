@@ -76,7 +76,7 @@
 					</td>
 				</tr>
 			{:else}
-				{#each files.value as file}
+				{#each files.value as file (file.cid.toString())}
 					<CASFileExplorerRow {file} />
 				{/each}
 			{/if}

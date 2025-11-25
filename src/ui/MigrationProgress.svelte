@@ -193,7 +193,7 @@
 
 	<!-- 动态统计信息 -->
 	<div class="my-3 migration-stats">
-		{#each statsItems as item}
+		{#each statsItems as item, index (index) }
 			<p class="my-1 {item.class}">{item.text}</p>
 		{/each}
 	</div>
@@ -207,7 +207,7 @@
 				{t("viewDetails")}
 			</summary>
 			<ul class="my-1 ml-5 list-disc">
-				{#each progress.details as detail}
+				{#each progress.details as detail, index (index)}
 					<li class="break-all text-sm mb-0.5 text-normal">
 						{detail}
 					</li>

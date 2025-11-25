@@ -55,7 +55,6 @@
 			class: clsx`text-muted italic`,
 		};
 	});
-	$inspect(config);
 	export { config };
 </script>
 
