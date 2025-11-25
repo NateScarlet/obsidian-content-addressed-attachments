@@ -70,7 +70,7 @@
 	import { createContext } from "svelte";
 	import { CID } from "multiformats/cid";
 	import { MarkdownView, Notice, type App } from "obsidian";
-	import type { CASMetadata } from "src/types/CASMetadata";
+	import type { CASMetadata, CASMetadataObject } from "src/types/CASMetadata";
 	import type { CAS } from "src/types/CAS";
 	import ReferenceManager from "src/ReferenceManager";
 	import rebuildCASMetadata from "src/commands/rebuildCASMetadata";
@@ -78,6 +78,8 @@
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerViewTabs.svelte";
 	import CASFileExplorerTable from "./CASFileExplorerTable.svelte";
+	import { casMetadataSaved } from "src/events";
+	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
 
 	// 定义文件项接口（移除方法）
 	export interface FileItem {
@@ -192,6 +194,42 @@
 	}
 	let hasNextPage = $state(false);
 
+	async function loadFile(obj: CASMetadataObject) {
+		// 获取引用计数
+		const referenceCount = await referenceManager.count(obj.cid, 100);
+
+		let filename = obj.filename ?? "";
+		let format = obj.format ?? "";
+
+		// 基于实际引用获取缺少的文件名和格式
+		if (!filename || !format) {
+			for await (const { url, title } of referenceManager.findReference(
+				obj.cid,
+			)) {
+				filename = filename || url.filename || title || "";
+				format = format || url.format || "";
+				if (filename && format) {
+					break;
+				}
+			}
+		}
+
+		files = replaceArrayItemBy(
+			files,
+			(i) => i.cid.equals(obj.cid),
+			{
+				cid: obj.cid,
+				filename,
+				format,
+				size: obj.size || 0,
+				indexedAt: obj.indexedAt,
+				references: referenceCount,
+				trashedAt: obj.trashedAt,
+			},
+			{ whenNoMatch: "prepend" },
+		);
+	}
+
 	// 加载文件
 	async function loadFiles(reset: boolean = true) {
 		if (reset) {
@@ -223,38 +261,7 @@
 				filterBy,
 				reset ? undefined : nextCursor,
 			)) {
-				// 获取引用计数
-				const referenceCount = await referenceManager.count(
-					node.cid,
-					100,
-				);
-
-				let filename = node.filename ?? "";
-				let format = node.format ?? "";
-
-				// 基于实际引用获取缺少的文件名和格式
-				if (!filename || !format) {
-					for await (const {
-						url,
-						title,
-					} of referenceManager.findReference(node.cid)) {
-						filename = filename || url.filename || title || "";
-						format = format || url.format || "";
-						if (filename && format) {
-							break;
-						}
-					}
-				}
-
-				files.push({
-					cid: node.cid,
-					filename,
-					format,
-					size: node.size || 0,
-					indexedAt: node.indexedAt,
-					references: referenceCount,
-					trashedAt: node.trashedAt,
-				});
+				await loadFile(node);
 
 				matchCount++;
 				nextCursor = cursor;
@@ -388,6 +395,11 @@
 		goToReference,
 	});
 
+	$effect(() => {
+		return casMetadataSaved.subscribe((e) => {
+			void loadFile(e.detail);
+		});
+	});
 	export { lastActivityAt };
 </script>
 

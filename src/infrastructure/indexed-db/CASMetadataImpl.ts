@@ -7,6 +7,7 @@ import type {
 import type CASMetadataObjectFilterBuilder from "src/CASMetadataObjectFilterBuilder";
 import executeIDBRequest from "src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
+import { casMetadataSaved } from "src/events";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
 const DB_VERSION = 1;
@@ -164,23 +165,31 @@ export class CASMetadataImpl implements CASMetadata {
 	}
 
 	async save(obj: CASMetadataObject): Promise<{ didCreate: boolean }> {
-		return this.tx("readwrite", async ({ store, recordChange }) => {
-			const cidStr = obj.cid.toString();
-			const existing = await executeIDBRequest(
-				store.get(cidStr) as IDBRequest<PO | undefined>,
-			);
-			const po: PO = this.encode(obj);
+		const result = await this.tx(
+			"readwrite",
+			async ({ store, recordChange }) => {
+				const cidStr = obj.cid.toString();
+				const existing = await executeIDBRequest(
+					store.get(cidStr) as IDBRequest<PO | undefined>,
+				);
+				const po: PO = this.encode(obj);
 
-			if (existing) {
-				po.indexedAt = existing.indexedAt;
-				if (po.trashedAt != null && existing.trashedAt != null) {
-					po.trashedAt = Math.max(po.trashedAt, existing.trashedAt);
+				if (existing) {
+					po.indexedAt = existing.indexedAt;
+					if (po.trashedAt != null && existing.trashedAt != null) {
+						po.trashedAt = Math.max(
+							po.trashedAt,
+							existing.trashedAt,
+						);
+					}
 				}
-			}
-			recordChange(po, existing);
-			await executeIDBRequest(store.put(po));
-			return { didCreate: !existing };
-		});
+				recordChange(po, existing);
+				await executeIDBRequest(store.put(po));
+				return { didCreate: !existing };
+			},
+		);
+		casMetadataSaved.dispatch(obj);
+		return result;
 	}
 
 	async delete(cid: CID): Promise<void> {
