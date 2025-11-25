@@ -72,7 +72,7 @@
 		{/if}
 	</td>
 	<td class="p-3 text-muted"
-		>{file.format || imgSrc ? "image/*" : "unknown"}</td
+		>{file.format || (imgSrc ? "image/*" : "unknown")}</td
 	>
 	<td class="p-3 text-muted" title="{file.size} Byte"
 		>{formatFileSize(file.size)}</td
