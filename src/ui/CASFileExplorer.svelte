@@ -76,7 +76,7 @@
 	import castError from "src/utils/castError";
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerViewTabs.svelte";
-	import CASFileExplorerTable from "./CASFileExplorerTable.svelte";
+	import CASFileExplorerGrid from "./CASFileExplorerGrid.svelte";
 	import { casMetadataDelete, casMetadataSave } from "src/events";
 	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
 
@@ -396,5 +396,5 @@
 <div class="h-full flex flex-col cas-file-explorer">
 	<CASFileExplorerHeader />
 	<CASFileExplorerViewTabs />
-	<CASFileExplorerTable />
+	<CASFileExplorerGrid />
 </div>
