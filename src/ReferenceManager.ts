@@ -27,7 +27,8 @@ export default class ReferenceManager {
 			return 0;
 		}
 		let count = 0;
-		for await (const _ of this.findFilePath(cid)) {
+		for await (const path of this.findFilePath(cid)) {
+			void path;
 			count += 1;
 			if (count == limit) {
 				return count;
