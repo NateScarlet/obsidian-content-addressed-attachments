@@ -33,7 +33,7 @@
 		if (file.filename) {
 			url.searchParams.set("filename", file.filename);
 		}
-		if (format) {
+		if (format && !format.includes('*')) {
 			url.searchParams.set("format", format);
 		}
 		if (format.startsWith("image/")) {
