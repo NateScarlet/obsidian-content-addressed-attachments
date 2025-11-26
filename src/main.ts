@@ -1,4 +1,4 @@
-import { MarkdownView, Plugin } from "obsidian";
+import { MarkdownView, Plugin, TFile } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -77,6 +77,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		this.addSettingTab(new MainPluginSettingTab(this));
 
+		//#region 事件注册
 		this.registerEvent(
 			this.app.workspace.on("editor-paste", async (e, editor) => {
 				const files = e.clipboardData?.files;
@@ -118,6 +119,15 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				}
 			}),
 		);
+
+		this.registerEvent(
+			this.app.vault.on("modify", async (file) => {
+				if (file instanceof TFile && file.extension === "md") {
+					void this.referenceManger.loadFile(file.path);
+				}
+			}),
+		);
+		//#endregion
 
 		this.addCommand({
 			id: "insert-attachment",

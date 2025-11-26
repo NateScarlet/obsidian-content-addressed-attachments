@@ -1,5 +1,7 @@
 import { CID } from "multiformats";
 
+export type IPFSLink = NonNullable<ReturnType<typeof parseIPFSLink>>;
+
 export default function parseIPFSLink(rawURL: string) {
 	if (rawURL.startsWith("ipfs://")) {
 		const url = new URL(rawURL);

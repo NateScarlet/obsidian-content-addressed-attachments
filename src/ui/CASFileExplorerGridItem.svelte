@@ -56,6 +56,7 @@
 		mdiRestore,
 		mdiTrashCanOutline,
 	} from "@mdi/js";
+	import { referenceChange } from "src/events";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -130,8 +131,17 @@
 	function fetchMore() {
 		limit += 20;
 	}
+	let version = $state(0);
+	$effect(() => {
+		return referenceChange.subscribe(async (e) => {
+			if (e.detail.cid.equals(file.cid)) {
+				version += 1;
+			}
+		});
+	});
 
 	const references = $derived(
+		(void version,
 		(async (cid: CID, limit: number, signal: AbortSignal) => {
 			return Array.fromAsync(
 				(async function* () {
@@ -182,7 +192,7 @@
 					}
 				})(),
 			);
-		})(file.cid, limit, getAbortSignal()),
+		})(file.cid, limit, getAbortSignal())),
 	);
 
 	const drag: Action<HTMLElement> = (node) => {

@@ -1,4 +1,5 @@
 import { CID } from "multiformats";
+import { referenceChange } from "src/events";
 import type { ReferenceManagerCache } from "src/ReferenceManager";
 import executeIDBRequest from "src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
@@ -60,15 +61,32 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 	}
 
 	async add(cid: CID, normalizedPath: string): Promise<void> {
-		await this.tx("readwrite", [STORE_REFERENCES], async (stores) => {
-			const store = stores.get(STORE_REFERENCES)!;
-			const po: ReferencePO = {
-				cid: cid.toString(),
-				normalizedPath,
-				lastUpdatedAt: Date.now(),
-			};
-			await executeIDBRequest(store.put(po));
-		});
+		const { didCreate } = await this.tx(
+			"readwrite",
+			[STORE_REFERENCES],
+			async (stores) => {
+				const store = stores.get(STORE_REFERENCES)!;
+				const po: ReferencePO = {
+					cid: cid.toString(),
+					normalizedPath,
+					lastUpdatedAt: Date.now(),
+				};
+				const existing = await executeIDBRequest(
+					store.count([po.cid, po.normalizedPath]),
+				);
+				await executeIDBRequest(store.put(po));
+				return {
+					didCreate: !existing,
+				};
+			},
+		);
+		if (didCreate) {
+			referenceChange.dispatch({
+				action: "add",
+				cid,
+				path: normalizedPath,
+			});
+		}
 	}
 
 	async *find(cid: CID): AsyncIterableIterator<string> {
@@ -118,10 +136,14 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 				const notAfterTime = notAfter.getTime();
 
 				let deletedCount = 0;
-
 				for (
 					let cursor = await executeIDBRequest(
-						index.openCursor(IDBKeyRange.only(normalizedPath)),
+						index.openCursor(
+							IDBKeyRange.bound(
+								[normalizedPath],
+								[normalizedPath + "\x00"],
+							),
+						),
 					);
 					cursor;
 					cursor = await (async function next() {
@@ -137,6 +159,11 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 						break;
 					}
 					await executeIDBRequest(cursor.delete());
+					referenceChange.dispatch({
+						action: "remove",
+						cid: CID.parse(po.cid),
+						path: po.normalizedPath,
+					});
 					deletedCount++;
 				}
 				return deletedCount;
