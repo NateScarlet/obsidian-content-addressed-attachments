@@ -176,21 +176,21 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "open-cas-explorer",
 			name: t("openCASExplorer"),
 			callback: () => {
-				this.activateView().catch(showError);
+				this.revealFileExplorer().catch(showError);
 			},
 		});
 		this.addRibbonIcon("hard-drive", t("openCASExplorer"), () => {
-			this.activateView().catch(showError);
+			this.revealFileExplorer().catch(showError);
 		});
 
 		this.process().catch(showError);
 	}
 
-	private async activateView(): Promise<void> {
+	private async revealFileExplorer(): Promise<void> {
 		const { workspace } = this.app;
 		let leaf =
 			workspace.getLeavesOfType(CAS_FILE_EXPLORER_VIEW_TYPE)[0] ??
-			workspace.getRightLeaf(false);
+			workspace.getLeftLeaf(false);
 
 		await leaf.setViewState({
 			type: CAS_FILE_EXPLORER_VIEW_TYPE,
