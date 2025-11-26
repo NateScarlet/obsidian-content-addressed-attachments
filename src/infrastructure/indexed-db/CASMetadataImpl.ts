@@ -188,16 +188,17 @@ export class CASMetadataImpl implements CASMetadata {
 						return {
 							didCreate: false,
 							didChange: false,
+							after: existing,
 						};
 					}
 				}
 				recordChange(po, existing);
 				await executeIDBRequest(store.put(po));
-				return { didCreate: !existing, didChange: true };
+				return { didCreate: !existing, didChange: true, after: po };
 			},
 		);
 		if (result.didChange) {
-			casMetadataSave.dispatch(obj);
+			casMetadataSave.dispatch(this.decode(result.after));
 		}
 		return result;
 	}
