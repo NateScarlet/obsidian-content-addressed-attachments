@@ -127,7 +127,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		normalizedPath: string,
 		notAfter: Date,
 	): Promise<number> {
-		return await this.tx(
+		const changes = await this.tx(
 			"readwrite",
 			[STORE_REFERENCES],
 			async (stores) => {
@@ -135,7 +135,11 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 				const index = store.index("path");
 				const notAfterTime = notAfter.getTime();
 
-				let deletedCount = 0;
+				const changes: {
+					action: "remove";
+					cid: CID;
+					path: string;
+				}[] = [];
 				for (
 					let cursor = await executeIDBRequest(
 						index.openCursor(
@@ -159,16 +163,17 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 						break;
 					}
 					await executeIDBRequest(cursor.delete());
-					referenceChange.dispatch({
+					changes.push({
 						action: "remove",
 						cid: CID.parse(po.cid),
 						path: po.normalizedPath,
 					});
-					deletedCount++;
 				}
-				return deletedCount;
+				return changes;
 			},
 		);
+		changes.forEach(referenceChange.dispatch);
+		return changes.length;
 	}
 
 	async cutoffAt(): Promise<Date> {
