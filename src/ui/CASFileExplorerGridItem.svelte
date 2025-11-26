@@ -52,7 +52,12 @@
 	import type { CID } from "multiformats";
 	import showError from "src/utils/showError";
 	import { getAbortSignal } from "svelte";
-	import { mdiLinkVariant } from "@mdi/js";
+	import {
+		mdiDeleteAlertOutline,
+		mdiLinkVariant,
+		mdiRestore,
+		mdiTrashCanOutline,
+	} from "@mdi/js";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -207,7 +212,7 @@
 <!-- 卡片布局 -->
 <div
 	use:drag
-	class="border rounded-lg p-1 @sm:p-2 @md:p-4 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
+	class="flex flex-col border rounded-lg p-1 @sm:p-2 @md:p-4 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
 >
 	<!-- 图片预览 -->
 	{#if detail?.imgSrc}
@@ -244,7 +249,7 @@
 	</div>
 
 	<!-- 引用文件列表 -->
-	<ul class="space-y-1 max-h-64 overflow-y-auto">
+	<ul class="space-y-1 max-h-64 overflow-y-auto list-none m-1 p-0">
 		{#await references}
 			{#each Array.from({ length: 5 }) as i (i)}
 				<li class="bg-secondary-alt/75 animate-pulse">
@@ -253,7 +258,7 @@
 			{/each}
 		{:then items}
 			{#each items as i (i.file.path)}
-				<li>
+				<li class="break-all">
 					<a {...i.anchorAttrs}>
 						{i.file.path}
 					</a>
@@ -271,6 +276,8 @@
 		{/await}
 	</ul>
 
+	<div class="flex-auto"></div>
+
 	<!-- 操作按钮 -->
 	<div class="flex gap-2">
 		{#if !isDeleted}
@@ -278,6 +285,12 @@
 				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
 				onclick={() => trashFile(file.cid).catch(showError)}
 			>
+				<svg
+					class="inline fill-current h-[1.25rem]"
+					viewBox="0 0 24 24"
+				>
+					<path d={mdiTrashCanOutline} />
+				</svg>
 				{t("moveToTrash")}
 			</button>
 			<!-- 复制按钮 -->
@@ -297,6 +310,12 @@
 				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
 				onclick={() => restoreFile().catch(showError)}
 			>
+				<svg
+					class="inline fill-current h-[1.25rem]"
+					viewBox="0 0 24 24"
+				>
+					<path d={mdiRestore} />
+				</svg>
 				{t("restore")}
 			</button>
 			<button
@@ -304,6 +323,12 @@
 				onclick={() =>
 					deleteFile(file.cid, file.filename).catch(showError)}
 			>
+				<svg
+					class="inline fill-current h-[1.25rem]"
+					viewBox="0 0 24 24"
+				>
+					<path d={mdiDeleteAlertOutline} />
+				</svg>
 				{t("permanentlyDelete")}
 			</button>
 		{/if}
