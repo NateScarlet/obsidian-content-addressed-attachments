@@ -33,7 +33,7 @@
 		if (file.filename) {
 			url.searchParams.set("filename", file.filename);
 		}
-		if (format && !format.includes('*')) {
+		if (format && !format.includes("*")) {
 			url.searchParams.set("format", format);
 		}
 		if (format.startsWith("image/")) {
@@ -280,10 +280,7 @@
 	<div class="flex gap-2">
 		{#if !isDeleted}
 			<!-- 复制 -->
-			<button
-				class="flex-2"
-				onclick={() => copyLink().catch(showError)}
-			>
+			<button class="flex-2" onclick={() => copyLink().catch(showError)}>
 				<svg
 					class="inline fill-current h-[1.25rem]"
 					viewBox="0 0 24 24"
@@ -334,22 +331,25 @@
 		{/if}
 	</div>
 
-	<!-- 时间戳 -->
-	<div class="text-xs text-faint text-right m-1">
-		{#if file.trashedAt}
-			<span class="flex-none">
-				<span>{t("trashedAt")}</span>
-				<time datetime={file.trashedAt.toISOString()}
-					>{formatDate(file.trashedAt)}</time
-				>
-			</span>
-		{:else}
-			<span class="flex-none">
-				<span>{t("indexedAt")}</span>
-				<time datetime={file.indexedAt.toISOString()}
-					>{formatDate(file.indexedAt)}</time
-				>
-			</span>
-		{/if}
+	<div class="flex flex-wrap justify-between text-faint text-xs gap-1">
+		<span class="select-all truncate flex-1">{file.cid}</span>
+		<!-- 时间戳 -->
+		<div class="flex-none text-right">
+			{#if file.trashedAt}
+				<span class="flex-none">
+					<span>{t("trashedAt")}</span>
+					<time datetime={file.trashedAt.toISOString()}
+						>{formatDate(file.trashedAt)}</time
+					>
+				</span>
+			{:else}
+				<span class="flex-none">
+					<span>{t("indexedAt")}</span>
+					<time datetime={file.indexedAt.toISOString()}
+						>{formatDate(file.indexedAt)}</time
+					>
+				</span>
+			{/if}
+		</div>
 	</div>
 </div>
