@@ -391,7 +391,7 @@
 	});
 </script>
 
-<div class="h-full flex flex-col cas-file-explorer">
+<div class="h-full flex flex-col gap-1 @container">
 	<CASFileExplorerHeader />
 	<CASFileExplorerViewTabs />
 	<CASFileExplorerGrid />

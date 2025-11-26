@@ -24,7 +24,9 @@
 
 <div class="flex-1 overflow-auto">
 	<!-- 卡片网格布局 -->
-	<div class="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-4 p-4">
+	<div
+		class="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-px p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"
+	>
 		{#if loading.value && files.value.length === 0}
 			<div class="col-span-full p-8 text-center text-muted">
 				{t("loading")}
@@ -42,7 +44,7 @@
 
 	<!-- 加载更多 -->
 	{#if hasNextPage.value && !loading.value}
-		<div class="p-4 text-center border-t border-border">
+		<div class="text-center border-t border-border">
 			<button
 				class="px-4 py-2 bg-interactive-normal text-on-accent rounded hover:bg-interactive-hover"
 				onclick={() => loadFiles(false)}

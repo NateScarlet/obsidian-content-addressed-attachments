@@ -109,7 +109,7 @@
 <div
 	role="tablist"
 	aria-label={t("fileViews")}
-	class="flex border-b border-border"
+	class="flex flex-col gap-1 @sm:flex-row @sm:gap-0"
 >
 	{#each tabs as tab, index (tab.mode)}
 		<div
@@ -118,12 +118,12 @@
 			tabindex={mode.value === tab.mode ? 0 : -1}
 			aria-selected={mode.value === tab.mode}
 			class={[
-				"flex-1 px-4 py-2 text-sm  cursor-pointer select-none transition duration-300",
+				"flex-auto whitespace-pre px-4 py-2 text-sm  cursor-pointer select-none transition duration-300",
 				mode.value === tab.mode
 					? "text-on-accent bg-interactive-accent font-semibold hover:bg-interactive-accent-hover"
 					: "text-normal bg-interactive-normal hover:bg-interactive-hover ",
-				index === 0 && "rounded-l-sm",
-				index === tabs.length - 1 && "rounded-r-sm",
+				index === 0 && "@sm:rounded-l-sm",
+				index === tabs.length - 1 && "@sm:rounded-r-sm",
 			]}
 			onclick={() => (mode.value = tab.mode)}
 			onkeydown={(e) => handleKeydown(e, tab.mode)}
