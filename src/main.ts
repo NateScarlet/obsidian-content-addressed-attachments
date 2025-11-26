@@ -17,6 +17,7 @@ import type { CAS } from "./types/CAS";
 import ReferenceManager from "./ReferenceManager";
 import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 import showError from "./utils/showError";
+import { markdownChange } from "./events";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -123,6 +124,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on("modify", async (file) => {
 				if (file instanceof TFile && file.extension === "md") {
+					markdownChange.dispatch(file);
 					void this.referenceManger.loadFile(file.path);
 				}
 			}),

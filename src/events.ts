@@ -1,3 +1,4 @@
+import type { TFile } from "obsidian";
 import type { CASMetadataObject } from "./types/CASMetadata";
 import defineCustomEvent from "./utils/defineCustomEvent";
 import type { CID } from "multiformats";
@@ -17,3 +18,7 @@ export const referenceChange = defineCustomEvent<{
 	path: string;
 	action: "add" | "remove";
 }>(`${PREFIX}reference-change`);
+
+export const markdownChange = defineCustomEvent<TFile>(
+	`${PREFIX}markdown-change`,
+);

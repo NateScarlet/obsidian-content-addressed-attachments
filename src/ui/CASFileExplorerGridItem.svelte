@@ -56,7 +56,7 @@
 		mdiRestore,
 		mdiTrashCanOutline,
 	} from "@mdi/js";
-	import { referenceChange } from "src/events";
+	import { markdownChange, referenceChange } from "src/events";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -133,8 +133,15 @@
 	}
 	let version = $state(0);
 	$effect(() => {
-		return referenceChange.subscribe(async (e) => {
+		return referenceChange.subscribe((e) => {
 			if (e.detail.cid.equals(file.cid)) {
+				version += 1;
+			}
+		});
+	});
+	$effect(() => {
+		return markdownChange.subscribe(async (e) => {
+			if ((await references).some((i) => i.file.path === e.detail.path)) {
 				version += 1;
 			}
 		});
