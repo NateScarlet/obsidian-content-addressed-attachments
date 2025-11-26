@@ -17,8 +17,30 @@ export class CASImpl implements CAS {
 		private rootDir: () => string,
 	) {}
 
+	async index(meta: CASMetadataObject): Promise<void> {
+		const relPath = this.formatRelPath(meta.cid);
+		const path = this.getFilePath(relPath);
+		let stat = await this.app.vault.adapter.stat(path);
+		const obj = {
+			...meta,
+		};
+		if (stat) {
+			obj.trashedAt = undefined;
+		} else {
+			// 可能在回收站里
+			const trashPath = this.getTrashPath(relPath);
+			stat = await this.app.vault.adapter.stat(trashPath);
+			if (!stat) {
+				return this.meta.delete(meta.cid);
+			}
+			obj.trashedAt ??= new Date(stat.mtime);
+		}
+		obj.size = stat.size;
+		await this.meta.save(obj);
+	}
+
 	async delete(cid: CID): Promise<void> {
-		const filePath = this.getFilePath(cid);
+		const filePath = this.getFilePath(this.formatRelPath(cid));
 
 		// 检查文件是否存在
 		if (await this.app.vault.adapter.exists(filePath)) {
@@ -159,15 +181,14 @@ export class CASImpl implements CAS {
 	}
 
 	async trash(cid: CID, invalid?: boolean): Promise<boolean> {
-		const root = this.rootDir();
 		const relPath = this.formatRelPath(cid);
-		const src = join(root, relPath);
+		const src = this.getFilePath(relPath);
 
 		if (!(await this.app.vault.adapter.exists(src))) {
 			return false;
 		}
 
-		let dst = join(root, this.trashRelPath, relPath);
+		let dst = this.getTrashPath(relPath);
 		if (invalid) {
 			dst = this.formatInvalidName(dst);
 		} else if (await this.app.vault.adapter.exists(dst)) {
@@ -198,7 +219,8 @@ export class CASImpl implements CAS {
 	async save(file: File): Promise<{ cid: CID; didCreate: boolean }> {
 		const arrayBuffer = await getBlobArrayBuffer(file);
 		const cid = await this.generateCID(arrayBuffer);
-		const filePath = this.getFilePath(cid);
+		const relPath = this.formatRelPath(cid);
+		const filePath = this.getFilePath(relPath);
 		const exists = await this.app.vault.adapter.exists(filePath);
 
 		if (exists) {
@@ -253,9 +275,12 @@ export class CASImpl implements CAS {
 		return cid;
 	}
 
-	private getFilePath(cid: CID): string {
-		const relativePath = this.formatRelPath(cid);
-		return `${this.rootDir()}/${relativePath}`;
+	private getFilePath(relPath: string): string {
+		return join(this.rootDir(), relPath);
+	}
+
+	private getTrashPath(relPath: string): string {
+		return join(this.rootDir(), this.trashRelPath, relPath);
 	}
 
 	private formatInvalidName(src: string): string {

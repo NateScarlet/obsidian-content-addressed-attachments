@@ -11,4 +11,6 @@ export interface CAS {
 	save(file: File): Promise<{ cid: CID; didCreate: boolean }>;
 	delete(cid: CID): Promise<void>;
 	objects(): AsyncIterableIterator<CASMetadataObject>;
+	/** 索引元数据，使其和实际一致 */
+	index(meta: CASMetadataObject): Promise<void>;
 }
