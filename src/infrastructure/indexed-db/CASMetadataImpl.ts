@@ -8,6 +8,7 @@ import type CASMetadataObjectFilterBuilder from "src/CASMetadataObjectFilterBuil
 import executeIDBRequest from "src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
 import { casMetadataDelete, casMetadataSave } from "src/events";
+import { isEqual } from "es-toolkit";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
 const DB_VERSION = 1;
@@ -164,7 +165,7 @@ export class CASMetadataImpl implements CASMetadata {
 		});
 	}
 
-	async save(obj: CASMetadataObject): Promise<{ didCreate: boolean }> {
+	async save(obj: CASMetadataObject) {
 		const result = await this.tx(
 			"readwrite",
 			async ({ store, recordChange }) => {
@@ -183,13 +184,21 @@ export class CASMetadataImpl implements CASMetadata {
 							existing.trashedAt,
 						);
 					}
+					if (isEqual(existing, po)) {
+						return {
+							didCreate: false,
+							didChange: false,
+						};
+					}
 				}
 				recordChange(po, existing);
 				await executeIDBRequest(store.put(po));
-				return { didCreate: !existing };
+				return { didCreate: !existing, didChange: true };
 			},
 		);
-		casMetadataSave.dispatch(obj);
+		if (result.didChange) {
+			casMetadataSave.dispatch(obj);
+		}
 		return result;
 	}
 
