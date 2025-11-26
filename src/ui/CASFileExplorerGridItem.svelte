@@ -177,10 +177,10 @@
 		class={[
 			"font-semibold truncate text-center",
 			{
-				"text-muted": file.trashedAt,
-				"text-error": !file.trashedAt && isDeleted,
+				"text-muted": file.trashedAt && detail?.ok,
+				"text-error": detail?.ok === false,
 				"text-normal": !isDeleted,
-				"line-through": isDeleted,
+				"line-through": file.trashedAt,
 			},
 		]}
 		title={file.filename}
