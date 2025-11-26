@@ -116,7 +116,7 @@
 						}
 						yield {
 							file,
-							name: url.filename || title,
+							name: title || url.filename,
 							anchorAttrs: {
 								onclick: async () => {
 									try {

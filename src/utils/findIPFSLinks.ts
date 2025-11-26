@@ -67,6 +67,11 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 						.substring(bracketStart + 1, startIndex - 2)
 						.trim()
 						.replaceAll("\\[", "[") || undefined;
+				// 处理图片尺寸语法
+				const match = title?.match(/^(.+)\|\d+$/);
+				if (match) {
+					title = match[1];
+				}
 			}
 		}
 
