@@ -210,7 +210,7 @@
 <!-- 卡片布局 -->
 <div
 	use:drag
-	class="flex flex-col border rounded-lg p-1 @sm:p-2 @md:p-4 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
+	class="flex flex-col border rounded-lg p-1 @md:p-2 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
 >
 	<!-- 图片预览 -->
 	{#if detail?.imgSrc}
@@ -277,11 +277,11 @@
 	<div class="flex-auto"></div>
 
 	<!-- 操作按钮 -->
-	<div class="flex flex-wrap gap-2">
+	<div class="flex gap-2">
 		{#if !isDeleted}
 			<!-- 复制 -->
 			<button
-				class="flex-auto"
+				class="flex-2"
 				onclick={() => copyLink().catch(showError)}
 			>
 				<svg
@@ -294,7 +294,7 @@
 			</button>
 			<!-- 移动到回收站 -->
 			<button
-				class="flex-none"
+				class="flex-1"
 				onclick={() => trashFile(file.cid).catch(showError)}
 			>
 				<svg
@@ -307,7 +307,7 @@
 			</button>
 		{:else}
 			<button
-				class="flex-auto"
+				class="flex-2"
 				onclick={() => restoreFile().catch(showError)}
 			>
 				<svg
@@ -319,7 +319,7 @@
 				{t("restore")}
 			</button>
 			<button
-				class="flex-none bg-error! text-primary!"
+				class="flex-1 bg-error! text-primary!"
 				onclick={() =>
 					deleteFile(file.cid, file.filename).catch(showError)}
 			>
@@ -335,10 +335,10 @@
 	</div>
 
 	<!-- 时间戳 -->
-	<div class="text-xs text-muted text-right m-1">
+	<div class="text-xs text-faint text-right m-1">
 		{#if file.trashedAt}
 			<span class="flex-none">
-				<span>{t("trashedAt")}:</span>
+				<span>{t("trashedAt")}</span>
 				<time datetime={file.trashedAt.toISOString()}
 					>{formatDate(file.trashedAt)}</time
 				>
