@@ -89,9 +89,7 @@
 		};
 	});
 
-	const format = $derived(
-		detail?.format || file.format || "application/octet-stream",
-	);
+	const format = $derived(detail?.format || file.format || "*/*");
 	const isDeleted = $derived(!!file.trashedAt || detail?.ok === false);
 
 	let limit = $state(20);
