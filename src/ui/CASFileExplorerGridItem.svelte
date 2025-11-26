@@ -12,6 +12,7 @@
 			trashedAt: "Trashed at",
 			fetchMore: "Fetch more",
 			canNotRestoreFromExternal: "Can not restore from external storage",
+			copied: "Copied markdown link to clipboard",
 		},
 		zh: {
 			indexedAt: "索引于",
@@ -21,6 +22,7 @@
 			trashedAt: "删除于",
 			fetchMore: "加载更多",
 			canNotRestoreFromExternal: "无法从外部存储还原",
+			copied: "已复制 Markdown 链接到剪贴板",
 		},
 	});
 
@@ -50,6 +52,7 @@
 	import type { CID } from "multiformats";
 	import showError from "src/utils/showError";
 	import { getAbortSignal } from "svelte";
+	import { mdiLinkVariant } from "@mdi/js";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -193,6 +196,12 @@
 			},
 		};
 	};
+
+	async function copyLink() {
+		const markdownLink = generateMarkdownLink(file, format);
+		await navigator.clipboard.writeText(markdownLink);
+		new Notice(t("copied"));
+	}
 </script>
 
 <!-- 卡片布局 -->
@@ -270,6 +279,18 @@
 				onclick={() => trashFile(file.cid).catch(showError)}
 			>
 				{t("moveToTrash")}
+			</button>
+			<!-- 复制按钮 -->
+			<button
+				onclick={() => copyLink().catch(showError)}
+				title="Copy link"
+			>
+				<svg
+					class="inline fill-current h-[1.25rem]"
+					viewBox="0 0 24 24"
+				>
+					<path d={mdiLinkVariant} />
+				</svg>
 			</button>
 		{:else}
 			<button
