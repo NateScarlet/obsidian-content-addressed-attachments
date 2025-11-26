@@ -47,7 +47,6 @@
 <script lang="ts">
 	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
 	import { MarkdownView, Notice } from "obsidian";
-	import type { CID } from "multiformats";
 	import showError from "src/utils/showError";
 	import { getAbortSignal } from "svelte";
 	import {
@@ -57,6 +56,8 @@
 		mdiTrashCanOutline,
 	} from "@mdi/js";
 	import { markdownChange, referenceChange } from "src/events";
+	import { writable } from "svelte/store";
+	import staleWithRevalidate from "src/utils/staleWhileRevalidate";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -141,15 +142,16 @@
 	});
 	$effect(() => {
 		return markdownChange.subscribe(async (e) => {
-			if ((await references).some((i) => i.file.path === e.detail.path)) {
+			if ($references?.some((i) => i.file.path === e.detail.path)) {
 				version += 1;
 			}
 		});
 	});
 
-	const references = $derived(
-		(void version,
-		(async (cid: CID, limit: number, signal: AbortSignal) => {
+	const { result: references, revalidate: revalidateReferences } =
+		staleWithRevalidate(async () => {
+			const cid = file.cid;
+			const signal = getAbortSignal();
 			return Array.fromAsync(
 				(async function* () {
 					let count = 0;
@@ -199,8 +201,13 @@
 					}
 				})(),
 			);
-		})(file.cid, limit, getAbortSignal())),
-	);
+		});
+	$effect(() => {
+		void version;
+		void limit;
+		void file.cid;
+		revalidateReferences();
+	});
 
 	const drag: Action<HTMLElement> = (node) => {
 		node.draggable = true;
@@ -265,30 +272,22 @@
 
 	<!-- 引用文件列表 -->
 	<ul class="space-y-1 max-h-64 overflow-y-auto list-none m-1 p-0">
-		{#await references}
-			{#each Array.from({ length: 5 }) as i (i)}
-				<li class="bg-secondary-alt/75 animate-pulse">
-					<wbr />
-				</li>
-			{/each}
-		{:then items}
-			{#each items as i (i.file.path)}
-				<li class="break-all">
-					<a {...i.anchorAttrs}>
-						{i.file.path}
-					</a>
-					{#if i.name && i.name !== file.filename}
-						<span>|</span>
-						<span>{i.name}</span>
-					{/if}
-				</li>
-			{/each}
-			{#if items.length == limit}
-				<button type="button" class="w-full" onclick={fetchMore}>
-					{t("fetchMore")}
-				</button>
-			{/if}
-		{/await}
+		{#each $references as i (i.file.path)}
+			<li class="break-all">
+				<a {...i.anchorAttrs}>
+					{i.file.path}
+				</a>
+				{#if i.name && i.name !== file.filename}
+					<span>|</span>
+					<span>{i.name}</span>
+				{/if}
+			</li>
+		{/each}
+		{#if $references?.length == limit}
+			<button type="button" class="w-full" onclick={fetchMore}>
+				{t("fetchMore")}
+			</button>
+		{/if}
 	</ul>
 
 	<div class="flex-auto"></div>
