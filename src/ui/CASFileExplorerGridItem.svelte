@@ -31,6 +31,7 @@
 	import { MarkdownView } from "obsidian";
 	import type { CID } from "multiformats/dist/src";
 	import showError from "src/utils/showError";
+	import { getAbortSignal } from "svelte";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -40,11 +41,12 @@
 		file: FileItem;
 	} = $props();
 
-	async function load() {
+	async function load(signal: AbortSignal) {
 		const match = await cas.lookup(file.cid);
 		if (!match) {
 			return { ok: false };
 		}
+		signal.throwIfAborted();
 		const imgSrc = await (async () => {
 			const { format } = file;
 			if (format && !format.startsWith("image/")) {
@@ -66,6 +68,7 @@
 				})
 				.catch(() => undefined);
 		})();
+		signal.throwIfAborted();
 		return {
 			ok: true,
 			match,
@@ -78,14 +81,13 @@
 
 	$effect(() => {
 		void file.cid;
-		let cancelled = false;
-		load().then((v) => {
-			if (!cancelled) {
+		const signal = getAbortSignal();
+		load(signal)
+			.then((v) => {
 				detail = v;
-			}
-		});
+			})
+			.catch(showError);
 		return () => {
-			cancelled = true;
 			detail = undefined;
 		};
 	});
@@ -99,7 +101,7 @@
 	}
 
 	const references = $derived(
-		(async (cid: CID, limit: number) => {
+		(async (cid: CID, limit: number, signal: AbortSignal) => {
 			return Array.fromAsync(
 				(async function* () {
 					let count = 0;
@@ -109,6 +111,9 @@
 						title,
 						pos,
 					} of referenceManager.findReference(cid)) {
+						if (signal.aborted) {
+							return;
+						}
 						yield {
 							file,
 							name: url.filename || title,
@@ -146,7 +151,7 @@
 					}
 				})(),
 			);
-		})(file.cid, limit),
+		})(file.cid, limit, getAbortSignal()),
 	);
 </script>
 
