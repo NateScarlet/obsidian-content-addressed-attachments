@@ -43,34 +43,58 @@
 		file: FileItem;
 	} = $props();
 
-	let imgSrc = $state("");
+	async function load() {
+		const match = await cas.lookup(file.cid);
+		if (!match) {
+			return { ok: false };
+		}
+		const imgSrc = await (async () => {
+			const { format } = file;
+			if (format && !format.startsWith("image/")) {
+				// 已知不是图片
+				return;
+			}
+			const { path } = match;
+			const src = app.vault.adapter.getResourcePath(path);
+			if (format) {
+				return src;
+			}
+			// 尝试加载未知格式为图片
+			const img = new Image();
+			img.src = src;
+			return img
+				.decode()
+				.then(() => {
+					return src;
+				})
+				.catch(() => undefined);
+		})();
+		return {
+			ok: true,
+			match,
+			imgSrc,
+			format: file.format || (imgSrc ? "image/*" : ""),
+		};
+	}
+
+	let detail = $state<Awaited<ReturnType<typeof load>>>();
+
 	$effect(() => {
-		if (file.trashedAt) {
-			return;
-		}
-		const path = cas.formatNormalizePath(file.cid);
-		const src = app.vault.adapter.getResourcePath(path);
-		if (file.format.startsWith("image/")) {
-			imgSrc = src;
-			return;
-		}
-		if (file.format) {
-			// 已知不是图片
-			return;
-		}
-		// 尝试加载未知格式为图片
-		const img = new Image();
-		img.src = src;
-		img.decode()
-			.then(() => {
-				imgSrc = src;
-			})
-			.catch(() => undefined);
+		void file.cid;
+		let cancelled = false;
+		load().then((v) => {
+			if (!cancelled) {
+				detail = v;
+			}
+		});
 		return () => {
-			img.src = "";
-			imgSrc = "";
+			cancelled = true;
+			detail = undefined;
 		};
 	});
+
+	const format = $derived(detail?.format || file.format || "unknown");
+	const isDeleted = $derived(!!file.trashedAt || detail?.ok === false);
 </script>
 
 <!-- 卡片布局 -->
@@ -78,35 +102,33 @@
 	class="border border-border rounded-lg p-4 bg-secondary hover:bg-hover transition-colors"
 >
 	<!-- 图片预览 -->
-	{#if imgSrc}
+	{#if detail?.imgSrc}
 		<div class="mb-3 flex justify-center">
 			<img
-				src={imgSrc}
+				src={detail.imgSrc}
 				class="max-h-32 max-w-full rounded"
 				alt={file.filename}
 				title="{file.filename} ({file.cid})"
 			/>
 		</div>
 	{/if}
-
 	<!-- 文件信息 -->
 	<div class="space-y-2">
 		<!-- 文件名 -->
 		<div
 			class={[
 				"font-semibold text-normal truncate",
-				file.trashedAt ? "line-through" : "",
+				isDeleted ? "line-through" : "",
 			]}
 			title={file.filename}
 		>
 			{file.filename}
 		</div>
-
 		<!-- 元数据 -->
 		<div class="text-sm text-muted space-y-1">
 			<div class="flex justify-between">
 				<span>{t("format")}:</span>
-				<span>{file.format || (imgSrc ? "image/*" : "unknown")}</span>
+				<span>{format}</span>
 			</div>
 			<div class="flex justify-between">
 				<span>{t("size")}:</span>
@@ -139,7 +161,7 @@
 
 		<!-- 操作按钮 -->
 		<div class="flex gap-2 pt-2">
-			{#if !file.trashedAt}
+			{#if !isDeleted}
 				<button
 					class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
 					onclick={() => trashFile(file.cid)}
