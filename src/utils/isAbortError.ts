@@ -1,3 +1,6 @@
 export default function isAbortError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === 'AbortError';
+	if (!(err instanceof Error)) {
+		return false;
+	}
+	return err.name === "AbortError" || err.name === "StaleReactionError";
 }
