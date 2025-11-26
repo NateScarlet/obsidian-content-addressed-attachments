@@ -4,7 +4,9 @@ import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
 import findIPFSLinks from "./utils/findIPFSLinks";
 import type parseIPFSLink from "./utils/parseIPFSLink";
-import type { TFile } from "obsidian";
+import { Notice, type TFile } from "obsidian";
+import { mount, unmount } from "svelte";
+import IncrementalScanProgress from "./ui/IncrementalScanProgress.svelte";
 
 export interface ReferenceManagerCache {
 	add(cid: CID, normalizedPath: string): Promise<void>;
@@ -67,13 +69,38 @@ export default class ReferenceManager {
 	private async doIncrementalScan() {
 		const cutoffAt = await this.cache.cutoffAt();
 		const { vault } = this.plugin.app;
-		const jobs: Promise<void>[] = [];
 		const startAt = new Date();
-		for (const file of vault.getMarkdownFiles()) {
-			if (file.stat.mtime < cutoffAt.getTime()) {
-				continue;
-			}
-			jobs.push(this.loadFile(file.path));
+		const newFiles = vault
+			.getMarkdownFiles()
+			.filter((file) => file.stat.mtime >= cutoffAt.getTime());
+		if (newFiles.length === 0) {
+			return;
+		}
+		using stack = new DisposableStack();
+		const notice = stack.adopt(new Notice(new DocumentFragment()), (i) =>
+			i.hide(),
+		);
+		const progress = stack.adopt(
+			mount(IncrementalScanProgress, {
+				target: notice.containerEl,
+				props: {
+					totalFiles: newFiles.length,
+				},
+			}),
+			(i) => void unmount(i),
+		);
+
+		const jobs: Promise<void>[] = [];
+		let nextIndex = 1;
+		for (const file of newFiles) {
+			jobs.push(
+				this.loadFile(file.path).then(() => {
+					const index = nextIndex;
+					nextIndex += 1;
+					progress.currentIndex = index;
+					progress.currentFile = file.path;
+				}),
+			);
 		}
 		await Promise.all(jobs);
 		await this.cache.setCutoffAt(startAt);
