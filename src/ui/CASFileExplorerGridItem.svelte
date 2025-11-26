@@ -10,6 +10,7 @@
 			indexedAt: "Indexed at",
 			trashedAt: "Trashed at",
 			fetchMore: "Fetch more",
+			canNotRestoreFromExternal: "Can not restore from external storage",
 		},
 		zh: {
 			indexedAt: "索引于",
@@ -18,6 +19,7 @@
 			permanentlyDelete: "永久删除",
 			trashedAt: "删除于",
 			fetchMore: "加载更多",
+			canNotRestoreFromExternal: "无法从外部存储还原",
 		},
 	});
 
@@ -28,8 +30,8 @@
 
 <script lang="ts">
 	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
-	import { MarkdownView } from "obsidian";
-	import type { CID } from "multiformats/dist/src";
+	import { MarkdownView, Notice } from "obsidian";
+	import type { CID } from "multiformats";
 	import showError from "src/utils/showError";
 	import { getAbortSignal } from "svelte";
 
@@ -40,6 +42,13 @@
 	}: {
 		file: FileItem;
 	} = $props();
+
+	async function restoreFile() {
+		const result = await cas.load(file.cid);
+		if (!result) {
+			new Notice(t("canNotRestoreFromExternal"));
+		}
+	}
 
 	async function load(signal: AbortSignal) {
 		const match = await cas.lookup(file.cid);
@@ -226,20 +235,21 @@
 		{#if !isDeleted}
 			<button
 				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
-				onclick={() => trashFile(file.cid)}
+				onclick={() => trashFile(file.cid).catch(showError)}
 			>
 				{t("moveToTrash")}
 			</button>
 		{:else}
 			<button
 				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
-				onclick={() => cas.load(file.cid)}
+				onclick={() => restoreFile().catch(showError)}
 			>
 				{t("restore")}
 			</button>
 			<button
 				class="flex-1 px-2 py-1 bg-error text-on-accent rounded text-xs hover:bg-error/80"
-				onclick={() => deleteFile(file.cid, file.filename)}
+				onclick={() =>
+					deleteFile(file.cid, file.filename).catch(showError)}
 			>
 				{t("permanentlyDelete")}
 			</button>
