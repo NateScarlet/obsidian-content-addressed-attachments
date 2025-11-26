@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.6](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.5...0.1.6) (2025-11-26)
+
+
+### Features
+
+* add icon to file explorer ([ea2460f](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/ea2460f60ca199d0f09b09fcb12fa169292e5488))
+* add link copy button ([f086868](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/f0868680b8a6022246fb50bba36625d904f691b9))
+* drag from file explorer as markdown link ([25a81bc](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/25a81bc9629c6545f4eaa9ffac26e7a8523092df))
+* show cid in file explorer card ([2fc17ab](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/2fc17ab73e923e93e92bbe1be67ae1e718d8247f))
+
 ## [0.1.5](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.4...0.1.5) (2025-11-26)
 
 
