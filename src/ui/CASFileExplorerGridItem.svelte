@@ -189,7 +189,7 @@
 	</div>
 
 	<!-- 引用文件列表 -->
-	<ul class="space-y-1">
+	<ul class="space-y-1 max-h-64 overflow-y-auto">
 		{#await references}
 			{#each Array.from({ length: 5 }) as i (i)}
 				<li class="bg-secondary-alt/75 animate-pulse">
