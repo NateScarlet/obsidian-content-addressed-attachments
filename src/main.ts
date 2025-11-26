@@ -133,7 +133,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.app.workspace.on("editor-change", async (editor, view) => {
 				if (view.file && view.file.extension === "md") {
 					markdownChange.dispatch(view.file);
-					void this.referenceManger.loadFile(view.file.path);
+					void this.referenceManger.loadFileContent(
+						view.file.path,
+						editor.getValue(),
+					);
 				}
 			}),
 		);

@@ -114,23 +114,27 @@ export default class ReferenceManager {
 
 	private async doLoadFile(normalizedPath: string) {
 		const file = this.plugin.app.vault.getFileByPath(normalizedPath);
+		await this.loadFileContent(
+			normalizedPath,
+			file ? await this.plugin.app.vault.cachedRead(file) : "",
+		);
+	}
+
+	async loadFileContent(normalizedPath: string, markdown: string) {
 		const startAt = new Date();
-		if (file) {
-			const markdown = await this.plugin.app.vault.cachedRead(file);
-			const jobs: Promise<void>[] = [];
-			for (const { url, title } of findIPFSLinks(markdown)) {
-				jobs.push(
-					this.cache.add(url.cid, normalizedPath),
-					this.plugin.cas.index({
-						cid: url.cid,
-						indexedAt: new Date(),
-						filename: url.filename || title || undefined,
-						format: url.format || undefined,
-					}),
-				);
-			}
-			await Promise.all(jobs);
+		const jobs: Promise<void>[] = [];
+		for (const { url, title } of findIPFSLinks(markdown)) {
+			jobs.push(
+				this.cache.add(url.cid, normalizedPath),
+				this.plugin.cas.index({
+					cid: url.cid,
+					indexedAt: new Date(),
+					filename: url.filename || title || undefined,
+					format: url.format || undefined,
+				}),
+			);
 		}
+		await Promise.all(jobs);
 		await this.cache.expireByPath(normalizedPath, startAt);
 	}
 
