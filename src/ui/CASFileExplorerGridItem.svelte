@@ -332,7 +332,7 @@
 	</div>
 
 	<div class="flex flex-wrap justify-between text-faint text-xs gap-1">
-		<span class="select-all truncate flex-1">{file.cid}</span>
+		<span class="select-all truncate flex-1 font-mono">{file.cid}</span>
 		<!-- 时间戳 -->
 		<div class="flex-none text-right">
 			{#if file.trashedAt}
