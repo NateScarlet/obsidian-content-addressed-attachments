@@ -129,6 +129,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				}
 			}),
 		);
+		this.registerEvent(
+			this.app.workspace.on("editor-change", async (editor, view) => {
+				if (view.file && view.file.extension === "md") {
+					markdownChange.dispatch(view.file);
+					void this.referenceManger.loadFile(view.file.path);
+				}
+			}),
+		);
 		//#endregion
 
 		this.addCommand({
