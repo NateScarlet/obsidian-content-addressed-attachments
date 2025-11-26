@@ -7,23 +7,17 @@
 			moveToTrash: "Move to Trash",
 			restore: "Restore",
 			permanentlyDelete: "Permanently Delete",
-			filename: "Filename",
-			format: "Format",
-			size: "Size",
-			indexedAt: "Indexed",
-			references: "References",
-			trashedAt: "Trashed",
+			indexedAt: "Indexed at",
+			trashedAt: "Trashed at",
+			fetchMore: "Fetch more",
 		},
 		zh: {
-			filename: "文件名",
-			format: "格式",
-			size: "大小",
-			indexedAt: "索引时间",
-			references: "引用",
-			moveToTrash: "移至回收站",
+			indexedAt: "索引于",
+			moveToTrash: "移动至回收站",
 			restore: "还原",
 			permanentlyDelete: "永久删除",
-			trashedAt: "删除时间",
+			trashedAt: "删除于",
+			fetchMore: "加载更多",
 		},
 	});
 
@@ -34,8 +28,10 @@
 
 <script lang="ts">
 	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
+	import { MarkdownView } from "obsidian";
+	import type { CID } from "multiformats/dist/src";
 
-	const { cas, app, trashFile, deleteFile, goToReference } = getContext();
+	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
 	let {
 		file,
@@ -93,13 +89,64 @@
 		};
 	});
 
-	const format = $derived(detail?.format || file.format || "unknown");
+	const format = $derived(
+		detail?.format || file.format || "application/octet-stream",
+	);
 	const isDeleted = $derived(!!file.trashedAt || detail?.ok === false);
+
+	let limit = $state(20);
+	function fetchMore() {
+		limit += 20;
+	}
+
+	const references = $derived(
+		(async (cid: CID, limit: number) => {
+			return Array.fromAsync(
+				(async function* () {
+					let count = 0;
+					for await (const {
+						file,
+						url,
+						title,
+						pos,
+					} of referenceManager.findReference(cid)) {
+						yield {
+							file,
+							name: url.filename || title,
+							anchorAttrs: {
+								onclick: async () => {
+									const leaf = app.workspace.getLeaf(false);
+									await leaf.openFile(file);
+									const view = leaf.view;
+									if (view instanceof MarkdownView) {
+										const editor = view.editor;
+										const range = {
+											from: editor.offsetToPos(pos[0]),
+											to: editor.offsetToPos(pos[1]),
+										};
+										editor.setSelection(
+											range.from,
+											range.to,
+										);
+										editor.scrollIntoView(range, true);
+									}
+								},
+							},
+						};
+						count += 1;
+						if (count == limit) {
+							return;
+						}
+					}
+				})(),
+			);
+		})(file.cid, limit),
+	);
 </script>
 
 <!-- 卡片布局 -->
 <div
-	class="border border-border rounded-lg p-1 @sm:p-2 @md:p-4 bg-secondary hover:bg-hover transition-colors"
+	class="border rounded-lg p-1 @sm:p-2 @md:p-4 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
 >
 	<!-- 图片预览 -->
 	{#if detail?.imgSrc}
@@ -108,80 +155,96 @@
 				src={detail.imgSrc}
 				class="max-h-32 max-w-full rounded"
 				alt={file.filename}
+				loading="lazy"
 				title="{file.filename} ({file.cid})"
 			/>
 		</div>
 	{/if}
-	<!-- 文件信息 -->
-	<div class="space-y-2">
-		<!-- 文件名 -->
-		<div
-			class={[
-				"font-semibold text-normal truncate",
-				isDeleted ? "line-through" : "",
-			]}
-			title={file.filename}
-		>
-			{file.filename}
-		</div>
-		<!-- 元数据 -->
-		<div class="text-sm text-muted space-y-1">
-			<div class="flex justify-between">
-				<span>{t("format")}:</span>
-				<span>{format}</span>
-			</div>
-			<div class="flex justify-between">
-				<span>{t("size")}:</span>
-				<span title="{file.size} Byte">{formatFileSize(file.size)}</span
-				>
-			</div>
-			<div class="flex justify-between">
-				<span>{t("indexedAt")}:</span>
-				<span>{formatDate(file.indexedAt)}</span>
-			</div>
-			{#if file.trashedAt}
-				<div class="flex justify-between">
-					<span>{t("trashedAt")}:</span>
-					<span>{formatDate(file.trashedAt)}</span>
-				</div>
-			{/if}
-			<div class="flex justify-between">
-				<span>{t("references")}:</span>
-				<span
-					class={[
-						file.references &&
-							"underline text-interactive-accent cursor-pointer",
-					]}
-					onclick={() => goToReference(file.cid)}
-				>
-					{file.references}
-				</span>
-			</div>
-		</div>
 
-		<!-- 操作按钮 -->
-		<div class="flex gap-2 pt-2">
-			{#if !isDeleted}
-				<button
-					class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
-					onclick={() => trashFile(file.cid)}
-				>
-					{t("moveToTrash")}
-				</button>
-			{:else}
-				<button
-					class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
-					onclick={() => cas.load(file.cid)}
-				>
-					{t("restore")}
-				</button>
-				<button
-					class="flex-1 px-2 py-1 bg-error text-on-accent rounded text-xs hover:bg-error/80"
-					onclick={() => deleteFile(file.cid, file.filename)}
-				>
-					{t("permanentlyDelete")}
+	<!-- 文件名 -->
+	<div
+		class={[
+			"font-semibold truncate text-center",
+			{
+				"text-muted": file.trashedAt,
+				"text-error": !file.trashedAt && isDeleted,
+				"text-normal": !isDeleted,
+				"line-through": isDeleted,
+			},
+		]}
+		title={file.filename}
+	>
+		{file.filename}
+	</div>
+	<!-- 元数据 -->
+	<div class="text-center space-x-1 text-sm text-muted">
+		<span>{format}</span>
+		<span title="{file.size} Byte">{formatFileSize(file.size)}</span>
+	</div>
+
+	<!-- 引用文件列表 -->
+	<ul class="space-y-1">
+		{#await references then items}
+			{#each items as i (i.file.path)}
+				<li>
+					<a {...i.anchorAttrs}>
+						{i.file.path}
+					</a>
+					{#if i.name && i.name !== file.filename}
+						<span>|</span>
+						<span>{i.name}</span>
+					{/if}
+				</li>
+			{/each}
+			{#if items.length == limit}
+				<button type="button" class="w-full" onclick={fetchMore}>
+					{t("fetchMore")}
 				</button>
 			{/if}
-		</div>
+		{/await}
+	</ul>
+
+	<!-- 操作按钮 -->
+	<div class="flex gap-2">
+		{#if !isDeleted}
+			<button
+				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
+				onclick={() => trashFile(file.cid)}
+			>
+				{t("moveToTrash")}
+			</button>
+		{:else}
+			<button
+				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
+				onclick={() => cas.load(file.cid)}
+			>
+				{t("restore")}
+			</button>
+			<button
+				class="flex-1 px-2 py-1 bg-error text-on-accent rounded text-xs hover:bg-error/80"
+				onclick={() => deleteFile(file.cid, file.filename)}
+			>
+				{t("permanentlyDelete")}
+			</button>
+		{/if}
+	</div>
+
+	<!-- 时间戳 -->
+	<div class="text-xs text-muted text-right m-1">
+		{#if file.trashedAt}
+			<span class="flex-none">
+				<span>{t("trashedAt")}:</span>
+				<time datetime={file.trashedAt.toISOString()}
+					>{formatDate(file.trashedAt)}</time
+				>
+			</span>
+		{:else}
+			<span class="flex-none">
+				<span>{t("indexedAt")}</span>
+				<time datetime={file.indexedAt.toISOString()}
+					>{formatDate(file.indexedAt)}</time
+				>
+			</span>
+		{/if}
 	</div>
 </div>

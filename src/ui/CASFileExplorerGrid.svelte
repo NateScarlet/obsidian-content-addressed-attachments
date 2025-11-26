@@ -25,7 +25,7 @@
 <div class="flex-1 overflow-auto">
 	<!-- 卡片网格布局 -->
 	<div
-		class="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-px p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"
+		class="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-px gap-y-2 p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"
 	>
 		{#if loading.value && files.value.length === 0}
 			<div class="col-span-full p-8 text-center text-muted">

@@ -29,6 +29,7 @@
 		// 依赖
 		cas: CAS;
 		casMetadata: CASMetadata;
+		referenceManager: ReferenceManager;
 		app: App;
 
 		// 状态
@@ -45,7 +46,6 @@
 		rebuildIndex: () => Promise<void>;
 		trashFile: (cid: CID) => Promise<void>;
 		deleteFile: (cid: CID, filename: string) => Promise<void>;
-		goToReference: (cid: CID) => Promise<void>;
 	}
 
 	// 创建
@@ -85,7 +85,7 @@
 		format: string;
 		size: number;
 		indexedAt: Date;
-		references: number;
+		hasReference: boolean;
 		trashedAt?: Date;
 	}
 
@@ -120,7 +120,7 @@
 			result = result.filter((file) => !!file.trashedAt);
 		} else if (currentView === Mode.UNREFERENCED) {
 			result = result.filter(
-				(file) => file.references === 0 && !file.trashedAt,
+				(file) => !file.hasReference && !file.trashedAt,
 			);
 		}
 
@@ -160,30 +160,11 @@
 		}
 	}
 
-	async function goToReference(cid: CID) {
-		for await (const i of referenceManager.findReference(cid)) {
-			// 打开文件
-			const leaf = app.workspace.getLeaf(false);
-			await leaf.openFile(i.file);
-
-			const view = leaf.view;
-			if (view instanceof MarkdownView) {
-				const editor = view.editor;
-				const range = {
-					from: editor.offsetToPos(i.pos[0]),
-					to: editor.offsetToPos(i.pos[1]),
-				};
-				editor.setSelection(range.from, range.to);
-				editor.scrollIntoView(range, true);
-			}
-			break; // 只跳转到第一个引用
-		}
-	}
 	let hasNextPage = $state(false);
 
 	async function loadFile(obj: CASMetadataObject) {
 		// 获取引用计数
-		const referenceCount = await referenceManager.count(obj.cid, 100);
+		const referenceCount = await referenceManager.count(obj.cid, 1);
 
 		let filename = obj.filename ?? "";
 		let format = obj.format ?? "";
@@ -210,7 +191,7 @@
 				format,
 				size: obj.size || 0,
 				indexedAt: obj.indexedAt,
-				references: referenceCount,
+				hasReference: referenceCount > 0,
 				trashedAt: obj.trashedAt,
 			},
 			{ whenNoMatch: "append" },
@@ -289,7 +270,7 @@
 
 	async function cleanUnreferenced() {
 		const unreferencedFiles = rawFiles.filter(
-			(f) => f.references === 0 && !f.trashedAt,
+			(f) => !f.hasReference && !f.trashedAt,
 		);
 		if (unreferencedFiles.length === 0) return;
 
@@ -337,6 +318,7 @@
 	setContext({
 		cas,
 		casMetadata,
+		referenceManager,
 		app,
 		mode: {
 			get value() {
@@ -376,7 +358,6 @@
 		rebuildIndex,
 		trashFile,
 		deleteFile,
-		goToReference,
 	});
 
 	$effect(() => {
