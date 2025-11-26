@@ -181,6 +181,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				this.activateView().catch(showError);
 			},
 		});
+		this.addRibbonIcon("hard-drive", t("openCASExplorer"), () => {
+			this.activateView().catch(showError);
+		});
 
 		this.process().catch(showError);
 	}

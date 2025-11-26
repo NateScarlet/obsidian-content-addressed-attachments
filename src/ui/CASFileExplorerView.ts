@@ -25,7 +25,7 @@ export class CASFileExplorerView extends ItemView {
 	}
 
 	getIcon(): string {
-		return "files";
+		return "hard-drive";
 	}
 
 	onOpen(): Promise<void> {
