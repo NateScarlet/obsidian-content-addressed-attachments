@@ -5,24 +5,22 @@
 
 	const { t } = defineLocales({
 		en: {
-			moveToTrash: "Move to Trash",
 			restore: "Restore",
-			permanentlyDelete: "Permanently Delete",
 			indexedAt: "Indexed at",
 			trashedAt: "Trashed at",
-			fetchMore: "Fetch more",
+			fetchMore: "Fetch More",
 			canNotRestoreFromExternal: "Can not restore from external storage",
 			copied: "Copied markdown link to clipboard",
+			copyLink: "Copy Link",
 		},
 		zh: {
 			indexedAt: "索引于",
-			moveToTrash: "移动至回收站",
 			restore: "还原",
-			permanentlyDelete: "永久删除",
 			trashedAt: "删除于",
 			fetchMore: "加载更多",
 			canNotRestoreFromExternal: "无法从外部存储还原",
 			copied: "已复制 Markdown 链接到剪贴板",
+			copyLink: "复制链接",
 		},
 	});
 
@@ -279,10 +277,24 @@
 	<div class="flex-auto"></div>
 
 	<!-- 操作按钮 -->
-	<div class="flex gap-2">
+	<div class="flex flex-wrap gap-2">
 		{#if !isDeleted}
+			<!-- 复制 -->
 			<button
-				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
+				class="flex-auto"
+				onclick={() => copyLink().catch(showError)}
+			>
+				<svg
+					class="inline fill-current h-[1.25rem]"
+					viewBox="0 0 24 24"
+				>
+					<path d={mdiLinkVariant} />
+				</svg>
+				<span>{t("copyLink")}</span>
+			</button>
+			<!-- 移动到回收站 -->
+			<button
+				class="flex-none"
 				onclick={() => trashFile(file.cid).catch(showError)}
 			>
 				<svg
@@ -291,23 +303,11 @@
 				>
 					<path d={mdiTrashCanOutline} />
 				</svg>
-				{t("moveToTrash")}
-			</button>
-			<!-- 复制按钮 -->
-			<button
-				onclick={() => copyLink().catch(showError)}
-				title="Copy link"
-			>
-				<svg
-					class="inline fill-current h-[1.25rem]"
-					viewBox="0 0 24 24"
-				>
-					<path d={mdiLinkVariant} />
-				</svg>
+				<wbr />
 			</button>
 		{:else}
 			<button
-				class="flex-1 px-2 py-1 bg-warning text-on-accent rounded text-xs hover:bg-warning/80"
+				class="flex-auto"
 				onclick={() => restoreFile().catch(showError)}
 			>
 				<svg
@@ -319,7 +319,7 @@
 				{t("restore")}
 			</button>
 			<button
-				class="flex-1 px-2 py-1 bg-error text-on-accent rounded text-xs hover:bg-error/80"
+				class="flex-none bg-error! text-primary!"
 				onclick={() =>
 					deleteFile(file.cid, file.filename).catch(showError)}
 			>
@@ -329,7 +329,7 @@
 				>
 					<path d={mdiDeleteAlertOutline} />
 				</svg>
-				{t("permanentlyDelete")}
+				<wbr />
 			</button>
 		{/if}
 	</div>
