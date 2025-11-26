@@ -2,7 +2,7 @@ import { CID } from "multiformats/cid";
 import { base32upper } from "multiformats/bases/base32";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
-import { App, getBlobArrayBuffer } from "obsidian";
+import { App, getBlobArrayBuffer, type Stat } from "obsidian";
 import makeDirs from "src/utils/makeDirs";
 import { basename, dirname, join } from "path-browserify";
 import type { CAS } from "src/types/CAS";
@@ -17,26 +17,42 @@ export class CASImpl implements CAS {
 		private rootDir: () => string,
 	) {}
 
-	async index(meta: CASMetadataObject): Promise<void> {
-		const relPath = this.formatRelPath(meta.cid);
+	async lookup(
+		cid: CID,
+	): Promise<{ path: string; stat: Stat; isTrashed: boolean } | undefined> {
+		const relPath = this.formatRelPath(cid);
 		const path = this.getFilePath(relPath);
 		let stat = await this.app.vault.adapter.stat(path);
-		const obj = {
-			...meta,
-		};
 		if (stat) {
-			obj.trashedAt = undefined;
-		} else {
-			// 可能在回收站里
-			const trashPath = this.getTrashPath(relPath);
-			stat = await this.app.vault.adapter.stat(trashPath);
-			if (!stat) {
-				return this.meta.delete(meta.cid);
-			}
-			obj.trashedAt ??= new Date(stat.mtime);
+			return {
+				path,
+				stat,
+				isTrashed: false,
+			};
 		}
-		obj.size = stat.size;
-		await this.meta.save(obj);
+		const trashPath = this.getTrashPath(relPath);
+		stat = await this.app.vault.adapter.stat(trashPath);
+		if (stat) {
+			return {
+				path: trashPath,
+				stat,
+				isTrashed: true,
+			};
+		}
+	}
+
+	async index(meta: CASMetadataObject): Promise<void> {
+		const match = await this.lookup(meta.cid);
+		if (!match) {
+			return this.meta.delete(meta.cid);
+		}
+		await this.meta.save({
+			...meta,
+			trashedAt: match.isTrashed
+				? (meta.trashedAt ?? new Date(match.stat.mtime))
+				: undefined,
+			size: match.stat.size,
+		});
 	}
 
 	async delete(cid: CID): Promise<void> {

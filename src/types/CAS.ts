@@ -1,5 +1,6 @@
 import type { CID } from "multiformats";
 import type { CASMetadataObject } from "./CASMetadata";
+import type { Stat } from "obsidian";
 
 export interface CAS {
 	formatRelPath(cid: CID): string;
@@ -13,4 +14,12 @@ export interface CAS {
 	objects(): AsyncIterableIterator<CASMetadataObject>;
 	/** 索引元数据，使其和实际一致 */
 	index(meta: CASMetadataObject): Promise<void>;
+	lookup(cid: CID): Promise<
+		| {
+				path: string;
+				stat: Stat;
+				isTrashed: boolean;
+		  }
+		| undefined
+	>;
 }
