@@ -11,7 +11,6 @@
 			confirmCleanUnreferenced: (count: number) =>
 				`Move ${count} unreferenced files to trash?`,
 			indexRebuilt: "Index rebuilt successfully",
-			operationFailed: "Operation failed",
 		},
 		zh: {
 			confirmPermanentDelete: (filename: string) =>
@@ -21,7 +20,6 @@
 			confirmCleanUnreferenced: (count: number) =>
 				`将 ${count} 个未引用文件移至回收站？`,
 			indexRebuilt: "索引重建成功",
-			operationFailed: "操作失败",
 		},
 	});
 	//#endregion
@@ -73,12 +71,12 @@
 	import type { CAS } from "src/types/CAS";
 	import ReferenceManager from "src/ReferenceManager";
 	import rebuildCASMetadata from "src/commands/rebuildCASMetadata";
-	import castError from "src/utils/castError";
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerViewTabs.svelte";
 	import CASFileExplorerGrid from "./CASFileExplorerGrid.svelte";
 	import { casMetadataDelete, casMetadataSave } from "src/events";
 	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
+	import showError from "src/utils/showError";
 
 	// 定义文件项接口（移除方法）
 	export interface FileItem {
@@ -147,7 +145,7 @@
 			await cas.trash(cid);
 		} catch (error) {
 			console.error("Failed to move file to trash:", error);
-			new Notice(t("operationFailed"));
+			showError(error);
 		}
 	}
 
@@ -158,7 +156,7 @@
 			await cas.delete(cid);
 		} catch (error) {
 			console.error("Failed to delete file:", error);
-			new Notice(t("operationFailed"));
+			showError(error);
 		}
 	}
 
@@ -264,7 +262,7 @@
 			hasNextPage = matchCount >= PAGE_SIZE;
 		} catch (error) {
 			console.error("Failed to load files:", error);
-			new Notice(t("operationFailed") + "\n" + castError(error).message);
+			showError(error);
 		} finally {
 			isLoading = false;
 		}
@@ -285,7 +283,7 @@
 			rawFiles = rawFiles.filter((f) => !f.trashedAt);
 		} catch (error) {
 			console.error("Failed to empty trash:", error);
-			new Notice(t("operationFailed"));
+			showError(error);
 		}
 	}
 
@@ -312,7 +310,7 @@
 			}
 		} catch (error) {
 			console.error("Failed to clean unreferenced files:", error);
-			new Notice(t("operationFailed"));
+			showError(error);
 		}
 	}
 
@@ -324,7 +322,7 @@
 			new Notice(t("indexRebuilt"));
 		} catch (error) {
 			console.error("Failed to rebuild index:", error);
-			new Notice(t("operationFailed") + "\n" + castError(error).message);
+			showError(error);
 		}
 	}
 

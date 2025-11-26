@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin } from "obsidian";
+import { MarkdownView, Plugin } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -149,9 +149,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							);
 						}
 					})
-					.catch((err) => {
-						new Notice(String(err));
-					});
+					.catch(showError);
 			},
 		});
 
