@@ -1,6 +1,7 @@
 <script module lang="ts">
 	import formatFileSize from "src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
+	import type { Action } from "svelte/action";
 
 	const { t } = defineLocales({
 		en: {
@@ -25,6 +26,21 @@
 
 	function formatDate(date: Date) {
 		return date.toLocaleDateString() + " " + date.toLocaleTimeString();
+	}
+
+	function generateMarkdownLink(file: FileItem, format: string): string {
+		const url = new URL(`ipfs://${file.cid.toString()}`);
+		if (file.filename) {
+			url.searchParams.set("filename", file.filename);
+		}
+		if (format) {
+			url.searchParams.set("format", format);
+		}
+		if (format.startsWith("image/")) {
+			return `![${file.filename || "image"}](${url})`;
+		} else {
+			return `[${file.filename ?? "attachment"}](${url})`;
+		}
 	}
 </script>
 
@@ -162,10 +178,26 @@
 			);
 		})(file.cid, limit, getAbortSignal()),
 	);
+
+	const drag: Action<HTMLElement> = (node) => {
+		node.draggable = true;
+		const handleDragStart = (event: DragEvent) => {
+			const markdownLink = generateMarkdownLink(file, format);
+			event.dataTransfer?.setData("text/plain", markdownLink);
+		};
+
+		node.addEventListener("dragstart", handleDragStart);
+		return {
+			destroy() {
+				node.removeEventListener("dragstart", handleDragStart);
+			},
+		};
+	};
 </script>
 
 <!-- 卡片布局 -->
 <div
+	use:drag
 	class="border rounded-lg p-1 @sm:p-2 @md:p-4 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
 >
 	<!-- 图片预览 -->
