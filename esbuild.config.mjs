@@ -23,6 +23,7 @@ await Promise.all([
 			},
 			plugins: [esbuildSvelte(svelteConfig)],
 			entryPoints: ["src/main.ts"],
+			pure: ["console.log", "console.warn", "console.debug"],
 			bundle: true,
 			external: [
 				"obsidian",
@@ -46,6 +47,7 @@ await Promise.all([
 			sourcemap: prod ? false : "inline",
 			treeShaking: true,
 			outfile: "main.js",
+
 			minify: prod,
 		});
 		if (prod) {
