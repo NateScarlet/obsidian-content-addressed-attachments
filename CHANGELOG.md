@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.5](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.4...0.1.5) (2025-11-26)
+
+
+### Features
+
+* add incremental scan progress ([6c140f9](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/6c140f9921c0678b9767ccb49acaf72ef87fce75))
+* add ribbon icon ([3bcc08b](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/3bcc08b2b9c8d28a0cb05e01595059678f83ae83))
+* show file explorer in left leaf ([54b4342](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/54b4342b8d0e84ea6b924f1b44d7781310d1b3e9))
+* show trashed image ([4112037](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/4112037563244e53fefe11b8dbe40dfac8d55610))
+* update cas metadata on incremental scan ([a11d736](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/a11d73667842de4feea294a149aed57dc4b5fccc))
+* update file explorer ([9f4b859](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/9f4b859ca899dc73ea6da775943bb779e6218372))
+* update file explorer design ([ebd32cd](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/ebd32cd332706b507b86d702dbfe6b8e81b1cea4))
+
 ## [0.1.4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.3...0.1.4) (2025-11-25)
 
 
