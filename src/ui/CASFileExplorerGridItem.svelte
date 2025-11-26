@@ -30,6 +30,7 @@
 	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
 	import { MarkdownView } from "obsidian";
 	import type { CID } from "multiformats/dist/src";
+	import showError from "src/utils/showError";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -113,20 +114,27 @@
 							name: url.filename || title,
 							anchorAttrs: {
 								onclick: async () => {
-									const leaf = app.workspace.getLeaf(false);
-									await leaf.openFile(file);
-									const view = leaf.view;
-									if (view instanceof MarkdownView) {
-										const editor = view.editor;
-										const range = {
-											from: editor.offsetToPos(pos[0]),
-											to: editor.offsetToPos(pos[1]),
-										};
-										editor.setSelection(
-											range.from,
-											range.to,
-										);
-										editor.scrollIntoView(range, true);
+									try {
+										const leaf =
+											app.workspace.getLeaf(false);
+										await leaf.openFile(file);
+										const view = leaf.view;
+										if (view instanceof MarkdownView) {
+											const editor = view.editor;
+											const range = {
+												from: editor.offsetToPos(
+													pos[0],
+												),
+												to: editor.offsetToPos(pos[1]),
+											};
+											editor.setSelection(
+												range.from,
+												range.to,
+											);
+											editor.scrollIntoView(range, true);
+										}
+									} catch (err) {
+										showError(err);
 									}
 								},
 							},
