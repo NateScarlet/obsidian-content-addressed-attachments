@@ -182,7 +182,13 @@
 
 	<!-- 引用文件列表 -->
 	<ul class="space-y-1">
-		{#await references then items}
+		{#await references}
+			{#each Array.from({ length: 5 }) as i (i)}
+				<li class="bg-secondary-alt/75 animate-pulse">
+					<wbr />
+				</li>
+			{/each}
+		{:then items}
 			{#each items as i (i.file.path)}
 				<li>
 					<a {...i.anchorAttrs}>
