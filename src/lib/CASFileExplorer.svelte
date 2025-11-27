@@ -20,8 +20,9 @@
 
 	export enum Mode {
 		ALL,
+		ACTIVE_NOTE,
 		UNREFERENCED,
-		TRASHED,
+		RECYCLE_BIN,
 	}
 
 	export { getContext };
@@ -40,10 +41,12 @@
 	import type { CAS } from "src/types/CAS";
 	import ReferenceManager from "src/ReferenceManager";
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
-	import CASFileExplorerViewTabs from "./CASFileExplorerViewTabs.svelte";
+	import CASFileExplorerViewTabs from "./CASFileExplorerTabs.svelte";
 	import CASFileExplorerGrid from "./CASFileExplorerGrid.svelte";
 	import { casMetadataDelete, casMetadataSave } from "src/events";
 	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
+	import useActiveNoteContent from "./stores/useActiveNoteContent.svelte";
+	import findIPFSLinks from "src/utils/findIPFSLinks";
 
 	// Props
 	let {
@@ -62,18 +65,29 @@
 	let mode = $state<Mode>(Mode.ALL);
 	let query = $state("");
 
+	let activeNoteContent = useActiveNoteContent(
+		app,
+		() => mode === Mode.ACTIVE_NOTE,
+	);
+
 	const filterBy = $derived.by((): CASMetadataObjectFilters => {
 		switch (mode) {
 			case Mode.ALL:
 				return {
 					query,
 				};
+			case Mode.ACTIVE_NOTE:
+				return {
+					cid: Array.from(findIPFSLinks($activeNoteContent)).map(
+						(i) => i.url.cid,
+					),
+				};
 			case Mode.UNREFERENCED:
 				return {
 					hasReference: false,
 					isTrashed: false,
 				};
-			case Mode.TRASHED:
+			case Mode.RECYCLE_BIN:
 				return {
 					isTrashed: true,
 				};

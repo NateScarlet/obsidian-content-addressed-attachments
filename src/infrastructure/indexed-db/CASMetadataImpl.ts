@@ -250,6 +250,10 @@ export class CASMetadataImpl implements CASMetadata {
 		filterBy?: CASMetadataObjectFilters;
 		after?: string;
 	}): AsyncIterableIterator<{ node: CASMetadataObject; cursor: string }> {
+		if (filterBy.cid?.length === 0) {
+			// 筛选条件排除了所有对象，直接返回
+			return;
+		}
 		const db = await this.db;
 		const filter = this.filterBuilder.build(filterBy);
 		for await (const edge of iterateIDBObjectStore({

@@ -7,16 +7,18 @@
 
 	const { t } = defineLocales({
 		en: {
-			allFiles: "All Files",
-			unreferencedFiles: "Unreferenced Files",
-			trashedFiles: "Trashed Files",
-			fileViews: "File Views",
+			all: "All",
+			unreferenced: "Unreferenced",
+			recycleBin: "Recycle Bin",
+			mode: "Mode",
+			activeNote: "Active Note",
 		},
 		zh: {
-			allFiles: "所有文件",
-			unreferencedFiles: "未引用文件",
-			trashedFiles: "回收站文件",
-			fileViews: "文件视图",
+			all: "所有",
+			unreferenced: "未引用",
+			recycleBin: "回收站",
+			mode: "模式",
+			activeNote: "当前笔记",
 		},
 	});
 </script>
@@ -32,7 +34,7 @@
 			updateEstimateStorage();
 		});
 	});
-	const views = [Mode.ALL, Mode.UNREFERENCED, Mode.TRASHED];
+	const views = [Mode.ALL, Mode.UNREFERENCED, Mode.RECYCLE_BIN];
 	function handleKeydown(event: KeyboardEvent, view: Mode) {
 		const currentIndex = views.indexOf(mode.value);
 
@@ -79,41 +81,32 @@
 	const tabs = [
 		{
 			mode: Mode.ALL,
-			translationKey: "allFiles" as const,
+			translationKey: "all" as const,
 			size: () => totalBytes,
-			attrs: {
-				"aria-controls": "all-files-panel",
-				id: "all-files-tab",
-			},
+		},
+		{
+			mode: Mode.ACTIVE_NOTE,
+			translationKey: "activeNote" as const,
 		},
 		{
 			mode: Mode.UNREFERENCED,
-			translationKey: "unreferencedFiles" as const,
-			attrs: {
-				"aria-controls": "unreferenced-files-panel",
-				id: "unreferenced-files-tab",
-			},
+			translationKey: "unreferenced" as const,
 		},
 		{
-			mode: Mode.TRASHED,
+			mode: Mode.RECYCLE_BIN,
 			size: () => trashBytes,
-			translationKey: "trashedFiles" as const,
-			attrs: {
-				"aria-controls": "trashed-files-panel",
-				id: "trashed-files-tab",
-			},
+			translationKey: "recycleBin" as const,
 		},
 	];
 </script>
 
 <div
 	role="tablist"
-	aria-label={t("fileViews")}
+	aria-label={t("mode")}
 	class="flex flex-col gap-1 @sm:flex-row @sm:gap-0"
 >
 	{#each tabs as tab, index (tab.mode)}
 		<div
-			{...tab.attrs}
 			role="tab"
 			tabindex={mode.value === tab.mode ? 0 : -1}
 			aria-selected={mode.value === tab.mode}

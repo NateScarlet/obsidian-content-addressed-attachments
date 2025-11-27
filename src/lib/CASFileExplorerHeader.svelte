@@ -71,7 +71,7 @@
 		>
 			{t("rebuildIndex")}
 		</button>
-	{:else if mode.value === Mode.TRASHED}
+	{:else if mode.value === Mode.RECYCLE_BIN}
 		<button
 			type="button"
 			class="flex-none"
