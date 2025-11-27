@@ -1,5 +1,3 @@
-///@ts-check
-
 import svelte from "eslint-plugin-svelte";
 import ts from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
@@ -7,6 +5,7 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 import globals from "globals";
 import svelteConfig from "./svelte.config.mjs";
 import prettierRecommended from "eslint-plugin-prettier/recommended";
+import internalPlugin from "./scripts/eslint-plugin-internal";
 
 export default defineConfig([
 	{
@@ -16,8 +15,9 @@ export default defineConfig([
 			},
 		},
 	},
+	internalPlugin,
 	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json"]),
-	// @ts-ignore
+	// @ts-expect-error not typed
 	...obsidianmd.configs.recommended,
 	ts.configs.eslintRecommended,
 	...ts.configs.recommended,
