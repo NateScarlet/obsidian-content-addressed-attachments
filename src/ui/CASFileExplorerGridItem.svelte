@@ -55,7 +55,7 @@
 		mdiTrashCanOutline,
 	} from "@mdi/js";
 	import { markdownChange, referenceChange } from "src/events";
-	import staleWithRevalidate from "src/utils/staleWhileRevalidate";
+	import staleWithRevalidate from "src/lib/stores/staleWhileRevalidate.svelte";
 	import type { Attachment } from "svelte/attachments";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
