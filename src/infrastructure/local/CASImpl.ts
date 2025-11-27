@@ -55,16 +55,18 @@ export class CASImpl implements CAS {
 		});
 	}
 
-	async delete(cid: CID): Promise<void> {
-		const filePath = this.getFilePath(this.formatRelPath(cid));
-
-		// 检查文件是否存在
-		if (await this.app.vault.adapter.exists(filePath)) {
-			await this.app.vault.adapter.remove(filePath);
+	async deleteIfTrashed(cid: CID): Promise<boolean> {
+		const match = await this.lookup(cid);
+		if (!match) {
+			await this.meta.delete(cid);
+			return false;
 		}
-
-		// 从元数据中删除
+		if (!match.isTrashed) {
+			return false;
+		}
 		await this.meta.delete(cid);
+		await this.app.vault.adapter.remove(match.path);
+		return true;
 	}
 
 	async *objects(): AsyncIterableIterator<CASMetadataObject> {

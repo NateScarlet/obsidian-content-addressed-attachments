@@ -266,7 +266,7 @@ export class CASMetadataImpl implements CASMetadata {
 				};
 			},
 		})) {
-			if (filter(edge.node)) {
+			if (await filter(edge.node)) {
 				yield edge;
 			}
 		}

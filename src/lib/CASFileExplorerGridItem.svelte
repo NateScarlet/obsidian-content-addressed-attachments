@@ -4,6 +4,8 @@
 
 	const { t } = defineLocales({
 		en: {
+			confirmPermanentDelete: (filename: string) =>
+				`Permanently delete "${filename}"? This action cannot be undone.`,
 			restore: "Restore",
 			indexedAt: "Indexed at",
 			trashedAt: "Trashed at",
@@ -13,6 +15,8 @@
 			copyLink: "Copy Link",
 		},
 		zh: {
+			confirmPermanentDelete: (filename: string) =>
+				`永久删除"${filename}"？此操作无法撤销。`,
 			indexedAt: "索引于",
 			restore: "还原",
 			trashedAt: "删除于",
@@ -27,7 +31,10 @@
 		return date.toLocaleDateString() + " " + date.toLocaleTimeString();
 	}
 
-	function generateMarkdownLink(file: FileItem, format: string): string {
+	function generateMarkdownLink(
+		file: CASMetadataObject,
+		format: string,
+	): string {
 		const url = new URL(`ipfs://${file.cid.toString()}`);
 		if (file.filename) {
 			url.searchParams.set("filename", file.filename);
@@ -44,7 +51,7 @@
 </script>
 
 <script lang="ts">
-	import { getContext, type FileItem } from "./CASFileExplorer.svelte";
+	import { getContext } from "./CASFileExplorer.svelte";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "src/utils/showError";
 	import { getAbortSignal } from "svelte";
@@ -57,13 +64,14 @@
 	import { markdownChange, referenceChange } from "src/events";
 	import staleWithRevalidate from "src/lib/stores/staleWhileRevalidate.svelte";
 	import type { Attachment } from "svelte/attachments";
+	import type { CASMetadataObject } from "src/types/CASMetadata";
 
-	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
+	const { cas, app, referenceManager } = getContext();
 
 	let {
 		file,
 	}: {
-		file: FileItem;
+		file: CASMetadataObject;
 	} = $props();
 
 	async function restoreFile() {
@@ -73,14 +81,44 @@
 		}
 	}
 
+	async function deleteFile() {
+		if (
+			!confirm(
+				t("confirmPermanentDelete")(
+					detail?.filename || file.filename || file.cid.toString(),
+				),
+			)
+		) {
+			return;
+		}
+		await cas.deleteIfTrashed(file.cid);
+	}
+
 	async function load(signal: AbortSignal) {
 		const match = await cas.lookup(file.cid);
 		if (!match) {
 			return { ok: false };
 		}
 		signal.throwIfAborted();
+
+		let filename = file.filename ?? "";
+		let format = file.format ?? "";
+
+		// 基于实际引用获取缺少的文件名和格式
+		if (!filename || !format) {
+			for await (const { url, title } of referenceManager.findReference(
+				file.cid,
+			)) {
+				filename = filename || url.filename || title || "";
+				format = format || url.format || "";
+				if (filename && format) {
+					break;
+				}
+				signal.throwIfAborted();
+			}
+		}
+
 		const imgSrc = await (async () => {
-			const { format } = file;
 			if (format && !format.startsWith("image/")) {
 				// 已知不是图片
 				return;
@@ -96,6 +134,7 @@
 			return img
 				.decode()
 				.then(() => {
+					format = "image/*";
 					return src;
 				})
 				.catch(() => undefined);
@@ -105,7 +144,8 @@
 			ok: true,
 			match,
 			imgSrc,
-			format: file.format || (imgSrc ? "image/*" : ""),
+			format,
+			filename,
 		};
 	}
 
@@ -256,7 +296,9 @@
 	<!-- 元数据 -->
 	<div class="text-center space-x-1 text-sm text-muted">
 		<span>{format}</span>
-		<span title="{file.size} Byte">{formatFileSize(file.size)}</span>
+		<span title="{file.size} Byte"
+			>{formatFileSize(detail?.match?.stat.size ?? file.size ?? -1)}</span
+		>
 	</div>
 
 	<!-- 引用文件列表 -->
@@ -297,7 +339,7 @@
 			<!-- 移动到回收站 -->
 			<button
 				class="flex-1"
-				onclick={() => trashFile(file.cid).catch(showError)}
+				onclick={() => cas.trash(file.cid).catch(showError)}
 			>
 				<svg
 					class="inline fill-current h-[1.25rem]"
@@ -322,8 +364,7 @@
 			</button>
 			<button
 				class="flex-1 bg-error! text-primary!"
-				onclick={() =>
-					deleteFile(file.cid, file.filename).catch(showError)}
+				onclick={() => deleteFile().catch(showError)}
 			>
 				<svg
 					class="inline fill-current h-[1.25rem]"

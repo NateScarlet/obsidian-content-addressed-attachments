@@ -10,8 +10,11 @@ export interface CASMetadataObject {
 
 	trashedAt?: Date;
 }
+
 export interface CASMetadataObjectFilters {
+	cid?: CID[];
 	query?: string;
+	hasReference?: boolean;
 	isTrashed?: boolean;
 }
 

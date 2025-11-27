@@ -56,7 +56,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		);
 
 		this.casMetadata = new CASMetadataImpl(
-			new CASMetadataObjectFilterBuilder(),
+			new CASMetadataObjectFilterBuilder(this.referenceManger),
 		);
 		this.cas = new CASImpl(
 			this.app,

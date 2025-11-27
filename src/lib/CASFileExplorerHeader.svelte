@@ -1,6 +1,8 @@
 <script module lang="ts">
+	import showError from "src/utils/showError";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
+	import rebuildCASMetadata from "src/commands/rebuildCASMetadata";
 
 	const { t } = defineLocales({
 		en: {
@@ -8,19 +10,41 @@
 			emptyTrash: "Empty Trash",
 			cleanUnreferenced: "Clean Unreferenced Files",
 			rebuildIndex: "Rebuild Index",
+			confirmEmptyTrash: `Permanently delete ALL files from trash? This action cannot be undone.`,
 		},
 		zh: {
 			searchPlaceholder: "搜索文件...",
 			emptyTrash: "清空回收站",
 			cleanUnreferenced: "清理未引用文件",
 			rebuildIndex: "重建索引",
+			confirmEmptyTrash: `永久删除回收站中的所有个文件？此操作无法撤销。`,
 		},
 	});
 </script>
 
 <script lang="ts">
-	const { query, mode, emptyTrash, cleanUnreferenced, rebuildIndex } =
-		getContext();
+	const { cas, casMetadata, referenceManager, query, mode } = getContext();
+
+	async function cleanUnreferenced() {
+		for await (const { node } of casMetadata.find({
+			hasReference: false,
+		})) {
+			await cas.trash(node.cid);
+		}
+	}
+
+	async function rebuildIndex() {
+		await rebuildCASMetadata(casMetadata, cas.objects());
+		await referenceManager.clearCache();
+	}
+
+	async function emptyTrash() {
+		for await (const { node } of casMetadata.find({
+			isTrashed: true,
+		})) {
+			await cas.deleteIfTrashed(node.cid);
+		}
+	}
 </script>
 
 <div class="flex items-center gap-1 flex-wrap">
@@ -34,15 +58,27 @@
 
 	<!-- 操作按钮 -->
 	{#if mode.value === Mode.ALL}
-		<button type="button" class="flex-none" onclick={rebuildIndex}>
+		<button
+			type="button"
+			class="flex-none"
+			onclick={() => rebuildIndex().catch(showError)}
+		>
 			{t("rebuildIndex")}
 		</button>
 	{:else if mode.value === Mode.TRASHED}
-		<button type="button" class="flex-none" onclick={emptyTrash}>
+		<button
+			type="button"
+			class="flex-none"
+			onclick={() => emptyTrash().catch(showError)}
+		>
 			{t("emptyTrash")}
 		</button>
 	{:else if mode.value === Mode.UNREFERENCED}
-		<button type="button" class="flex-none" onclick={cleanUnreferenced}>
+		<button
+			type="button"
+			class="flex-none"
+			onclick={() => cleanUnreferenced().catch(showError)}
+		>
 			{t("cleanUnreferenced")}
 		</button>
 	{/if}
