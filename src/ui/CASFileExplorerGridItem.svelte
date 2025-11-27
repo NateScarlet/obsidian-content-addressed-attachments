@@ -1,7 +1,6 @@
 <script module lang="ts">
 	import formatFileSize from "src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
-	import type { Action } from "svelte/action";
 
 	const { t } = defineLocales({
 		en: {
@@ -57,6 +56,7 @@
 	} from "@mdi/js";
 	import { markdownChange, referenceChange } from "src/events";
 	import staleWithRevalidate from "src/utils/staleWhileRevalidate";
+	import type { Attachment } from "svelte/attachments";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();
 
@@ -200,7 +200,7 @@
 		);
 	});
 
-	const drag: Action<HTMLElement> = (node) => {
+	const drag: Attachment<HTMLElement> = (node) => {
 		node.draggable = true;
 		const handleDragStart = (event: DragEvent) => {
 			const markdownLink = generateMarkdownLink(file, format);
@@ -208,10 +208,8 @@
 		};
 
 		node.addEventListener("dragstart", handleDragStart);
-		return {
-			destroy() {
-				node.removeEventListener("dragstart", handleDragStart);
-			},
+		return () => {
+			node.removeEventListener("dragstart", handleDragStart);
 		};
 	};
 
@@ -224,7 +222,7 @@
 
 <!-- 卡片布局 -->
 <div
-	use:drag
+	{@attach drag}
 	class="flex flex-col border rounded-lg p-1 @md:p-2 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
 >
 	<!-- 图片预览 -->
