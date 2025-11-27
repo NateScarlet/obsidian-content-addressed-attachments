@@ -24,7 +24,7 @@ export default class CASMetadataObjectFilterBuilder {
 			const m = filterBy.isTrashed;
 			b.add((i) => (i.trashedAt != null) === m);
 		}
-		if (filterBy.hasReference) {
+		if (filterBy.hasReference != null) {
 			const m = filterBy.hasReference;
 			b.add(async (i) => {
 				const n = await this.referenceManager.count(

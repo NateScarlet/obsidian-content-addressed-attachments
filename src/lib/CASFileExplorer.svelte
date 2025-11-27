@@ -78,17 +78,20 @@
 				};
 			case Mode.ACTIVE_NOTE:
 				return {
+					query,
 					cid: Array.from(findIPFSLinks($activeNoteContent)).map(
 						(i) => i.url.cid,
 					),
 				};
 			case Mode.UNREFERENCED:
 				return {
+					query,
 					hasReference: false,
 					isTrashed: false,
 				};
 			case Mode.RECYCLE_BIN:
 				return {
+					query,
 					isTrashed: true,
 				};
 		}
