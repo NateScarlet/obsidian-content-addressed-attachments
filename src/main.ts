@@ -122,7 +122,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		);
 
 		this.registerEvent(
-			this.app.vault.on("modify", async (file) => {
+			this.app.vault.on("modify", (file) => {
 				if (file instanceof TFile && file.extension === "md") {
 					markdownChange.dispatch(file);
 					void this.referenceManger.loadFile(file.path);
@@ -130,7 +130,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}),
 		);
 		this.registerEvent(
-			this.app.workspace.on("editor-change", async (editor, view) => {
+			this.app.workspace.on("editor-change", (editor, view) => {
 				if (view.file && view.file.extension === "md") {
 					markdownChange.dispatch(view.file);
 					void this.referenceManger.loadFileContent(
