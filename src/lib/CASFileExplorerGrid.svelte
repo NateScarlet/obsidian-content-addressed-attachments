@@ -16,7 +16,8 @@
 
 <script lang="ts">
 	import { getContext } from "./CASFileExplorer.svelte";
-	import CASFileExplorerGrid from "./CASFileExplorerGridItem.svelte";
+	import CASFileExplorerGridItem from "./CASFileExplorerGridItem.svelte";
+	import infiniteScroll from "./attachments/infiniteScroll";
 
 	const {
 		files,
@@ -29,7 +30,7 @@
 	const { fetchMore } = getContext();
 </script>
 
-<div class="flex-1 overflow-auto">
+<div class="flex-1 overflow-auto" {@attach infiniteScroll({ fetchMore })}>
 	<!-- 卡片网格布局 -->
 	<div
 		class="grid grid-cols-[repeat(auto-fill,minmax(min(16rem,100%),1fr))] gap-px gap-y-2 p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"
@@ -40,7 +41,7 @@
 			</div>
 		{:else}
 			{#each files.nodes as file (file.cid.toString())}
-				<CASFileExplorerGrid {file} />
+				<CASFileExplorerGridItem {file} />
 			{/each}
 		{/if}
 	</div>
