@@ -47,6 +47,7 @@
 	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
 	import useActiveNoteContent from "./stores/useActiveNoteContent.svelte";
 	import findIPFSLinks from "src/utils/findIPFSLinks";
+	import staleWithRevalidate from "./stores/staleWhileRevalidate.svelte";
 
 	// Props
 	let {
@@ -98,7 +99,7 @@
 	});
 
 	// 文件列表
-	let files = $derived.by(() => {
+	let { result: files } = staleWithRevalidate(() => {
 		void filterBy;
 		return loadPage(getAbortSignal());
 	});
@@ -128,13 +129,16 @@
 	}
 
 	async function fetchMore(signal?: AbortSignal) {
-		const { nodes, endCursor } = await files;
+		if (!$files) {
+			return;
+		}
+		const { nodes, endCursor } = $files;
 
 		const more = await loadPage(signal, endCursor);
-		files = Promise.resolve({
+		$files = {
 			...more,
 			nodes: [...nodes, ...more.nodes],
-		});
+		};
 	}
 
 	let hasNextPage = $state(false);
@@ -166,8 +170,11 @@
 
 	$effect(() => {
 		return casMetadataSave.subscribe(async (e) => {
-			const { nodes, ...rest } = await files;
-			files = Promise.resolve({
+			if (!$files) {
+				return;
+			}
+			const { nodes, ...rest } = $files;
+			$files = {
 				...rest,
 				nodes: replaceArrayItemBy(
 					nodes,
@@ -175,16 +182,19 @@
 					e.detail,
 					{ whenNoMatch: "ignore" },
 				),
-			});
+			};
 		});
 	});
 	$effect(() => {
 		return casMetadataDelete.subscribe(async (e) => {
-			const { nodes, ...rest } = await files;
-			files = Promise.resolve({
+			if (!$files) {
+				return;
+			}
+			const { nodes, ...rest } = $files;
+			$files = {
 				...rest,
 				nodes: nodes.filter((i) => !i.cid.equals(e.detail.cid)),
-			});
+			};
 		});
 	});
 </script>
@@ -192,7 +202,9 @@
 <div class="h-full flex flex-col gap-1 @container">
 	<CASFileExplorerHeader />
 	<CASFileExplorerViewTabs />
-	{#await files}
+	{#if $files}
+		<CASFileExplorerGrid files={$files} />
+	{:else}
 		<div
 			class="grid grid-cols-[repeat(auto-fill,minmax(min(16rem,100%),1fr))] gap-px gap-y-2 p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"
 		>
@@ -200,7 +212,5 @@
 				<div class="h-64 bg-hover animate-pulse rounded"></div>
 			{/each}
 		</div>
-	{:then files}
-		<CASFileExplorerGrid {files} />
-	{/await}
+	{/if}
 </div>
