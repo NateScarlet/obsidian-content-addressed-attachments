@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.8](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.7...0.1.8) (2025-11-27)
+
+
+### Bug Fixes
+
+* reference cache been removed immediately ([990ca11](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/990ca113e901e73779c7cd94d8de66005a817ed8))
+
 ## [0.1.7](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.6...0.1.7) (2025-11-27)
 
 
