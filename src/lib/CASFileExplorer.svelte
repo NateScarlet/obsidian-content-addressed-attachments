@@ -59,11 +59,11 @@
 	} = $props();
 
 	// 状态
-	let currentView = $state<Mode>(Mode.ALL);
+	let mode = $state<Mode>(Mode.ALL);
 	let query = $state("");
 
 	const filterBy = $derived.by((): CASMetadataObjectFilters => {
-		switch (currentView) {
+		switch (mode) {
 			case Mode.ALL:
 				return {
 					query,
@@ -130,10 +130,10 @@
 		app,
 		mode: {
 			get value() {
-				return currentView;
+				return mode;
 			},
 			set value(v) {
-				currentView = v;
+				mode = v;
 			},
 		},
 		query: {
