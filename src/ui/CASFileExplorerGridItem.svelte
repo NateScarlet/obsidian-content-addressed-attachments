@@ -148,65 +148,57 @@
 		});
 	});
 
-	const { result: references, revalidate: revalidateReferences } =
-		staleWithRevalidate(async () => {
-			const cid = file.cid;
-			const signal = getAbortSignal();
-			return Array.fromAsync(
-				(async function* () {
-					let count = 0;
-					for await (const {
-						file,
-						url,
-						title,
-						pos,
-					} of referenceManager.findReference(cid)) {
-						if (signal.aborted) {
-							return;
-						}
-						yield {
-							file,
-							name: title || url.filename,
-							anchorAttrs: {
-								onclick: async () => {
-									try {
-										const leaf =
-											app.workspace.getLeaf(false);
-										await leaf.openFile(file);
-										const view = leaf.view;
-										if (view instanceof MarkdownView) {
-											const editor = view.editor;
-											const range = {
-												from: editor.offsetToPos(
-													pos[0],
-												),
-												to: editor.offsetToPos(pos[1]),
-											};
-											editor.setSelection(
-												range.from,
-												range.to,
-											);
-											editor.scrollIntoView(range, true);
-										}
-									} catch (err) {
-										showError(err);
-									}
-								},
-							},
-						};
-						count += 1;
-						if (count == limit) {
-							return;
-						}
-					}
-				})(),
-			);
-		});
-	$effect(() => {
+	const { result: references } = staleWithRevalidate(async () => {
 		void version;
 		void limit;
-		void file.cid;
-		revalidateReferences();
+		const cid = file.cid;
+		const signal = getAbortSignal();
+		return Array.fromAsync(
+			(async function* () {
+				let count = 0;
+				for await (const {
+					file,
+					url,
+					title,
+					pos,
+				} of referenceManager.findReference(cid)) {
+					if (signal.aborted) {
+						return;
+					}
+					yield {
+						file,
+						name: title || url.filename,
+						anchorAttrs: {
+							onclick: async () => {
+								try {
+									const leaf = app.workspace.getLeaf(false);
+									await leaf.openFile(file);
+									const view = leaf.view;
+									if (view instanceof MarkdownView) {
+										const editor = view.editor;
+										const range = {
+											from: editor.offsetToPos(pos[0]),
+											to: editor.offsetToPos(pos[1]),
+										};
+										editor.setSelection(
+											range.from,
+											range.to,
+										);
+										editor.scrollIntoView(range, true);
+									}
+								} catch (err) {
+									showError(err);
+								}
+							},
+						},
+					};
+					count += 1;
+					if (count == limit) {
+						return;
+					}
+				}
+			})(),
+		);
 	});
 
 	const drag: Action<HTMLElement> = (node) => {

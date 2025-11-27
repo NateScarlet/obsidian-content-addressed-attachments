@@ -1,19 +1,18 @@
-import { writable } from "svelte/store";
+import { toStore, writable } from "svelte/store";
 import castError from "./castError";
 import { onDestroy } from "svelte";
 
-export default function staleWithRevalidate<T>(task: () => Promise<T>) {
-	let lastResult = writable<T | undefined>();
-	let lastError = writable<Error | undefined>();
+export default function staleWithRevalidate<T>(
+	task: () => Promise<T>,
+	initialValue?: T,
+) {
+	const lastResult = writable<T | undefined>(initialValue);
+	const lastError = writable<Error | undefined>();
 	let lastVersion = 0;
 	let nextVersion = 1;
 
-	let taskStore = writable<Promise<T> | undefined>();
-	function revalidate() {
-		taskStore.set(task());
-	}
 	onDestroy(
-		taskStore.subscribe((v) => {
+		toStore(task).subscribe((v) => {
 			if (v == null) {
 				return;
 			}
@@ -36,5 +35,5 @@ export default function staleWithRevalidate<T>(task: () => Promise<T>) {
 		}),
 	);
 
-	return { result: lastResult, error: lastError, revalidate };
+	return { result: lastResult, error: lastError };
 }
