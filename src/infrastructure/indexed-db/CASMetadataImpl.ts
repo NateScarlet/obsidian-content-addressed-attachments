@@ -8,7 +8,7 @@ import type CASMetadataObjectFilterBuilder from "src/CASMetadataObjectFilterBuil
 import executeIDBRequest from "src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
 import { casMetadataDelete, casMetadataSave } from "src/events";
-import { isEqual } from "es-toolkit";
+import { isEqual, uniqBy } from "es-toolkit";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
 const DB_VERSION = 1;
@@ -256,6 +256,31 @@ export class CASMetadataImpl implements CASMetadata {
 		}
 		const db = await this.db;
 		const filter = this.filterBuilder.build(filterBy);
+		if (filterBy.cid) {
+			// 优化：直接基于主键查询
+			let cids = uniqBy(filterBy.cid, (i) => i.toString());
+			if (after) {
+				const index = cids.findIndex((i) => i.toString() === after);
+				if (index < 0) {
+					// 在非法位置查询，视为不匹配所有对象
+					return;
+				}
+				cids = cids.slice(index + 1);
+			}
+
+			for (const cid of cids) {
+				const obj = await this.get(cid, signal);
+				if (obj && (await filter(obj))) {
+					yield {
+						node: obj,
+						cursor: obj.cid.toString(),
+					};
+				}
+				signal?.throwIfAborted();
+			}
+			return;
+		}
+
 		for await (const edge of iterateIDBObjectStore({
 			signal,
 			after,
