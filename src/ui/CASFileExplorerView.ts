@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
-import CASFileExplorer from "./CASFileExplorer.svelte";
+import CASFileExplorer from "src/lib/CASFileExplorer.svelte";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 

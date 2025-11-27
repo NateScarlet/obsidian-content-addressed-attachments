@@ -1,6 +1,6 @@
 import { App, Modal } from "obsidian";
 import type { MigrationProgress } from "../MigrationManager";
-import MigrationProgressComponent from "./MigrationProgress.svelte";
+import MigrationProgressComponent from "src/lib/MigrationProgress.svelte";
 import { mount, unmount } from "svelte";
 
 export class MigrationProgressModal extends Modal {

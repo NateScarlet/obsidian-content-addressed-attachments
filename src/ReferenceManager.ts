@@ -6,7 +6,7 @@ import findIPFSLinks from "./utils/findIPFSLinks";
 import type parseIPFSLink from "./utils/parseIPFSLink";
 import { Notice, type TFile } from "obsidian";
 import { mount, unmount } from "svelte";
-import IncrementalScanProgress from "./ui/IncrementalScanProgress.svelte";
+import IncrementalScanProgress from "src/lib/IncrementalScanProgress.svelte";
 
 export interface ReferenceManagerCache {
 	add(cid: CID, normalizedPath: string): Promise<void>;

@@ -3,8 +3,8 @@ import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import HeadersEditModal from "./HeadersEditModal";
 import clsx from "clsx";
-import TemplateSyntaxHelp from "./TemplateSyntaxHelp.svelte";
-import TemplatePreview from "./TemplatePreview.svelte";
+import TemplateSyntaxHelp from "src/lib/TemplateSyntaxHelp.svelte";
+import TemplatePreview from "src/lib/TemplatePreview.svelte";
 import { mount, unmount } from "svelte";
 import showError from "src/utils/showError";
 
