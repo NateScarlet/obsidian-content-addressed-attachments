@@ -85,7 +85,7 @@
 		if (
 			!confirm(
 				t("confirmPermanentDelete")(
-					detail?.filename || file.filename || file.cid.toString(),
+					$detail?.filename || file.filename || file.cid.toString(),
 				),
 			)
 		) {
@@ -94,7 +94,9 @@
 		await cas.deleteIfTrashed(file.cid);
 	}
 
-	async function load(signal: AbortSignal) {
+	const { result: detail } = staleWithRevalidate(async () => {
+		const signal = getAbortSignal();
+		console.debug("load", file.cid.toString());
 		const match = await cas.lookup(file.cid);
 		if (!match) {
 			return { ok: false };
@@ -108,13 +110,13 @@
 		if (!filename || !format) {
 			for await (const { url, title } of referenceManager.findReference(
 				file.cid,
+				signal,
 			)) {
 				filename = filename || url.filename || title || "";
 				format = format || url.format || "";
 				if (filename && format) {
 					break;
 				}
-				signal.throwIfAborted();
 			}
 		}
 
@@ -147,25 +149,10 @@
 			format,
 			filename,
 		};
-	}
-
-	let detail = $state<Awaited<ReturnType<typeof load>>>();
-
-	$effect(() => {
-		void file.cid;
-		const signal = getAbortSignal();
-		load(signal)
-			.then((v) => {
-				detail = v;
-			})
-			.catch(showError);
-		return () => {
-			detail = undefined;
-		};
 	});
 
-	const format = $derived(detail?.format || file.format || "*/*");
-	const isDeleted = $derived(!!file.trashedAt || detail?.ok === false);
+	const format = $derived($detail?.format || file.format || "*/*");
+	const isDeleted = $derived(!!file.trashedAt || $detail?.ok === false);
 
 	let limit = $state(20);
 	function fetchMore() {
@@ -266,10 +253,10 @@
 	class="flex flex-col border rounded-lg p-1 @md:p-2 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
 >
 	<!-- 图片预览 -->
-	{#if detail?.imgSrc}
+	{#if $detail?.imgSrc}
 		<div class="mb-3 flex justify-center">
 			<img
-				src={detail.imgSrc}
+				src={$detail.imgSrc}
 				class="max-h-32 max-w-full rounded"
 				alt={file.filename}
 				loading="lazy"
@@ -283,8 +270,8 @@
 		class={[
 			"font-semibold truncate text-center",
 			{
-				"text-muted": file.trashedAt && detail?.ok,
-				"text-error": detail?.ok === false,
+				"text-muted": file.trashedAt && $detail?.ok,
+				"text-error": $detail?.ok === false,
 				"text-normal": !isDeleted,
 				"line-through": file.trashedAt,
 			},
@@ -297,7 +284,9 @@
 	<div class="text-center space-x-1 text-sm text-muted">
 		<span>{format}</span>
 		<span title="{file.size} Byte"
-			>{formatFileSize(detail?.match?.stat.size ?? file.size ?? -1)}</span
+			>{formatFileSize(
+				$detail?.match?.stat.size ?? file.size ?? -1,
+			)}</span
 		>
 	</div>
 
