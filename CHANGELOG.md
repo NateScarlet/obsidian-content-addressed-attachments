@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.7](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.6...0.1.7) (2025-11-27)
+
+
+### Features
+
+* add active note mode to file explorer ([b2a87f0](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/b2a87f0b2255ca8a4c248361a3ecebe03d8df2d6))
+* add infinite scroll to file explorer ([1187d1d](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/1187d1d2a412cbcdc422f50b0178c5ad2d668b49))
+* live update reference change ([773a3dd](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/773a3dd5512b24f890e715ee9a93cbce568bec1e))
+
+
+### Bug Fixes
+
+* incorrect filter result ([9c8095d](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/9c8095d245433c73f92e4baaea8e979ec42070cc))
+* should publish cas metadata output object ([fa107b5](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/fa107b5b2d2216f126abbb92b375896ba935b983))
+* should publish changes after commit ([4fb9d21](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/4fb9d21cf2cc972810538d90c20ceb8c9deaa7f9))
+
 ## [0.1.6](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.5...0.1.6) (2025-11-26)
 
 
