@@ -27,7 +27,11 @@ export default class CASMetadataObjectFilterBuilder {
 		if (filterBy.hasReference) {
 			const m = filterBy.hasReference;
 			b.add(async (i) => {
-				const n = await this.referenceManager.count(i.cid, 1);
+				const n = await this.referenceManager.count(
+					i.cid,
+					1,
+					undefined,
+				);
 				return m === n > 0;
 			});
 		}

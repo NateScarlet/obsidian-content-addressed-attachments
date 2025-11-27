@@ -23,10 +23,11 @@ export interface CASMetadata {
 	save(obj: CASMetadataObject): Promise<{ didCreate: boolean }>;
 	delete(cid: CID): Promise<void>;
 	/** 固定使用索引时间降序排列，不支持其他排序 */
-	find(
-		filterBy?: CASMetadataObjectFilters,
-		after?: string,
-	): AsyncIterableIterator<{
+	find(options: {
+		signal: AbortSignal | undefined;
+		filterBy?: CASMetadataObjectFilters;
+		after?: string;
+	}): AsyncIterableIterator<{
 		node: CASMetadataObject;
 		cursor: string;
 	}>;

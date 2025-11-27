@@ -27,7 +27,10 @@
 
 	async function cleanUnreferenced() {
 		for await (const { node } of casMetadata.find({
-			hasReference: false,
+			filterBy: {
+				hasReference: false,
+			},
+			signal: undefined,
 		})) {
 			await cas.trash(node.cid);
 		}
@@ -40,7 +43,10 @@
 
 	async function emptyTrash() {
 		for await (const { node } of casMetadata.find({
-			isTrashed: true,
+			filterBy: {
+				isTrashed: true,
+			},
+			signal: undefined,
 		})) {
 			await cas.deleteIfTrashed(node.cid);
 		}

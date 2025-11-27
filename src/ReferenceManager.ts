@@ -9,11 +9,22 @@ import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "src/lib/IncrementalScanProgress.svelte";
 
 export interface ReferenceManagerCache {
-	add(cid: CID, normalizedPath: string): Promise<void>;
-	find(cid: CID): AsyncIterableIterator<string>;
-	expireByPath(normalizedPath: string, notAfter: Date): Promise<number>;
-	cutoffAt(): Promise<Date>;
-	setCutoffAt(v: Date): Promise<void>;
+	add(
+		cid: CID,
+		normalizedPath: string,
+		signal: AbortSignal | undefined,
+	): Promise<void>;
+	find(
+		cid: CID,
+		signal: AbortSignal | undefined,
+	): AsyncIterableIterator<string>;
+	expireByPath(
+		normalizedPath: string,
+		notAfter: Date,
+		signal: AbortSignal | undefined,
+	): Promise<number>;
+	cutoffAt(signal: AbortSignal | undefined): Promise<Date>;
+	setCutoffAt(v: Date, signal: AbortSignal | undefined): Promise<void>;
 }
 
 export default class ReferenceManager {
@@ -24,12 +35,16 @@ export default class ReferenceManager {
 		this.cache = new ReferenceManagerCacheImpl();
 	}
 
-	async count(cid: CID, limit: number): Promise<number> {
+	async count(
+		cid: CID,
+		limit: number,
+		signal: AbortSignal | undefined,
+	): Promise<number> {
 		if (limit == 0) {
 			return 0;
 		}
 		let count = 0;
-		for await (const path of this.findFilePath(cid)) {
+		for await (const path of this.findFilePath(cid, signal)) {
 			void path;
 			count += 1;
 			if (count == limit) {
@@ -39,9 +54,12 @@ export default class ReferenceManager {
 		return count;
 	}
 
-	async *findFilePath(cid: CID): AsyncIterableIterator<string> {
+	async *findFilePath(
+		cid: CID,
+		signal: AbortSignal | undefined,
+	): AsyncIterableIterator<string> {
 		const prefix = `ipfs://${cid.toString()}`;
-		for await (const normalizedPath of this.cache.find(cid)) {
+		for await (const normalizedPath of this.cache.find(cid, signal)) {
 			if (!(await this.verifyReference(normalizedPath, prefix))) {
 				// 缓存过时了，后台进行重建
 				this.loadFile(normalizedPath).catch((err) => {
@@ -67,7 +85,7 @@ export default class ReferenceManager {
 	}
 
 	private async doIncrementalScan() {
-		const cutoffAt = await this.cache.cutoffAt();
+		const cutoffAt = await this.cache.cutoffAt(undefined);
 		const { vault } = this.plugin.app;
 		const startAt = new Date();
 		const newFiles = vault
@@ -103,7 +121,7 @@ export default class ReferenceManager {
 			);
 		}
 		await Promise.all(jobs);
-		await this.cache.setCutoffAt(startAt);
+		await this.cache.setCutoffAt(startAt, undefined);
 	}
 
 	async loadFile(normalizedPath: string) {
@@ -120,12 +138,16 @@ export default class ReferenceManager {
 		);
 	}
 
-	async loadFileContent(normalizedPath: string, markdown: string) {
+	async loadFileContent(
+		normalizedPath: string,
+		markdown: string,
+		signal?: AbortSignal,
+	) {
 		const startAt = new Date();
 		const jobs: Promise<void>[] = [];
 		for (const { url, title } of findIPFSLinks(markdown)) {
 			jobs.push(
-				this.cache.add(url.cid, normalizedPath),
+				this.cache.add(url.cid, normalizedPath, signal),
 				this.plugin.cas.index({
 					cid: url.cid,
 					indexedAt: new Date(),
@@ -135,40 +157,17 @@ export default class ReferenceManager {
 			);
 		}
 		await Promise.all(jobs);
-		await this.cache.expireByPath(normalizedPath, startAt);
+		await this.cache.expireByPath(normalizedPath, startAt, signal);
 	}
 
-	async clearCache() {
-		await this.cache.setCutoffAt(new Date(0));
+	async clearCache(signal?: AbortSignal) {
+		await this.cache.setCutoffAt(new Date(0), signal);
 	}
 
-	async getDefaultFilename(cid: CID): Promise<string> {
-		await this.incrementalScan();
-		const { vault } = this.plugin.app;
-		for await (const normalizedPath of this.cache.find(cid)) {
-			const file = vault.getFileByPath(normalizedPath);
-			if (!file) {
-				this.loadFile(normalizedPath).catch((err) => {
-					console.error(`load latest file to cache failed`, err);
-				});
-				continue;
-			}
-			const markdown = await vault.cachedRead(file);
-			for (const { url, title } of findIPFSLinks(markdown)) {
-				if (url.cid.equals(cid)) {
-					if (url.filename) {
-						return url.filename;
-					}
-					if (title) {
-						return title;
-					}
-				}
-			}
-		}
-		return cid.toString();
-	}
-
-	async *findReference(cid: CID): AsyncIterableIterator<{
+	async *findReference(
+		cid: CID,
+		signal?: AbortSignal,
+	): AsyncIterableIterator<{
 		file: TFile;
 		pos: [startIndex: number, endIndex: number];
 		url: NonNullable<ReturnType<typeof parseIPFSLink>>;
@@ -176,7 +175,7 @@ export default class ReferenceManager {
 	}> {
 		await this.incrementalScan();
 		const { vault } = this.plugin.app;
-		for await (const normalizedPath of this.cache.find(cid)) {
+		for await (const normalizedPath of this.cache.find(cid, signal)) {
 			const file = vault.getFileByPath(normalizedPath);
 			if (!file) {
 				this.loadFile(normalizedPath).catch((err) => {

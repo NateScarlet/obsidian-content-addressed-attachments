@@ -90,11 +90,11 @@
 		let matchCount = 0;
 		let endCursor = "";
 		const nodes: CASMetadataObject[] = [];
-		for await (const { node, cursor } of casMetadata.find(
+		for await (const { node, cursor } of casMetadata.find({
 			filterBy,
 			after,
-		)) {
-			signal?.throwIfAborted();
+			signal,
+		})) {
 			matchCount++;
 			nodes.push(node);
 			endCursor = cursor;

@@ -45,11 +45,11 @@ export class CASMetadataImpl implements CASMetadata {
 					});
 				}
 			};
-			return executeIDBRequest(request);
+			return executeIDBRequest(request, undefined);
 		})();
 	}
 
-	async estimateStorage(): Promise<{
+	async estimateStorage(signal?: AbortSignal): Promise<{
 		normalBytes: number;
 		trashBytes: number;
 	}> {
@@ -59,6 +59,7 @@ export class CASMetadataImpl implements CASMetadata {
 
 		const stats = await executeIDBRequest(
 			store.get(STATS_KEY) as IDBRequest<Stats | undefined>,
+			signal,
 		);
 		return stats || { normalBytes: 0, trashBytes: 0 };
 	}
@@ -69,6 +70,7 @@ export class CASMetadataImpl implements CASMetadata {
 			store: IDBObjectStore;
 			recordChange: (newValue?: PO, oldValue?: PO) => void;
 		}) => Promise<T>,
+		signal: AbortSignal | undefined,
 	): Promise<T> {
 		const db = await this.db;
 		const transaction = db.transaction(
@@ -92,6 +94,7 @@ export class CASMetadataImpl implements CASMetadata {
 				await this.updateStats(
 					transaction.objectStore(STATS_STORE_NAME),
 					changes,
+					signal,
 				);
 			}
 
@@ -106,9 +109,11 @@ export class CASMetadataImpl implements CASMetadata {
 	private async updateStats(
 		statsStore: IDBObjectStore,
 		changes: { newValue?: PO; oldValue?: PO }[],
+		signal: AbortSignal | undefined,
 	): Promise<void> {
 		const currentStats = (await executeIDBRequest(
 			statsStore.get(STATS_KEY) as IDBRequest<Stats | undefined>,
+			signal,
 		)) || { id: STATS_KEY, normalBytes: 0, trashBytes: 0 };
 
 		let normalBytesDelta = 0;
@@ -151,27 +156,36 @@ export class CASMetadataImpl implements CASMetadata {
 			currentStats.trashBytes + trashBytesDelta,
 		);
 
-		await executeIDBRequest(statsStore.put(currentStats));
+		await executeIDBRequest(statsStore.put(currentStats), signal);
 	}
 
-	async get(cid: CID): Promise<CASMetadataObject | undefined> {
-		return this.tx("readonly", async ({ store }) => {
-			const po = await executeIDBRequest(
-				store.get(cid.toString()) as IDBRequest<PO | undefined>,
-			);
-			if (po) {
-				return this.decode(po);
-			}
-		});
+	async get(
+		cid: CID,
+		signal?: AbortSignal,
+	): Promise<CASMetadataObject | undefined> {
+		return this.tx(
+			"readonly",
+			async ({ store }) => {
+				const po = await executeIDBRequest(
+					store.get(cid.toString()) as IDBRequest<PO | undefined>,
+					signal,
+				);
+				if (po) {
+					return this.decode(po);
+				}
+			},
+			signal,
+		);
 	}
 
-	async save(obj: CASMetadataObject) {
+	async save(obj: CASMetadataObject, signal?: AbortSignal) {
 		const result = await this.tx(
 			"readwrite",
 			async ({ store, recordChange }) => {
 				const cidStr = obj.cid.toString();
 				const existing = await executeIDBRequest(
 					store.get(cidStr) as IDBRequest<PO | undefined>,
+					signal,
 				);
 				const po: PO = this.encode(obj);
 
@@ -193,9 +207,10 @@ export class CASMetadataImpl implements CASMetadata {
 					}
 				}
 				recordChange(po, existing);
-				await executeIDBRequest(store.put(po));
+				await executeIDBRequest(store.put(po), signal);
 				return { didCreate: !existing, didChange: true, after: po };
 			},
+			signal,
 		);
 		if (result.didChange) {
 			casMetadataSave.dispatch(this.decode(result.after));
@@ -203,34 +218,42 @@ export class CASMetadataImpl implements CASMetadata {
 		return result;
 	}
 
-	async delete(cid: CID): Promise<void> {
+	async delete(cid: CID, signal?: AbortSignal): Promise<void> {
 		const existing = await this.tx(
 			"readwrite",
 			async ({ store, recordChange }) => {
 				const cidStr = cid.toString();
 				const existing = await executeIDBRequest(
 					store.get(cidStr) as IDBRequest<PO | undefined>,
+					signal,
 				);
 				if (!existing) {
 					return;
 				}
 				recordChange(undefined, existing); // 记录删除
-				await executeIDBRequest(store.delete(cidStr));
+				await executeIDBRequest(store.delete(cidStr), signal);
 				return existing;
 			},
+			signal,
 		);
 		if (existing) {
 			casMetadataDelete.dispatch(this.decode(existing));
 		}
 	}
 
-	async *find(
-		filterBy: CASMetadataObjectFilters,
-		after?: string,
-	): AsyncIterableIterator<{ node: CASMetadataObject; cursor: string }> {
+	async *find({
+		signal,
+		filterBy = {},
+		after,
+	}: {
+		signal: AbortSignal | undefined;
+		filterBy?: CASMetadataObjectFilters;
+		after?: string;
+	}): AsyncIterableIterator<{ node: CASMetadataObject; cursor: string }> {
 		const db = await this.db;
 		const filter = this.filterBuilder.build(filterBy);
 		for await (const edge of iterateIDBObjectStore({
+			signal,
 			after,
 			open: async (afterCursor) => {
 				const tx = db.transaction(OBJECTS_STORE_NAME, "readonly");
@@ -249,6 +272,7 @@ export class CASMetadataImpl implements CASMetadata {
 							: null,
 						"prev",
 					),
+					signal,
 				);
 				return {
 					cursor,

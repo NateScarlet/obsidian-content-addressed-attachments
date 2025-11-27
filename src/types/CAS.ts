@@ -10,7 +10,7 @@ export interface CAS {
 		cid: CID,
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined>;
 	save(file: File): Promise<{ cid: CID; didCreate: boolean }>;
-	delete(cid: CID): Promise<void>;
+	deleteIfTrashed(cid: CID): Promise<boolean>;
 	objects(): AsyncIterableIterator<CASMetadataObject>;
 	/** 索引元数据，使其和实际一致 */
 	index(meta: CASMetadataObject): Promise<void>;

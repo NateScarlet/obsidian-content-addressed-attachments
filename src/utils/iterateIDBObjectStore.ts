@@ -5,7 +5,9 @@ export default async function* iterateIDBObjectStore<TData, TResult>({
 	open,
 	decode,
 	batchSize = 128,
+	signal,
 }: {
+	signal: AbortSignal | undefined;
 	after?: string | undefined;
 	open: (after?: string) => Promise<{
 		cursor: IDBCursorWithValue | null | undefined;
@@ -14,6 +16,7 @@ export default async function* iterateIDBObjectStore<TData, TResult>({
 	decode: (data: TData) => { node: TResult; cursor: string };
 	batchSize?: number;
 }) {
+	signal?.throwIfAborted();
 	const batch: TData[] = [];
 	let hasMore = true;
 	while (hasMore) {
@@ -29,6 +32,7 @@ export default async function* iterateIDBObjectStore<TData, TResult>({
 				cursor.continue();
 				cursor = await executeIDBRequest(
 					cursor.request as IDBRequest<IDBCursorWithValue | null>,
+					signal,
 				);
 			}
 		} finally {
@@ -37,6 +41,7 @@ export default async function* iterateIDBObjectStore<TData, TResult>({
 		for (const po of batch) {
 			const edge = decode(po);
 			yield edge;
+			signal?.throwIfAborted();
 			after = edge.cursor;
 		}
 		hasMore = batchSize > 0 && batch.length === batchSize;

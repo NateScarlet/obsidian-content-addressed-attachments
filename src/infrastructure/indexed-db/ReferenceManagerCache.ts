@@ -35,7 +35,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 					db.createObjectStore(STORE_META, { keyPath: "key" });
 				}
 			};
-			return executeIDBRequest(request);
+			return executeIDBRequest(request, undefined);
 		})();
 	}
 
@@ -60,7 +60,11 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		}
 	}
 
-	async add(cid: CID, normalizedPath: string): Promise<void> {
+	async add(
+		cid: CID,
+		normalizedPath: string,
+		signal?: AbortSignal,
+	): Promise<void> {
 		const { didCreate } = await this.tx(
 			"readwrite",
 			[STORE_REFERENCES],
@@ -73,8 +77,9 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 				};
 				const existing = await executeIDBRequest(
 					store.count([po.cid, po.normalizedPath]),
+					signal,
 				);
-				await executeIDBRequest(store.put(po));
+				await executeIDBRequest(store.put(po), signal);
 				return {
 					didCreate: !existing,
 				};
@@ -89,7 +94,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		}
 	}
 
-	async *find(cid: CID): AsyncIterableIterator<string> {
+	async *find(cid: CID, signal?: AbortSignal): AsyncIterableIterator<string> {
 		const db = await this.db;
 
 		for await (const edge of iterateIDBObjectStore({
@@ -107,6 +112,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 							true,
 						),
 					),
+					signal,
 				);
 				return {
 					cursor,
@@ -119,6 +125,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 					cursor: po.normalizedPath,
 				};
 			},
+			signal,
 		}))
 			yield edge.node.normalizedPath;
 	}
@@ -126,6 +133,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 	async expireByPath(
 		normalizedPath: string,
 		notAfter: Date,
+		signal?: AbortSignal,
 	): Promise<number> {
 		const changes = await this.tx(
 			"readwrite",
@@ -148,12 +156,14 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 								[normalizedPath + "\x00"],
 							),
 						),
+						signal,
 					);
 					cursor;
 					cursor = await (async function next() {
 						cursor.continue();
 						return executeIDBRequest(
 							cursor.request as IDBRequest<IDBCursorWithValue | null>,
+							signal,
 						);
 					})()
 				) {
@@ -162,7 +172,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 						// 只删除最后更新时间在 notAfter 之前的记录
 						break;
 					}
-					await executeIDBRequest(cursor.delete());
+					await executeIDBRequest(cursor.delete(), signal);
 					changes.push({
 						action: "remove",
 						cid: CID.parse(po.cid),
@@ -176,11 +186,12 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		return changes.length;
 	}
 
-	async cutoffAt(): Promise<Date> {
+	async cutoffAt(signal?: AbortSignal): Promise<Date> {
 		return await this.tx("readonly", [STORE_META], async (stores) => {
 			const store = stores.get(STORE_META)!;
 			const meta = await executeIDBRequest(
 				store.get("cutoffAt") as IDBRequest<MetaPO | undefined>,
+				signal,
 			);
 
 			if (meta) {
@@ -192,14 +203,14 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		});
 	}
 
-	async setCutoffAt(v: Date): Promise<void> {
+	async setCutoffAt(v: Date, signal?: AbortSignal): Promise<void> {
 		await this.tx("readwrite", [STORE_META], async (stores) => {
 			const store = stores.get(STORE_META)!;
 			const po: MetaPO = {
 				key: "cutoffAt",
 				value: v.getTime(),
 			};
-			await executeIDBRequest(store.put(po));
+			await executeIDBRequest(store.put(po), signal);
 		});
 	}
 }
