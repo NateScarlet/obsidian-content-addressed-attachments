@@ -56,7 +56,6 @@
 		mdiTrashCanOutline,
 	} from "@mdi/js";
 	import { markdownChange, referenceChange } from "src/events";
-	import { writable } from "svelte/store";
 	import staleWithRevalidate from "src/utils/staleWhileRevalidate";
 
 	const { cas, app, referenceManager, trashFile, deleteFile } = getContext();

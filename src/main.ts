@@ -211,7 +211,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	private async revealFileExplorer(): Promise<void> {
 		const { workspace } = this.app;
-		let leaf =
+		const leaf =
 			workspace.getLeavesOfType(CAS_FILE_EXPLORER_VIEW_TYPE)[0] ??
 			workspace.getLeftLeaf(false);
 

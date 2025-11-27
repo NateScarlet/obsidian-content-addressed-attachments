@@ -66,7 +66,7 @@
 <script lang="ts">
 	import { createContext, untrack } from "svelte";
 	import { CID } from "multiformats/cid";
-	import { MarkdownView, Notice, type App } from "obsidian";
+	import { Notice, type App } from "obsidian";
 	import type { CASMetadata, CASMetadataObject } from "src/types/CASMetadata";
 	import type { CAS } from "src/types/CAS";
 	import ReferenceManager from "src/ReferenceManager";

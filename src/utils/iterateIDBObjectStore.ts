@@ -17,7 +17,9 @@ export default async function* iterateIDBObjectStore<TData, TResult>({
 	const batch: TData[] = [];
 	let hasMore = true;
 	while (hasMore) {
-		let { cursor, close } = await open(after);
+		const openResult = await open(after);
+		const { close } = openResult;
+		let { cursor } = openResult;
 		if (cursor == null) {
 			return;
 		}
