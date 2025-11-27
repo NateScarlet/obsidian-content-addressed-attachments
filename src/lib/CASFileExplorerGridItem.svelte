@@ -61,7 +61,7 @@
 		mdiRestore,
 		mdiTrashCanOutline,
 	} from "@mdi/js";
-	import { markdownChange, referenceChange } from "src/events";
+	import { referenceChange } from "src/events";
 	import staleWithRevalidate from "src/lib/stores/staleWhileRevalidate.svelte";
 	import type { Attachment } from "svelte/attachments";
 	import type { CASMetadataObject } from "src/types/CASMetadata";
@@ -158,22 +158,8 @@
 	function fetchMore() {
 		limit += 20;
 	}
-	let version = $state(0);
-	$effect(() => {
-		return referenceChange.subscribe((e) => {
-			if (e.detail.cid.equals(file.cid)) {
-				version += 1;
-			}
-		});
-	});
-	$effect(() => {
-		return markdownChange.subscribe(async (e) => {
-			if ($references?.some((i) => i.file.path === e.detail.path)) {
-				version += 1;
-			}
-		});
-	});
 
+	let version = $state(0);
 	const { result: references } = staleWithRevalidate(async () => {
 		void version;
 		void limit;
@@ -225,6 +211,13 @@
 				}
 			})(),
 		);
+	});
+	$effect(() => {
+		return referenceChange.subscribe((e) => {
+			if (e.detail.cid.equals(file.cid)) {
+				version += 1;
+			}
+		});
 	});
 
 	const drag: Attachment<HTMLElement> = (node) => {
