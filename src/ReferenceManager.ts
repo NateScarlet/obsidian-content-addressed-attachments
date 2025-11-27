@@ -20,7 +20,7 @@ export interface ReferenceManagerCache {
 	): AsyncIterableIterator<string>;
 	expireByPath(
 		normalizedPath: string,
-		notAfter: Date,
+		lastUpdatedBefore: Date,
 		signal: AbortSignal | undefined,
 	): Promise<number>;
 	cutoffAt(signal: AbortSignal | undefined): Promise<Date>;

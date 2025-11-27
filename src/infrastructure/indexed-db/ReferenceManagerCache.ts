@@ -132,7 +132,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 
 	async expireByPath(
 		normalizedPath: string,
-		notAfter: Date,
+		lastUpdatedBefore: Date,
 		signal?: AbortSignal,
 	): Promise<number> {
 		const changes = await this.tx(
@@ -141,7 +141,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 			async (stores) => {
 				const store = stores.get(STORE_REFERENCES)!;
 				const index = store.index("path");
-				const notAfterTime = notAfter.getTime();
+				const beforeTime = lastUpdatedBefore.getTime();
 
 				const changes: {
 					action: "remove";
@@ -168,16 +168,17 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 					})()
 				) {
 					const po = cursor.value as ReferencePO;
-					if (po.lastUpdatedAt > notAfterTime) {
-						// 只删除最后更新时间在 notAfter 之前的记录
+					if (po.lastUpdatedAt < beforeTime) {
+						// 只删除最后更新时间在 before 之前的记录
+						await executeIDBRequest(cursor.delete(), signal);
+						changes.push({
+							action: "remove",
+							cid: CID.parse(po.cid),
+							path: po.normalizedPath,
+						});
+					} else {
 						break;
 					}
-					await executeIDBRequest(cursor.delete(), signal);
-					changes.push({
-						action: "remove",
-						cid: CID.parse(po.cid),
-						path: po.normalizedPath,
-					});
 				}
 				return changes;
 			},
