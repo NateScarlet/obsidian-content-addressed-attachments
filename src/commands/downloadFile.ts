@@ -20,6 +20,9 @@ export default async function downloadFile(
 		return;
 	}
 	await using stack = new AsyncDisposableStack();
+	stack.adopt(new Notice(t("downloading") + "\n" + handle.name), (i) =>
+		i.hide(),
+	);
 
 	const result = await resolver.resolveURL(link.rawURL);
 	if (!result) {
@@ -37,8 +40,10 @@ export default async function downloadFile(
 const { t } = defineLocales({
 	en: {
 		notAvailable: "Can not found available external storage for this file",
+		downloading: "Downloading",
 	},
 	zh: {
 		notAvailable: "找不到可提供指定文件的外部存储",
+		downloading: "正在下载",
 	},
 });
