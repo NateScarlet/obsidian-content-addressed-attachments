@@ -1,4 +1,4 @@
-import { MarkdownView, Plugin, TFile } from "obsidian";
+import { Plugin, TFile } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -18,6 +18,8 @@ import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 import showError from "./utils/showError";
 import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
+import insertAttachment from "./commands/insertAttachment";
+import formatMarkdownLink from "./utils/formatMarkdownLink";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -89,7 +91,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const text = await this.generateMarkdownLink(file);
+						const { cid } = await this.cas.save(file);
+						const text = formatMarkdownLink(file, cid);
 						editor.replaceRange(
 							text,
 							editor.getCursor("from"),
@@ -110,7 +113,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const text = await this.generateMarkdownLink(file);
+						const { cid } = await this.cas.save(file);
+						const text = formatMarkdownLink(file, cid);
 						editor.replaceRange(
 							text,
 							editor.getCursor("from"),
@@ -146,33 +150,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "insert-attachment",
 			name: t("insertAttachment"),
 			callback: () => {
-				window
-					.showOpenFilePicker({
-						id: "insert-attachment-ee03d94fe3c6",
-						multiple: true,
-					})
-					.then(async (handles) => {
-						const files = await Promise.all(
-							handles.map((h) => h.getFile()),
-						);
-						const view =
-							this.app.workspace.getActiveViewOfType(
-								MarkdownView,
-							);
-						if (!view) {
-							return;
-						}
-						const editor = view.editor;
-						for (const file of files) {
-							const text = await this.generateMarkdownLink(file);
-							editor.replaceRange(
-								text,
-								editor.getCursor("from"),
-								editor.getCursor("to"),
-							);
-						}
-					})
-					.catch(showError);
+				insertAttachment(this.app, this.cas).catch(showError);
 			},
 		});
 
@@ -220,22 +198,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			active: true,
 		});
 		await workspace.revealLeaf(leaf);
-	}
-
-	private async generateMarkdownLink(file: File): Promise<string> {
-		const { cid } = await this.cas.save(file);
-		const url = new URL(`ipfs://${cid.toString()}`);
-		if (file.name) {
-			url.searchParams.set("filename", file.name);
-		}
-		if (file.type) {
-			url.searchParams.set("format", file.type);
-		}
-		if (file.type.startsWith("image/")) {
-			return `![${file.name || "image"}](${url})`;
-		} else {
-			return `[${file.name ?? "attachment"}](${url})`;
-		}
 	}
 
 	private setupMutationObserver() {
