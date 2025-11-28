@@ -20,7 +20,7 @@ export default class CASMetadataObjectFilterBuilder {
 			const m = new ExactSearchMatcher(filterBy.query);
 			b.add((i) => m.match(i.cid.toString(), i.filename ?? ""));
 		}
-		if (filterBy.isTrashed) {
+		if (filterBy.isTrashed != null) {
 			const m = filterBy.isTrashed;
 			b.add((i) => (i.trashedAt != null) === m);
 		}
