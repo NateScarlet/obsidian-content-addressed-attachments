@@ -19,7 +19,7 @@
 	const [getContext, setContext] = createContext<CASFileExplorerContext>();
 
 	export enum Mode {
-		ALL,
+		LOCAL,
 		ACTIVE_NOTE,
 		UNREFERENCED,
 		RECYCLE_BIN,
@@ -63,7 +63,7 @@
 	} = $props();
 
 	// 状态
-	let mode = $state<Mode>(Mode.ALL);
+	let mode = $state<Mode>(Mode.LOCAL);
 	let query = $state("");
 
 	let activeNoteContent = useActiveNoteContent(
@@ -73,9 +73,10 @@
 
 	const filterBy = $derived.by((): CASMetadataObjectFilters => {
 		switch (mode) {
-			case Mode.ALL:
+			case Mode.LOCAL:
 				return {
 					query,
+					isTrashed: false,
 				};
 			case Mode.ACTIVE_NOTE:
 				return {

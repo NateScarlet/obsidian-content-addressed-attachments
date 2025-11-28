@@ -63,7 +63,7 @@
 	/>
 
 	<!-- 操作按钮 -->
-	{#if mode.value === Mode.ALL}
+	{#if mode.value === Mode.LOCAL}
 		<button
 			type="button"
 			class="flex-none"

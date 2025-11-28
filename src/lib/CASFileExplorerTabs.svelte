@@ -7,14 +7,14 @@
 
 	const { t } = defineLocales({
 		en: {
-			all: "All",
+			all: "Local",
 			unreferenced: "Unreferenced",
 			recycleBin: "Recycle Bin",
 			mode: "Mode",
 			activeNote: "Active Note",
 		},
 		zh: {
-			all: "所有",
+			all: "本地",
 			unreferenced: "未引用",
 			recycleBin: "回收站",
 			mode: "模式",
@@ -34,7 +34,7 @@
 			updateEstimateStorage();
 		});
 	});
-	const views = [Mode.ALL, Mode.UNREFERENCED, Mode.RECYCLE_BIN];
+	const views = [Mode.LOCAL, Mode.UNREFERENCED, Mode.RECYCLE_BIN];
 	function handleKeydown(event: KeyboardEvent, view: Mode) {
 		const currentIndex = views.indexOf(mode.value);
 
@@ -69,9 +69,9 @@
 				break;
 		}
 	}
-	const totalBytes = $derived.by(async () => {
-		const { normalBytes, trashBytes } = await estimateStorage;
-		return normalBytes + trashBytes;
+	const normalBytes = $derived.by(async () => {
+		const { normalBytes } = await estimateStorage;
+		return normalBytes;
 	});
 	const trashBytes = $derived.by(async () => {
 		const { trashBytes } = await estimateStorage;
@@ -80,9 +80,9 @@
 	// 定义标签配置，只包含每个标签特有的属性
 	const tabs = [
 		{
-			mode: Mode.ALL,
+			mode: Mode.LOCAL,
 			translationKey: "all" as const,
-			size: () => totalBytes,
+			size: () => normalBytes,
 		},
 		{
 			mode: Mode.ACTIVE_NOTE,
