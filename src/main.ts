@@ -2,7 +2,6 @@ import { MarkdownView, Plugin, TFile } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
-import IPFSLinkClickExtension from "./IPFSLinkClickExtension";
 import { URLResolver } from "./URLResolver";
 import { getDefaultSettings, type Settings } from "./settings";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
@@ -18,6 +17,7 @@ import ReferenceManager from "./ReferenceManager";
 import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 import showError from "./utils/showError";
 import { markdownChange } from "./events";
+import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -73,7 +73,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.setupMutationObserver();
 
 		this.registerEditorExtension(
-			new IPFSLinkClickExtension(this).createExtension(),
+			createIPFSLinkClickExtension(this.urlResolver),
 		);
 
 		this.addSettingTab(new MainPluginSettingTab(this));

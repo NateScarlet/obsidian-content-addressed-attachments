@@ -1,3 +1,11 @@
+type WellKnownDirectory =
+	| "desktop"
+	| "documents"
+	| "downloads"
+	| "music"
+	| "pictures"
+	| "videos";
+
 interface Window {
 	electron?: {
 		shell?: {
@@ -10,7 +18,15 @@ interface Window {
 		excludeAcceptAllOption?: boolean;
 		id?: string;
 		multiple?: boolean;
-		startIn?: FileSystemFileHandle | string;
+		startIn?: FileSystemFileHandle | WellKnownDirectory;
 		types?: { accept: Record<string, string[]>; description?: string }[];
 	}): Promise<FileSystemFileHandle[]>;
+	/** https://developer.mozilla.org/en-US/docs/Web/API/Window/showSaveFilePicker */
+	showSaveFilePicker(options?: {
+		excludeAcceptAllOption?: boolean;
+		id?: string;
+		startIn?: FileSystemFileHandle | WellKnownDirectory;
+		suggestedName?: string;
+		types?: { accept: Record<string, string[]>; description?: string }[];
+	}): Promise<FileSystemFileHandle>;
 }
