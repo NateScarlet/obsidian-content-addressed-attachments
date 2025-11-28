@@ -19,7 +19,7 @@ import showError from "./utils/showError";
 import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 import insertAttachment from "./commands/insertAttachment";
-import formatMarkdownLink from "./utils/formatMarkdownLink";
+import insertFileAtCursor from "./commands/insertFileAtCursor";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -92,12 +92,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					e.preventDefault();
 					if (file) {
 						const { cid } = await this.cas.save(file);
-						const text = formatMarkdownLink(file, cid);
-						editor.replaceRange(
-							text,
-							editor.getCursor("from"),
-							editor.getCursor("to"),
-						);
+						insertFileAtCursor(file, cid, editor);
 					}
 				}
 			}),
@@ -114,12 +109,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					e.preventDefault();
 					if (file) {
 						const { cid } = await this.cas.save(file);
-						const text = formatMarkdownLink(file, cid);
-						editor.replaceRange(
-							text,
-							editor.getCursor("from"),
-							editor.getCursor("to"),
-						);
+						insertFileAtCursor(file, cid, editor);
 					}
 				}
 			}),
