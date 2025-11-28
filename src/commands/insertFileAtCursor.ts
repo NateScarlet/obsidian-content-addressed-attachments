@@ -7,7 +7,22 @@ export default function insertFileAtCursor(
 	cid: CID,
 	editor: Editor,
 ) {
-	const text = formatMarkdownLink(file, cid);
+	const from = editor.getCursor("from");
+	const to = editor.getCursor("to");
+	const hasSelection = from.line !== to.line || from.ch !== to.ch;
 
-	editor.replaceRange(text, editor.getCursor("from"), editor.getCursor("to"));
+	let text = formatMarkdownLink(file, cid);
+	if (!hasSelection && editor.getLine(from.line).trim() === "") {
+		text += "\n";
+	}
+
+	editor.replaceSelection(text);
+
+	// 移动光标到后面
+	if (!hasSelection) {
+		editor.setCursor({
+			line: from.line,
+			ch: from.ch + text.length,
+		});
+	}
 }
