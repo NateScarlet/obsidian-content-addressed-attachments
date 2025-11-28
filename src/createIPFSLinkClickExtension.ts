@@ -26,11 +26,14 @@ export default function createIPFSLinkClickExtension(urlResolver: URLResolver) {
 			for (const {
 				pos: [start, end],
 				url,
+				title,
 			} of findIPFSLinks(line.text)) {
 				if (start <= linePos && end >= linePos) {
 					event.preventDefault();
 					event.stopPropagation();
-					downloadFile(urlResolver, url).catch(showError);
+					downloadFile(urlResolver, url, url.filename || title).catch(
+						showError,
+					);
 					return;
 				}
 			}

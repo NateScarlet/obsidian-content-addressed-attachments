@@ -6,11 +6,13 @@ import type { IPFSLink } from "src/utils/parseIPFSLink";
 export default async function downloadFile(
 	resolver: URLResolver,
 	link: IPFSLink,
+	filename?: string,
 ): Promise<void> {
 	const handle = await window
 		.showSaveFilePicker({
 			id: "download-d6dc3c38f29f",
-			suggestedName: link.filename || `${link.cid.toString()}.data`,
+			suggestedName:
+				filename || link.filename || `${link.cid.toString()}.data`,
 			startIn: "downloads",
 		})
 		.catch(() => undefined);
