@@ -1,7 +1,7 @@
 import { PluginSettingTab, Setting } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
-import HeadersEditModal from "./HeadersEditModal";
+import GatewayOptionsModal from "./GatewayOptionsModal";
 import clsx from "clsx";
 import TemplateSyntaxHelp from "src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "src/lib/TemplatePreview.svelte";
@@ -109,11 +109,12 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setIcon("settings")
 						.setTooltip(t("editHeaders"))
 						.onClick(() => {
-							new HeadersEditModal(
+							new GatewayOptionsModal(
 								this.app,
 								config,
-								(newHeaders) => {
-									config.headers = newHeaders;
+								(config) => {
+									this.plugin.settings.gatewayURLs[index] =
+										config;
 									this.plugin.saveSettings().catch(showError);
 									this.display();
 								},
