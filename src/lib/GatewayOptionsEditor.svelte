@@ -123,7 +123,7 @@
 			class="bg-error! text-primary!"
 			onclick={() => deleteConfig()}
 		>
-			<svg class="inline fill-current h-[1.25rem]" viewBox="0 0 24 24">
+			<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
 				<path d={mdiTrashCanOutline} />
 			</svg>
 			<span>{t("delete")}</span>

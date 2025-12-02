@@ -310,7 +310,7 @@
 			<!-- 复制 -->
 			<button class="flex-2" onclick={() => copyLink().catch(showError)}>
 				<svg
-					class="inline fill-current h-[1.25rem]"
+					class="inline fill-current h-[1.25em]"
 					viewBox="0 0 24 24"
 				>
 					<path d={mdiLinkVariant} />
@@ -323,7 +323,7 @@
 				onclick={() => cas.trash(file.cid).catch(showError)}
 			>
 				<svg
-					class="inline fill-current h-[1.25rem]"
+					class="inline fill-current h-[1.25em]"
 					viewBox="0 0 24 24"
 				>
 					<path d={mdiTrashCanOutline} />
@@ -336,7 +336,7 @@
 				onclick={() => restoreFile().catch(showError)}
 			>
 				<svg
-					class="inline fill-current h-[1.25rem]"
+					class="inline fill-current h-[1.25em]"
 					viewBox="0 0 24 24"
 				>
 					<path d={mdiRestore} />
@@ -348,7 +348,7 @@
 				onclick={() => deleteFile().catch(showError)}
 			>
 				<svg
-					class="inline fill-current h-[1.25rem]"
+					class="inline fill-current h-[1.25em]"
 					viewBox="0 0 24 24"
 				>
 					<path d={mdiDeleteAlertOutline} />

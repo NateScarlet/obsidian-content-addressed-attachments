@@ -14,7 +14,7 @@
 
 <button type="button" class="w-full flex items-center justify-center" {onclick}>
 	{#if icon}
-		<svg class="inline fill-current h-[1.25rem]" viewBox="0 0 24 24">
+		<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
 			<path d={icon.pathData} />
 		</svg>
 	{/if}
