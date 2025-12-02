@@ -11,6 +11,7 @@ export default class GatewayOptionsModal extends Modal {
 		app: App,
 		private config: GatewayConfig,
 		private updateConfig: (v: GatewayConfig) => void,
+		private deleteConfig: () => void,
 	) {
 		super(app);
 	}
@@ -26,6 +27,10 @@ export default class GatewayOptionsModal extends Modal {
 				props: {
 					config: this.config,
 					updateConfig: this.updateConfig,
+					deleteConfig: () => {
+						this.deleteConfig();
+						this.close();
+					},
 				},
 			}),
 			(i) => void unmount(i),

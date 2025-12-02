@@ -10,6 +10,7 @@
 			downloadDir: "Download Directory",
 			downloadDirPlaceholder:
 				"Relative path to vault root. Defaults to internal storage directory.",
+			delete: "Delete Gateway",
 		},
 		zh: {
 			headers: "请求头",
@@ -19,6 +20,7 @@
 				"例如:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
 			downloadDir: "下载目录",
 			downloadDirPlaceholder: "相对于存储库的根目录。默认为内部存储目录",
+			delete: "删除网关",
 		},
 	});
 	//#endregion
@@ -28,13 +30,16 @@
 	import type { GatewayConfig } from "src/URLResolver";
 	import defineLocales from "src/utils/defineLocales";
 	import textAreaAutoHeight from "./attachments/textareaAutoHeight.svelte";
+	import { mdiTrashCanOutline } from "@mdi/js";
 
 	const {
 		config,
 		updateConfig,
+		deleteConfig,
 	}: {
 		config: Readonly<GatewayConfig>;
 		updateConfig: (config: GatewayConfig) => void;
+		deleteConfig: () => void;
 	} = $props();
 
 	let headerTextBuffer = $state<string>();
@@ -90,7 +95,7 @@
 	};
 </script>
 
-<div class="space-y-2">
+<div class="flex flex-col gap-2">
 	<label class="space-y-1">
 		<span>{t("headers")}</span>
 		<div class="text-base-500">{t("headersDescription")}</div>
@@ -111,4 +116,17 @@
 			placeholder={t("downloadDirPlaceholder")}
 		/>
 	</label>
+
+	<div>
+		<button
+			type="button"
+			class="bg-error! text-primary!"
+			onclick={() => deleteConfig()}
+		>
+			<svg class="inline fill-current h-[1.25rem]" viewBox="0 0 24 24">
+				<path d={mdiTrashCanOutline} />
+			</svg>
+			<span>{t("delete")}</span>
+		</button>
+	</div>
 </div>

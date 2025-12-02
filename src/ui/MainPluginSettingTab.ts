@@ -7,6 +7,8 @@ import TemplateSyntaxHelp from "src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "src/lib/TemplatePreview.svelte";
 import { mount, unmount } from "svelte";
 import showError from "src/utils/showError";
+import { mdiUndo } from "@mdi/js";
+import showButton from "src/utils/showButton";
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
@@ -107,7 +109,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setIcon("settings")
 						.setTooltip(t("gatewayOptions"))
 						.onClick(() => {
-							new GatewayOptionsModal(
+							const modal = new GatewayOptionsModal(
 								this.app,
 								config,
 								(config) => {
@@ -116,23 +118,45 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 									this.plugin.saveSettings().catch(showError);
 									this.display();
 								},
-							).open();
+								() => {
+									modal.close();
+									const delayMs = 5e3;
+									let cancelled = false;
+									const close = showButton({
+										message: t("willDeleteGateway")(
+											config.name,
+										),
+										icon: {
+											pathData: mdiUndo,
+										},
+										label: t("undo"),
+										onclick: () => {
+											cancelled = true;
+										},
+									});
+									setTimeout(() => {
+										close();
+										if (cancelled) {
+											return;
+										}
+										this.plugin.settings.gateways.splice(
+											index,
+											1,
+										);
+										this.plugin
+											.saveSettings()
+											.catch(showError);
+										this.display();
+									}, delayMs);
+								},
+							);
+							modal.open();
 						});
 					button.extraSettingsEl.className = clsx({
 						"text-accent": config.headers.length > 0,
 					});
 					return button;
-				})
-				.addExtraButton((button) =>
-					button
-						.setIcon("trash")
-						.setTooltip(t("delete"))
-						.onClick(async () => {
-							this.plugin.settings.gateways.splice(index, 1);
-							await this.plugin.saveSettings();
-							this.display();
-						}),
-				);
+				});
 
 			const control = setting.settingEl.querySelector(
 				".setting-item-control",
@@ -172,8 +196,9 @@ const { t } = defineLocales({
 			"Used to fetch files not available locally, defined using Mustache template syntax. If the URL is empty, only read existing files from the download directory (set in options)",
 		addGateway: "Add Gateway",
 		gatewayOptions: "Gateway Options",
-		delete: "Delete",
+		willDeleteGateway: (name: string) => `Will delete gateway '${name}'`,
 		newGateway: "New Gateway",
+		undo: "Undo",
 		configurationName: "Configuration Name",
 		urlTemplate: "URL Template (Mustache syntax)",
 		examplePlaceholder: "e.g. .attachments/cas",
@@ -186,7 +211,8 @@ const { t } = defineLocales({
 			"用于获取本地缺少的文件，使用 Mustache 模板语法定义 URL 格式。如果网址为空，则仅从下载目录（选项中设置）读取已有文件",
 		addGateway: "添加网关",
 		gatewayOptions: "网关选项",
-		delete: "删除",
+		undo: "撤销",
+		willDeleteGateway: (name: string) => `将删除网关 '${name}'`,
 		newGateway: "新网关",
 		configurationName: "配置名称",
 		urlTemplate: "URL模板（Mustache语法）",
