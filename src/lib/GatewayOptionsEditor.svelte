@@ -97,6 +97,16 @@
 
 <div class="flex flex-col gap-2">
 	<label class="space-y-1">
+		<span>{t("downloadDir")}</span>
+		<input
+			class="w-full"
+			type="text"
+			bind:value={downloadDirModel.value}
+			placeholder={t("downloadDirPlaceholder")}
+		/>
+	</label>
+
+	<label class="space-y-1">
 		<span>{t("headers")}</span>
 		<div class="text-base-500">{t("headersDescription")}</div>
 		<textarea
@@ -105,16 +115,6 @@
 			bind:value={headerTextModel.value}
 			placeholder={t("headersPlaceholder")}
 		></textarea>
-	</label>
-
-	<label class="space-y-1">
-		<span>{t("downloadDir")}</span>
-		<input
-			class="w-full"
-			type="text"
-			bind:value={downloadDirModel.value}
-			placeholder={t("downloadDirPlaceholder")}
-		/>
 	</label>
 
 	<div>
