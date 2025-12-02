@@ -30,7 +30,7 @@
 			format: "{{format}} - File format (obtained from URL parameters)",
 			casPath: "{{casPath}} - Local storage relative path",
 			encodeFunction:
-				"{{#encodeURI}}content{{/encodeURI}} - URI encoding helper function to avoid path separator escaping (default will be escaped)",
+				"{{{#encodeURI}}}content{{{/encodeURI}}} - URI encoding helper function to avoid path separator escaping (default will be escaped)",
 		},
 		zh: {
 			templateSyntaxHelp: "模板语法说明",
@@ -58,7 +58,7 @@
 			format: "{{format}} - 文件格式（从URL参数获取）",
 			casPath: "{{casPath}} - 本地存储相对路径",
 			encodeFunction:
-				"{{#encodeURI}}内容{{/encodeURI}} - URI编码辅助函数，用于避免路径分隔符被转义（默认会被转义）",
+				"{{{#encodeURI}}}内容{{{/encodeURI}}} - URI编码辅助函数，用于避免路径分隔符被转义（默认会被转义）",
 		},
 	});
 	//#endregion
