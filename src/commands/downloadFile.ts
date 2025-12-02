@@ -20,7 +20,7 @@ export default async function downloadFile(
 		return;
 	}
 	await using stack = new AsyncDisposableStack();
-	stack.adopt(new Notice(t("downloading") + "\n" + handle.name), (i) =>
+	stack.adopt(new Notice(t("downloading") + "\n" + handle.name, 0), (i) =>
 		i.hide(),
 	);
 
