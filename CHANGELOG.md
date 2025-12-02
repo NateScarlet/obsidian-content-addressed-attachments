@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.9](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.8...0.1.9) (2025-12-02)
+
+
+### Features
+
+* add download message ([68ed71e](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/68ed71e1b3479f37c67e502f08d0632b0f23a22b))
+* change link click behavior ([13b5b39](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/13b5b39555daf2662456c2b6631d34ae1f328716))
+* move gateway delete button to modal ([7d9fd7a](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/7d9fd7a3a1c5e361a83ed836643a2e250cbc747c))
+* only show trashed files in recycle bin ([89eaaca](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/89eaacacc5daab9d6c9e938cb85a09b848b16e66))
+* set cursor position after file insert ([d69a6a1](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/d69a6a18da6526c4a0a2b9db54ffafde3fcf550e))
+* support specify different download dir for each gateway ([eb3f916](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/eb3f91697859e79ecce167cfec1315416d001d65))
+* use link title as fallback download name ([6cd444d](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/6cd444dcf11ffc7d0ed557f7d25b9975d7742ce9))
+
+
+### Bug Fixes
+
+* cas metadata object filter no work for trashed files ([008325c](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/008325cc3f13f78c9d01c8bf5a06cb7d831649e5))
+* correct icon size ([ab4e24f](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/ab4e24f496a01e24ef1f5828cbc1c631015f30ee))
+* should not recreate file image during revalidate ([12de79e](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/12de79e506dda77f9683625e594291034332a183))
+
 ## [0.1.8](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.7...0.1.8) (2025-11-27)
 
 
