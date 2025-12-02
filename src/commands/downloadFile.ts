@@ -39,11 +39,11 @@ export default async function downloadFile(
 
 const { t } = defineLocales({
 	en: {
-		notAvailable: "Can not found available external storage for this file",
+		notAvailable: "Can not found available gateway for this file",
 		downloading: "Downloading",
 	},
 	zh: {
-		notAvailable: "找不到可提供指定文件的外部存储",
+		notAvailable: "找不到可提供指定文件的网关",
 		downloading: "正在下载",
 	},
 });

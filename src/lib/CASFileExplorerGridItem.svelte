@@ -10,7 +10,7 @@
 			indexedAt: "Indexed at",
 			trashedAt: "Trashed at",
 			fetchMore: "Fetch More",
-			canNotRestoreFromExternal: "Can not restore from external storage",
+			canNotRestoreFromGateway: "Can not restore from gateway",
 			copied: "Copied markdown link to clipboard",
 			copyLink: "Copy Link",
 		},
@@ -21,7 +21,7 @@
 			restore: "还原",
 			trashedAt: "删除于",
 			fetchMore: "加载更多",
-			canNotRestoreFromExternal: "无法从外部存储还原",
+			canNotRestoreFromGateway: "无法从网关还原",
 			copied: "已复制 Markdown 链接到剪贴板",
 			copyLink: "复制链接",
 		},
@@ -77,7 +77,7 @@
 	async function restoreFile() {
 		const result = await cas.load(file.cid);
 		if (!result) {
-			new Notice(t("canNotRestoreFromExternal"));
+			new Notice(t("canNotRestoreFromGateway"));
 		}
 	}
 
@@ -309,10 +309,7 @@
 		{#if !isDeleted}
 			<!-- 复制 -->
 			<button class="flex-2" onclick={() => copyLink().catch(showError)}>
-				<svg
-					class="inline fill-current h-[1.25em]"
-					viewBox="0 0 24 24"
-				>
+				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
 					<path d={mdiLinkVariant} />
 				</svg>
 				<span>{t("copyLink")}</span>
@@ -322,10 +319,7 @@
 				class="flex-1"
 				onclick={() => cas.trash(file.cid).catch(showError)}
 			>
-				<svg
-					class="inline fill-current h-[1.25em]"
-					viewBox="0 0 24 24"
-				>
+				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
 					<path d={mdiTrashCanOutline} />
 				</svg>
 				<wbr />
@@ -335,10 +329,7 @@
 				class="flex-2"
 				onclick={() => restoreFile().catch(showError)}
 			>
-				<svg
-					class="inline fill-current h-[1.25em]"
-					viewBox="0 0 24 24"
-				>
+				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
 					<path d={mdiRestore} />
 				</svg>
 				{t("restore")}
@@ -347,10 +338,7 @@
 				class="flex-1 bg-error! text-primary!"
 				onclick={() => deleteFile().catch(showError)}
 			>
-				<svg
-					class="inline fill-current h-[1.25em]"
-					viewBox="0 0 24 24"
-				>
+				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
 					<path d={mdiDeleteAlertOutline} />
 				</svg>
 				<wbr />
