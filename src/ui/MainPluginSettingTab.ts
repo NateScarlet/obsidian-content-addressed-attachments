@@ -43,17 +43,20 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setName(t("gateways"))
 			.setDesc(t("gatewaysDesc"))
 			.addButton((button) =>
-				button.setButtonText(t("addGateway")).onClick(async () => {
-					this.plugin.settings.gateways.push({
-						name: t("newGateway"),
-						urlTemplate:
-							"https://example.com/{{cid}}{{{url.pathname}}}",
-						headers: [],
-						enabled: true,
-					});
-					await this.plugin.saveSettings();
-					this.display();
-				}),
+				button
+					.setIcon("house-plus")
+					.setTooltip(t("addGateway"))
+					.onClick(async () => {
+						this.plugin.settings.gateways.push({
+							name: t("newGateway"),
+							urlTemplate:
+								"https://example.com/{{cid}}{{{url.pathname}}}",
+							headers: [],
+							enabled: true,
+						});
+						await this.plugin.saveSettings();
+						this.display();
+					}),
 			);
 
 		// 创建模板预览组件
