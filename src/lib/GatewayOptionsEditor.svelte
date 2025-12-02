@@ -9,7 +9,7 @@
 				"e.g.:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
 			downloadDir: "Download Directory",
 			downloadDirPlaceholder:
-				"Relative path to vault root. Defaults to internal storage directory.",
+				"Relative path to vault root. Defaults to primary storage directory.",
 			delete: "Delete Gateway",
 		},
 		zh: {
@@ -19,7 +19,7 @@
 			headersPlaceholder:
 				"例如:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
 			downloadDir: "下载目录",
-			downloadDirPlaceholder: "相对于存储库的根目录。默认为内部存储目录",
+			downloadDirPlaceholder: "相对于存储库的根目录。默认为主存储目录",
 			delete: "删除网关",
 		},
 	});
