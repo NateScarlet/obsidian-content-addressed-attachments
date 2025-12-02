@@ -25,11 +25,11 @@
 
 <script lang="ts">
 	import clsx from "clsx";
-	import type { GatewayURLConfig, URLResolver } from "src/URLResolver";
+	import type { GatewayConfig, URLResolver } from "src/URLResolver";
 	import castError from "../utils/castError";
 	import { EXAMPLE_URL } from "src/settings";
 
-	const config: GatewayURLConfig | undefined = $state();
+	const config: GatewayConfig | undefined = $state();
 	const { urlResolver }: { urlResolver: URLResolver } = $props();
 
 	const preview = $derived.by(() => {

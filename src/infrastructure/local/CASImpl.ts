@@ -2,7 +2,7 @@ import { CID } from "multiformats/cid";
 import { base32upper } from "multiformats/bases/base32";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
-import { App, getBlobArrayBuffer, type Stat } from "obsidian";
+import { App, getBlobArrayBuffer } from "obsidian";
 import makeDirs from "src/utils/makeDirs";
 import { basename, dirname, join } from "path-browserify";
 import type { CAS } from "src/types/CAS";
@@ -14,71 +14,71 @@ export class CASImpl implements CAS {
 	constructor(
 		private app: App,
 		private meta: CASMetadata,
-		private rootDir: () => string,
+		private dirs: () => Iterable<string>,
 	) {}
 
-	async lookup(
-		cid: CID,
-	): Promise<{ path: string; stat: Stat; isTrashed: boolean } | undefined> {
+	async *lookup(cid: CID) {
 		const relPath = this.formatRelPath(cid);
-		const path = this.getFilePath(relPath);
-		let stat = await this.app.vault.adapter.stat(path);
-		if (stat) {
-			return {
-				path,
-				stat,
-				isTrashed: false,
-			};
-		}
-		const trashPath = this.getTrashPath(relPath);
-		stat = await this.app.vault.adapter.stat(trashPath);
-		if (stat) {
-			return {
-				path: trashPath,
-				stat,
-				isTrashed: true,
-			};
+		for (const dir of this.dirs()) {
+			const path = this.getFilePath(dir, relPath);
+			let stat = await this.app.vault.adapter.stat(path);
+			if (stat) {
+				yield {
+					dir,
+					path,
+					stat,
+					isTrashed: false,
+				};
+			}
+			const trashPath = this.getTrashPath(dir, relPath);
+			stat = await this.app.vault.adapter.stat(trashPath);
+			if (stat) {
+				yield {
+					dir,
+					path: trashPath,
+					stat,
+					isTrashed: true,
+				};
+			}
 		}
 	}
 
 	async index(meta: CASMetadataObject): Promise<void> {
-		const match = await this.lookup(meta.cid);
-		if (!match) {
-			return this.meta.delete(meta.cid);
+		for await (const match of this.lookup(meta.cid)) {
+			await this.meta.save({
+				...meta,
+				trashedAt: match.isTrashed
+					? (meta.trashedAt ?? new Date(match.stat.mtime))
+					: undefined,
+				size: match.stat.size,
+			});
+			return;
 		}
-		await this.meta.save({
-			...meta,
-			trashedAt: match.isTrashed
-				? (meta.trashedAt ?? new Date(match.stat.mtime))
-				: undefined,
-			size: match.stat.size,
-		});
+		return this.meta.delete(meta.cid);
 	}
 
-	async deleteIfTrashed(cid: CID): Promise<boolean> {
-		const match = await this.lookup(cid);
-		if (!match) {
-			await this.meta.delete(cid);
-			return false;
-		}
-		if (!match.isTrashed) {
-			return false;
+	async deleteIfTrashed(cid: CID): Promise<number> {
+		let count = 0;
+		for await (const match of this.lookup(cid)) {
+			if (match.isTrashed) {
+				await this.app.vault.adapter.remove(match.path);
+				count += 1;
+			}
 		}
 		await this.meta.delete(cid);
-		await this.app.vault.adapter.remove(match.path);
-		return true;
+		return count;
 	}
 
 	async *objects(): AsyncIterableIterator<CASMetadataObject> {
-		const root = this.rootDir();
+		for (const dir of this.dirs()) {
+			// 扫描正常文件
+			yield* this.scanBaseDir(dir, false);
 
-		// 扫描正常文件
-		yield* this.scanBaseDir(root, false);
-
-		// 扫描回收站文件
-		const trashDir = join(root, this.trashRelPath);
-		if (await this.app.vault.adapter.exists(trashDir)) {
-			yield* this.scanBaseDir(trashDir, true);
+			// 扫描回收站文件
+			const trashDir = join(dir, this.trashRelPath);
+			if (await this.app.vault.adapter.exists(trashDir)) {
+				yield* this.scanBaseDir(trashDir, true);
+			}
 		}
 	}
 
@@ -146,99 +146,95 @@ export class CASImpl implements CAS {
 		}
 	}
 
-	formatNormalizePath(cid: CID): string {
-		return join(this.rootDir(), this.formatRelPath(cid));
+	formatNormalizePath(dir: string, cid: CID): string {
+		return join(dir, this.formatRelPath(cid));
 	}
 
 	async load(
 		cid: CID,
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined> {
-		const root = this.rootDir();
-		const relPath = this.formatRelPath(cid);
-		const dst = join(root, relPath);
+		for await (const match of this.lookup(cid)) {
+			if (match.isTrashed) {
+				// 尝试从回收站恢复
+				const src = match.path;
+				const relPath = this.formatRelPath(cid);
+				const dst = join(match.dir, relPath);
+				const content = await this.app.vault.adapter.readBinary(src);
+				if (!cid.equals(await this.generateCID(content))) {
+					// 检查文件完整性
+					console.warn("发现损坏文件，标记为无效", src);
+					await this.app.vault.adapter.rename(
+						src,
+						this.formatInvalidName(src),
+					);
+					continue;
+				}
 
-		if (await this.app.vault.adapter.exists(dst)) {
+				await makeDirs(this.app.vault, dirname(dst));
+				await this.app.vault.adapter.rename(src, dst);
+
+				// 更新元数据
+				const existingMeta = await this.meta.get(cid);
+				await this.meta.save({
+					...existingMeta,
+					trashedAt: undefined,
+					cid: cid,
+					size: content.byteLength,
+					indexedAt: new Date(),
+				});
+
+				return {
+					normalizedPath: dst,
+					didRestore: true,
+				};
+			}
 			return {
-				normalizedPath: dst,
+				normalizedPath: match.path,
 				didRestore: false,
 			};
 		}
+	}
 
-		// 尝试从回收站恢复
-		const src = join(root, this.trashRelPath, relPath);
-		if (await this.app.vault.adapter.exists(src)) {
-			const content = await this.app.vault.adapter.readBinary(src);
-			if (!cid.equals(await this.generateCID(content))) {
-				// 检查文件完整性
-				console.warn("发现损坏文件，标记为无效", src);
-				await this.app.vault.adapter.rename(
-					src,
-					this.formatInvalidName(src),
-				);
-				return;
+	async trash(cid: CID): Promise<number> {
+		const relPath = this.formatRelPath(cid);
+		let count = 0;
+		for await (const match of this.lookup(cid)) {
+			if (match.isTrashed) {
+				continue;
 			}
-
+			const src = match.path;
+			const dst = this.getTrashPath(match.dir, relPath);
 			await makeDirs(this.app.vault, dirname(dst));
 			await this.app.vault.adapter.rename(src, dst);
-
-			// 更新元数据
+			count += 1;
+		}
+		if (count > 0) {
+			// 更新元数据：标记为已删除
 			const existingMeta = await this.meta.get(cid);
-			await this.meta.save({
-				...existingMeta,
-				trashedAt: undefined,
-				cid: cid,
-				size: content.byteLength,
-				indexedAt: new Date(),
-			});
-
-			return {
-				normalizedPath: dst,
-				didRestore: true,
-			};
+			if (existingMeta) {
+				const updatedMeta = { ...existingMeta, trashedAt: new Date() };
+				await this.meta.save(updatedMeta);
+			} else {
+				// 如果元数据不存在，创建新的元数据记录
+				const newMeta: CASMetadataObject = {
+					cid,
+					indexedAt: new Date(),
+					trashedAt: new Date(),
+				};
+				await this.meta.save(newMeta);
+			}
 		}
+		return count;
 	}
 
-	async trash(cid: CID, invalid?: boolean): Promise<boolean> {
-		const relPath = this.formatRelPath(cid);
-		const src = this.getFilePath(relPath);
-
-		if (!(await this.app.vault.adapter.exists(src))) {
-			return false;
-		}
-
-		let dst = this.getTrashPath(relPath);
-		if (invalid) {
-			dst = this.formatInvalidName(dst);
-		} else if (await this.app.vault.adapter.exists(dst)) {
-			await this.app.vault.adapter.remove(dst);
-		}
-
-		await makeDirs(this.app.vault, dirname(dst));
-		await this.app.vault.adapter.rename(src, dst);
-
-		// 更新元数据：标记为已删除
-		const existingMeta = await this.meta.get(cid);
-		if (existingMeta) {
-			const updatedMeta = { ...existingMeta, trashedAt: new Date() };
-			await this.meta.save(updatedMeta);
-		} else {
-			// 如果元数据不存在，创建新的元数据记录
-			const newMeta: CASMetadataObject = {
-				cid,
-				indexedAt: new Date(),
-				trashedAt: new Date(),
-			};
-			await this.meta.save(newMeta);
-		}
-
-		return true;
-	}
-
-	async save(file: File): Promise<{ cid: CID; didCreate: boolean }> {
+	async save(
+		dir: string,
+		file: File,
+	): Promise<{ cid: CID; didCreate: boolean }> {
 		const arrayBuffer = await getBlobArrayBuffer(file);
 		const cid = await this.generateCID(arrayBuffer);
 		const relPath = this.formatRelPath(cid);
-		const filePath = this.getFilePath(relPath);
+		const filePath = this.getFilePath(dir, relPath);
 		const exists = await this.app.vault.adapter.exists(filePath);
 
 		if (exists) {
@@ -293,12 +289,12 @@ export class CASImpl implements CAS {
 		return cid;
 	}
 
-	private getFilePath(relPath: string): string {
-		return join(this.rootDir(), relPath);
+	private getFilePath(dir: string, relPath: string): string {
+		return join(dir, relPath);
 	}
 
-	private getTrashPath(relPath: string): string {
-		return join(this.rootDir(), this.trashRelPath, relPath);
+	private getTrashPath(dir: string, relPath: string): string {
+		return join(dir, this.trashRelPath, relPath);
 	}
 
 	private formatInvalidName(src: string): string {

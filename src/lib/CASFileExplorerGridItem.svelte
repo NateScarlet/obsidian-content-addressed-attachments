@@ -97,58 +97,57 @@
 	const { result: detail } = staleWithRevalidate(async () => {
 		const signal = getAbortSignal();
 		console.debug("load", file.cid.toString());
-		const match = await cas.lookup(file.cid);
-		if (!match) {
-			return { ok: false };
-		}
-		signal.throwIfAborted();
+		for await (const match of cas.lookup(file.cid)) {
+			signal.throwIfAborted();
 
-		let filename = file.filename ?? "";
-		let format = file.format ?? "";
+			let filename = file.filename ?? "";
+			let format = file.format ?? "";
 
-		// 基于实际引用获取缺少的文件名和格式
-		if (!filename || !format) {
-			for await (const { url, title } of referenceManager.findReference(
-				file.cid,
-				signal,
-			)) {
-				filename = filename || url.filename || title || "";
-				format = format || url.format || "";
-				if (filename && format) {
-					break;
+			// 基于实际引用获取缺少的文件名和格式
+			if (!filename || !format) {
+				for await (const {
+					url,
+					title,
+				} of referenceManager.findReference(file.cid, signal)) {
+					filename = filename || url.filename || title || "";
+					format = format || url.format || "";
+					if (filename && format) {
+						break;
+					}
 				}
 			}
-		}
 
-		const imgSrc = await (async () => {
-			if (format && !format.startsWith("image/")) {
-				// 已知不是图片
-				return;
-			}
-			const { path } = match;
-			const src = app.vault.adapter.getResourcePath(path);
-			if (format) {
-				return src;
-			}
-			// 尝试加载未知格式为图片
-			const img = new Image();
-			img.src = src;
-			return img
-				.decode()
-				.then(() => {
-					format = "image/*";
+			const imgSrc = await (async () => {
+				if (format && !format.startsWith("image/")) {
+					// 已知不是图片
+					return;
+				}
+				const { path } = match;
+				const src = app.vault.adapter.getResourcePath(path);
+				if (format) {
 					return src;
-				})
-				.catch(() => undefined);
-		})();
-		signal.throwIfAborted();
-		return {
-			ok: true,
-			match,
-			imgSrc,
-			format,
-			filename,
-		};
+				}
+				// 尝试加载未知格式为图片
+				const img = new Image();
+				img.src = src;
+				return img
+					.decode()
+					.then(() => {
+						format = "image/*";
+						return src;
+					})
+					.catch(() => undefined);
+			})();
+			signal.throwIfAborted();
+			return {
+				ok: true,
+				match,
+				imgSrc,
+				format,
+				filename,
+			};
+		}
+		return { ok: false };
 	});
 
 	const format = $derived($detail?.format || file.format || "*/*");

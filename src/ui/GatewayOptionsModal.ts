@@ -1,5 +1,5 @@
 import { Modal, type App } from "obsidian";
-import type { GatewayURLConfig } from "src/URLResolver";
+import type { GatewayConfig } from "src/URLResolver";
 import { mount, unmount } from "svelte";
 import GatewayOptionsEditor from "src/lib/GatewayOptionsEditor.svelte";
 import defineLocales from "src/utils/defineLocales";
@@ -9,8 +9,8 @@ export default class GatewayOptionsModal extends Modal {
 
 	constructor(
 		app: App,
-		private config: GatewayURLConfig,
-		private updateConfig: (v: GatewayURLConfig) => void,
+		private config: GatewayConfig,
+		private updateConfig: (v: GatewayConfig) => void,
 	) {
 		super(app);
 	}

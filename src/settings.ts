@@ -1,18 +1,46 @@
-import type { GatewayURLConfig } from "./URLResolver";
+import type { GatewayConfig } from "./URLResolver";
 import defineLocales from "./utils/defineLocales";
 
 export const EXAMPLE_URL =
 	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
 
-export interface Settings {
-	casDir: string;
-	gatewayURLs: GatewayURLConfig[];
+interface SettingsV1 {
+	version: 1;
+	primaryDir: string;
+	gateways: GatewayConfig[];
 }
 
-export function getDefaultSettings() {
+interface SettingsV0 {
+	version: undefined;
+	casDir: string;
+	gatewayURLs: {
+		urlTemplate: string;
+		name: string;
+		headers: [key: string, value: string][];
+		enabled: boolean;
+	}[];
+}
+
+export type SettingsInput = SettingsV0 | SettingsV1;
+
+export type Settings = SettingsV1;
+
+export function settingsFromInput(input: SettingsInput): Settings {
+	if (input.version === 1) {
+		return input;
+	}
 	return {
-		casDir: ".attachments/cas",
-		gatewayURLs: [
+		version: 1,
+		primaryDir: input.casDir,
+		gateways: input.gatewayURLs,
+	};
+}
+
+export function getDefaultSettings(): Settings {
+	return {
+		version: 1,
+		primaryDir: ".attachments/cas",
+		gateways: [
 			{
 				name: "IPFS.io",
 				urlTemplate:

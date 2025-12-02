@@ -27,11 +27,12 @@ interface TemplateData {
 	encodeURI: TemplateLambda;
 }
 
-export interface GatewayURLConfig {
+export interface GatewayConfig {
 	urlTemplate: string;
 	name: string;
 	headers: [key: string, value: string][];
 	enabled: boolean;
+	downloadDir?: string;
 }
 
 export interface ResolveURLResult {
@@ -69,7 +70,7 @@ export class URLResolver {
 				),
 			};
 		}
-		const { gatewayURLs } = this.settings();
+		const { gateways: gatewayURLs } = this.settings();
 		let remaining = gatewayURLs.length;
 		try {
 			return await Promise.race(
@@ -119,8 +120,12 @@ export class URLResolver {
 										});
 										if (resp.status === 200) {
 											console.debug("GOT", resp.headers);
+											const dir =
+												config.downloadDir ||
+												this.settings().primaryDir;
 											const { cid, didCreate } =
 												await this.cas.save(
+													dir,
 													new File(
 														[
 															new Blob(
@@ -162,6 +167,7 @@ export class URLResolver {
 											resolve({
 												url: this.app.vault.adapter.getResourcePath(
 													this.cas.formatNormalizePath(
+														dir,
 														cid,
 													),
 												),
@@ -209,7 +215,7 @@ export class URLResolver {
 		};
 	}
 
-	renderGatewayURL(rawURL: string, config: GatewayURLConfig): string {
+	renderGatewayURL(rawURL: string, config: GatewayConfig): string {
 		if (!rawURL || !config.urlTemplate) return "";
 		const templateData = this.prepareTemplateData(rawURL);
 		return mustache.render(config.urlTemplate, templateData, undefined, {

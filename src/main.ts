@@ -3,7 +3,12 @@ import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
 import { URLResolver } from "./URLResolver";
-import { getDefaultSettings, type Settings } from "./settings";
+import {
+	getDefaultSettings,
+	settingsFromInput,
+	type Settings,
+	type SettingsInput,
+} from "./settings";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import {
 	CASFileExplorerView,
@@ -20,6 +25,7 @@ import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 import insertAttachment from "./commands/insertAttachment";
 import insertFileAtCursor from "./commands/insertFileAtCursor";
+import { uniq } from "es-toolkit";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -60,11 +66,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.casMetadata = new CASMetadataImpl(
 			new CASMetadataObjectFilterBuilder(this.referenceManger),
 		);
-		this.cas = new CASImpl(
-			this.app,
-			this.casMetadata,
-			() => this.settings.casDir,
-		);
+		this.cas = new CASImpl(this.app, this.casMetadata, () => {
+			return uniq([
+				this.settings.primaryDir,
+				...this.settings.gateways
+					.map((i) => i.downloadDir ?? "")
+					.filter((i) => !!i),
+			]);
+		});
 		this.urlResolver = new URLResolver(
 			this.app,
 			this.cas,
@@ -91,7 +100,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const { cid } = await this.cas.save(file);
+						const { cid } = await this.cas.save(
+							this.settings.primaryDir,
+							file,
+						);
 						insertFileAtCursor(file, cid, editor);
 					}
 				}
@@ -108,7 +120,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const { cid } = await this.cas.save(file);
+						const { cid } = await this.cas.save(
+							this.settings.primaryDir,
+							file,
+						);
 						insertFileAtCursor(file, cid, editor);
 					}
 				}
@@ -140,7 +155,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "insert-attachment",
 			name: t("insertAttachment"),
 			callback: () => {
-				insertAttachment(this.app, this.cas).catch(showError);
+				insertAttachment(
+					this.app,
+					this.cas,
+					this.settings.primaryDir,
+				).catch(showError);
 			},
 		});
 
@@ -260,7 +279,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.settings = Object.assign(
 			{},
 			getDefaultSettings(),
-			(await this.loadData()) as Settings,
+			settingsFromInput((await this.loadData()) as SettingsInput),
 		);
 	}
 

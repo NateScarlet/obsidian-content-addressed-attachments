@@ -391,7 +391,10 @@ export class MigrationManager {
 			const blob = new Blob([arrayBuffer]);
 			const fileObj = new File([blob], file.name);
 
-			const { cid } = await this.plugin.cas.save(fileObj);
+			const { cid } = await this.plugin.cas.save(
+				this.plugin.settings.primaryDir,
+				fileObj,
+			);
 
 			const url = new URL(`ipfs://${cid.toString()}`);
 			url.searchParams.set("filename", file.name);

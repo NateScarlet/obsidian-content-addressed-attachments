@@ -25,35 +25,33 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		this.stack = stack;
 
 		new Setting(containerEl)
-			.setName(t("localStorage"))
-			.setDesc(t("localStorageDesc"))
+			.setName(t("primaryStorageDirectory"))
+			.setDesc(t("primaryStorageDirectoryDesc"))
 			.addText((text) =>
 				text
 					.setPlaceholder(t("examplePlaceholder"))
-					.setValue(this.plugin.settings.casDir)
+					.setValue(this.plugin.settings.primaryDir)
 					.onChange(async (value) => {
-						this.plugin.settings.casDir = value;
+						this.plugin.settings.primaryDir = value;
 						await this.plugin.saveSettings();
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName(t("externalStorage"))
-			.setDesc(t("externalStorageDesc"))
+			.setName(t("gateways"))
+			.setDesc(t("gatewaysDesc"))
 			.addButton((button) =>
-				button
-					.setButtonText(t("addExternalStorage"))
-					.onClick(async () => {
-						this.plugin.settings.gatewayURLs.push({
-							name: t("newExternalStorage"),
-							urlTemplate:
-								"https://example.com/{{cid}}{{{url.pathname}}}",
-							headers: [],
-							enabled: true,
-						});
-						await this.plugin.saveSettings();
-						this.display();
-					}),
+				button.setButtonText(t("addGateway")).onClick(async () => {
+					this.plugin.settings.gateways.push({
+						name: t("newGateway"),
+						urlTemplate:
+							"https://example.com/{{cid}}{{{url.pathname}}}",
+						headers: [],
+						enabled: true,
+					});
+					await this.plugin.saveSettings();
+					this.display();
+				}),
 			);
 
 		// 创建模板预览组件
@@ -68,7 +66,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			(i) => void unmount(i),
 		);
 
-		this.plugin.settings.gatewayURLs.forEach((config, index) => {
+		this.plugin.settings.gateways.forEach((config, index) => {
 			const setting = new Setting(containerEl)
 				.setName("")
 				.setDesc("")
@@ -107,13 +105,13 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				.addExtraButton((button) => {
 					button
 						.setIcon("settings")
-						.setTooltip(t("editHeaders"))
+						.setTooltip(t("gatewayOptions"))
 						.onClick(() => {
 							new GatewayOptionsModal(
 								this.app,
 								config,
 								(config) => {
-									this.plugin.settings.gatewayURLs[index] =
+									this.plugin.settings.gateways[index] =
 										config;
 									this.plugin.saveSettings().catch(showError);
 									this.display();
@@ -130,7 +128,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setIcon("trash")
 						.setTooltip(t("delete"))
 						.onClick(async () => {
-							this.plugin.settings.gatewayURLs.splice(index, 1);
+							this.plugin.settings.gateways.splice(index, 1);
 							await this.plugin.saveSettings();
 							this.display();
 						}),
@@ -166,34 +164,32 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {
-		localStorage: "Local Storage",
-		localStorageDesc:
-			"Local directory path for storing content-addressed attachments",
-		externalStorage: "External Storage",
-		externalStorageDesc:
-			"Used to fetch files not available locally, defined using Mustache template syntax",
-		addExternalStorage: "Add External Storage",
-		editHeaders: "Edit Headers",
+		primaryStorageDirectory: "Primary Storage Directory",
+		primaryStorageDirectoryDesc:
+			"Newly added attachments will be stored in this directory",
+		gateways: "Gateways",
+		gatewaysDesc:
+			"Used to fetch files not available locally, defined using Mustache template syntax. If the URL is empty, only read existing files from the download directory (set in options)",
+		addGateway: "Add Gateway",
+		gatewayOptions: "Gateway Options",
 		delete: "Delete",
-		newExternalStorage: "New External Storage",
+		newGateway: "New Gateway",
 		configurationName: "Configuration Name",
 		urlTemplate: "URL Template (Mustache syntax)",
-		close: "Close",
 		examplePlaceholder: "e.g. .attachments/cas",
 	},
 	zh: {
-		localStorage: "本地存储",
-		localStorageDesc: "用于存储内容寻址附件的本地目录路径",
-		externalStorage: "外部存储",
-		externalStorageDesc:
-			"用于获取本地缺少的文件，使用 Mustache 模板语法定义 URL 格式",
-		addExternalStorage: "添加外部存储",
-		editHeaders: "编辑请求头",
+		primaryStorageDirectory: "主存储目录",
+		primaryStorageDirectoryDesc: "新添加的附件会存储在其中",
+		gateways: "网关",
+		gatewaysDesc:
+			"用于获取本地缺少的文件，使用 Mustache 模板语法定义 URL 格式。如果网址为空，则仅从下载目录（选项中设置）读取已有文件",
+		addGateway: "添加网关",
+		gatewayOptions: "网关选项",
 		delete: "删除",
-		newExternalStorage: "新外部存储",
+		newGateway: "新网关",
 		configurationName: "配置名称",
 		urlTemplate: "URL模板（Mustache语法）",
-		close: "关闭",
 		examplePlaceholder: "例如: .attachments/cas",
 	},
 });
