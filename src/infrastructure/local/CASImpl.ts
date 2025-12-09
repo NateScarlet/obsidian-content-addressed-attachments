@@ -59,13 +59,18 @@ export class CASImpl implements CAS {
 
 	async deleteIfTrashed(cid: CID): Promise<number> {
 		let count = 0;
+		let exists = false;
 		for await (const match of this.lookup(cid)) {
 			if (match.isTrashed) {
 				await this.app.vault.adapter.remove(match.path);
 				count += 1;
+			} else {
+				exists = true;
 			}
 		}
-		await this.meta.delete(cid);
+		if (!exists) {
+			await this.meta.delete(cid);
+		}
 		return count;
 	}
 
@@ -193,19 +198,47 @@ export class CASImpl implements CAS {
 				didRestore: false,
 			};
 		}
+		await this.meta.delete(cid);
 	}
 
 	async trash(cid: CID): Promise<number> {
 		const relPath = this.formatRelPath(cid);
 		let count = 0;
+		let exists = false;
 		for await (const match of this.lookup(cid)) {
+			exists = true;
 			if (match.isTrashed) {
 				continue;
 			}
 			const src = match.path;
 			const dst = this.getTrashPath(match.dir, relPath);
 			await makeDirs(this.app.vault, dirname(dst));
-			await this.app.vault.adapter.rename(src, dst);
+
+			try {
+				await this.app.vault.adapter.rename(src, dst);
+			} catch (err) {
+				if (
+					err instanceof Error &&
+					err.message === "Destination file already exists!"
+				) {
+					// 处理冲突
+					const content =
+						await this.app.vault.adapter.readBinary(dst);
+					if (!cid.equals(await this.generateCID(content))) {
+						console.warn("发现损坏文件，标记为无效", dst);
+						await this.app.vault.adapter.rename(
+							dst,
+							this.formatInvalidName(dst),
+						);
+						await this.app.vault.adapter.rename(src, dst);
+					} else {
+						// 已经存在，可以直接删除
+						await this.app.vault.adapter.remove(src);
+					}
+				} else {
+					throw err;
+				}
+			}
 			count += 1;
 		}
 		if (count > 0) {
@@ -223,6 +256,10 @@ export class CASImpl implements CAS {
 				};
 				await this.meta.save(newMeta);
 			}
+		}
+		if (!exists) {
+			// 文件不存在，确保元数据和实际一致
+			await this.meta.delete(cid);
 		}
 		return count;
 	}
