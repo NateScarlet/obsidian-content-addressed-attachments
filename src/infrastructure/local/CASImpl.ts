@@ -96,13 +96,6 @@ export class CASImpl implements CAS {
 
 		// 只处理符合分片目录格式的文件夹（2个字符的目录名）
 		for (const folder of items.folders) {
-			const folderName = basename(folder);
-
-			// 检查是否是分片目录：必须是2个字符
-			if (folderName.length !== 2) {
-				continue;
-			}
-
 			// 递归扫描分片目录下的文件
 			yield* this.scanShardDir(folder, trashed);
 		}
@@ -112,10 +105,21 @@ export class CASImpl implements CAS {
 		shardDir: string,
 		trashed: boolean,
 	): AsyncIterableIterator<CASMetadataObject> {
+		const shard = basename(shardDir);
+
+		// 检查是否是分片目录：必须是2个字符
+		if (shard.length !== 2) {
+			return;
+		}
+
 		const items = await this.app.vault.adapter.list(shardDir);
 
 		for (const filePath of items.files) {
-			const metadata = await this.metadataFromPath(filePath, trashed);
+			const metadata = await this.metadataFromPath(
+				shard,
+				filePath,
+				trashed,
+			);
 			if (metadata) {
 				yield metadata;
 			}
@@ -123,6 +127,7 @@ export class CASImpl implements CAS {
 	}
 
 	private async metadataFromPath(
+		shard: string,
 		normalizedPath: string,
 		trashed: boolean,
 	): Promise<CASMetadataObject | undefined> {
@@ -130,7 +135,11 @@ export class CASImpl implements CAS {
 		const { vault } = this.app;
 		// CID Base32 编码长度为 59
 		if (base.length === 59 - 1 + 5 && base.endsWith(".data")) {
-			// 如果有错误格式的CID，说明有其他程序用了不兼容的哈希函数，不应静默忽略
+			if (base.slice(-8, -6) !== shard) {
+				console.warn("忽略不匹配分片目录的文件", normalizedPath);
+				return;
+			}
+			// 如果有错误格式的CID，说明有外部使用了不兼容的哈希函数，不应静默忽略
 			try {
 				const cid = CID.parse("B" + base.slice(0, 58), base32upper);
 				const stat = await vault.adapter.stat(normalizedPath);
