@@ -179,11 +179,9 @@ export class CASImpl implements CAS {
 				await this.app.vault.adapter.rename(src, dst);
 
 				// 更新元数据
-				const existingMeta = await this.meta.get(cid);
 				await this.meta.merge({
-					...existingMeta,
-					trashedAt: undefined,
 					cid: cid,
+					trashedAt: undefined,
 					size: content.byteLength,
 					indexedAt: new Date(),
 				});
