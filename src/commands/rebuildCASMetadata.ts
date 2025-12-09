@@ -5,6 +5,6 @@ export default async function rebuildCASMetadata(
 	objects: AsyncIterable<CASMetadataObject>,
 ) {
 	for await (const obj of objects) {
-		await meta.save(obj);
+		await meta.merge(obj);
 	}
 }

@@ -20,7 +20,7 @@ export interface CASMetadataObjectFilters {
 
 export interface CASMetadata {
 	get(cid: CID): Promise<CASMetadataObject | undefined>;
-	save(obj: CASMetadataObject): Promise<{ didCreate: boolean }>;
+	merge(obj: CASMetadataObject): Promise<{ didCreate: boolean }>;
 	delete(cid: CID): Promise<void>;
 	/** 固定使用索引时间降序排列，不支持其他排序 */
 	find(options: {

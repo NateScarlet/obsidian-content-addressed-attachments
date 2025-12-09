@@ -178,7 +178,7 @@ export class CASMetadataImpl implements CASMetadata {
 		);
 	}
 
-	async save(obj: CASMetadataObject, signal?: AbortSignal) {
+	async merge(obj: CASMetadataObject, signal?: AbortSignal) {
 		const result = await this.tx(
 			"readwrite",
 			async ({ store, recordChange }) => {

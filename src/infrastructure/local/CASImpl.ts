@@ -45,7 +45,7 @@ export class CASImpl implements CAS {
 
 	async index(meta: CASMetadataObject): Promise<void> {
 		for await (const match of this.lookup(meta.cid)) {
-			await this.meta.save({
+			await this.meta.merge({
 				...meta,
 				trashedAt: match.isTrashed
 					? (meta.trashedAt ?? new Date(match.stat.mtime))
@@ -180,7 +180,7 @@ export class CASImpl implements CAS {
 
 				// 更新元数据
 				const existingMeta = await this.meta.get(cid);
-				await this.meta.save({
+				await this.meta.merge({
 					...existingMeta,
 					trashedAt: undefined,
 					cid: cid,
@@ -246,7 +246,7 @@ export class CASImpl implements CAS {
 			const existingMeta = await this.meta.get(cid);
 			if (existingMeta) {
 				const updatedMeta = { ...existingMeta, trashedAt: new Date() };
-				await this.meta.save(updatedMeta);
+				await this.meta.merge(updatedMeta);
 			} else {
 				// 如果元数据不存在，创建新的元数据记录
 				const newMeta: CASMetadataObject = {
@@ -254,7 +254,7 @@ export class CASImpl implements CAS {
 					indexedAt: new Date(),
 					trashedAt: new Date(),
 				};
-				await this.meta.save(newMeta);
+				await this.meta.merge(newMeta);
 			}
 		}
 		if (!exists) {
@@ -286,7 +286,7 @@ export class CASImpl implements CAS {
 		await makeDirs(this.app.vault, dirname(filePath));
 		await this.app.vault.adapter.writeBinary(filePath, arrayBuffer);
 
-		await this.meta.save({
+		await this.meta.merge({
 			cid,
 			indexedAt: new Date(),
 			filename: file.name,
