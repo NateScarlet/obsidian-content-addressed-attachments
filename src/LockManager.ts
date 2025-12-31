@@ -3,73 +3,7 @@ import ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
 import { LockProgressModal } from "./ui/LockProgressModal";
 import { requestUrl } from "obsidian";
-
-//#region 国际化字符串
-const { t } = defineLocales({
-	en: {
-		externalLink: "External link",
-		alreadyIPFS: "Already IPFS link",
-		alreadyLocked: "Already locked link",
-		cannotResolvePath: "Cannot resolve file path",
-		excludedFile: "Excluded File",
-		fileNotExist: "File does not exist",
-		fileLockFailed: "File lock failed",
-		skipNote: (path: string) =>
-			`Skipped note ${path}: no external embedded links`,
-		skipNoteNoMetadata: (path: string) =>
-			`Skipped note ${path}: no metadata cache`,
-		errorProcessingNote: (path: string, error: string) =>
-			`Error processing note ${path}: ${error}`,
-		errorProcessingLink: (link: string, error: string) =>
-			`Error processing link ${link}: ${error}`,
-		migratedLink: (oldLink: string, newLink: string) =>
-			`Migrated link: ${oldLink} -> ${newLink}`,
-		skippedLink: (link: string, reason: string) =>
-			`Skipped link: ${link} (${reason})`,
-		updatedNote: (path: string, count: number) =>
-			`Updated note ${path}: migrated ${count} external embedded links`,
-		noLockNeeded: (path: string) =>
-			`Skipped note ${path}: no external embedded links to migrate`,
-		noActiveNote: "No active note",
-		lockCancelled: "Lock cancelled by user",
-		notHTTPLink: "Not an HTTP/HTTPS link",
-		nonEmbeddedLink: "Non-embedded link (skipping)",
-		downloadFailed: "Failed to download file",
-		invalidURL: "Invalid URL",
-		unsupportedProtocol: "Unsupported protocol",
-	},
-	zh: {
-		externalLink: "外部链接",
-		alreadyIPFS: "已是IPFS链接",
-		alreadyLocked: "已是锁定链接",
-		excludedFile: "排除的文件",
-		cannotResolvePath: "无法解析文件路径",
-		fileNotExist: "文件不存在",
-		fileLockFailed: "文件迁移失败",
-		skipNote: (path: string) => `跳过笔记 ${path}: 无外部嵌入链接`,
-		skipNoteNoMetadata: (path: string) => `跳过笔记 ${path}: 无元数据缓存`,
-		errorProcessingNote: (path: string, error: string) =>
-			`错误处理笔记 ${path}: ${error}`,
-		errorProcessingLink: (link: string, error: string) =>
-			`错误处理链接 ${link}: ${error}`,
-		migratedLink: (oldLink: string, newLink: string) =>
-			`迁移链接: ${oldLink} -> ${newLink}`,
-		skippedLink: (link: string, reason: string) =>
-			`跳过链接: ${link} (${reason})`,
-		updatedNote: (path: string, count: number) =>
-			`已更新笔记 ${path}: 迁移了 ${count} 个外部嵌入链接`,
-		noLockNeeded: (path: string) =>
-			`跳过笔记 ${path}: 没有可迁移的外部嵌入链接`,
-		noActiveNote: "没有活动的笔记",
-		lockCancelled: "迁移已被用户取消",
-		notHTTPLink: "非HTTP/HTTPS链接",
-		nonEmbeddedLink: "非嵌入链接(跳过)",
-		downloadFailed: "下载文件失败",
-		invalidURL: "无效的URL",
-		unsupportedProtocol: "不支持的协议",
-	},
-});
-//#endregion
+import { basename } from "path-browserify";
 
 export interface LockProgress {
 	status: "processing" | "completed" | "cancelled";
@@ -130,9 +64,9 @@ export class LockManager {
 		try {
 			let result: LockResult;
 			if (scope === "current") {
-				result = await this.migrateCurrentNote(ctx);
+				result = await this.processCurrentNote(ctx);
 			} else {
-				result = await this.migrateAllNotes(ctx);
+				result = await this.processAllNotes(ctx);
 			}
 			ctx.updateProgress(result);
 			if (result.cancelled) {
@@ -140,7 +74,9 @@ export class LockManager {
 			} else if (!result.success) {
 				modal.showError("Lock failed");
 			}
-
+			if (result.success && scope === "current") {
+				modal.close();
+			}
 			return result;
 		} catch (error) {
 			modal.showError(String(error));
@@ -156,7 +92,7 @@ export class LockManager {
 		this.currentStack?.dispose();
 	}
 
-	private async migrateCurrentNote(ctx: LockContext): Promise<LockResult> {
+	private async processCurrentNote(ctx: LockContext): Promise<LockResult> {
 		const file = this.app.workspace.getActiveFile();
 		if (!file) {
 			throw new Error(t("noActiveNote"));
@@ -170,7 +106,7 @@ export class LockManager {
 		};
 	}
 
-	private async migrateAllNotes(ctx: LockContext): Promise<LockResult> {
+	private async processAllNotes(ctx: LockContext): Promise<LockResult> {
 		const files = this.app.vault.getMarkdownFiles();
 		const result: LockProgress = {
 			status: "processing",
@@ -188,7 +124,7 @@ export class LockManager {
 			if (ctx.signal.aborted) {
 				result.status = "cancelled";
 				result.cancelled = true;
-				result.details.push(t("lockCancelled"));
+				result.details.push(t("cancelled"));
 				return { ...result, success: false };
 			}
 
@@ -241,10 +177,9 @@ export class LockManager {
 			let content = await this.app.vault.read(file);
 
 			// 解析嵌入链接
-			const embeddedLinks = this.parseEmbeddedLinks(content);
+			const embeddedLinks = Array.from(this.findEmbeddedLinks(content));
 
 			if (embeddedLinks.length === 0) {
-				result.skipped++;
 				result.details.push(t("skipNote")(file.path));
 				return result;
 			}
@@ -252,11 +187,9 @@ export class LockManager {
 			let migratedCount = 0;
 
 			// 从后往前处理，避免位置偏移
-			const sortedLinks = [...embeddedLinks].sort(
-				(a, b) => b.start - a.start,
-			);
+			embeddedLinks.reverse();
 
-			for (const link of sortedLinks) {
+			for (const link of embeddedLinks) {
 				if (ctx.signal.aborted) {
 					result.status = "cancelled";
 					result.cancelled = true;
@@ -264,11 +197,7 @@ export class LockManager {
 				}
 
 				try {
-					const lockResult = await this.migrateLink(
-						ctx,
-						link,
-						content,
-					);
+					const lockResult = await this.migrateLink(link, content);
 					if (lockResult.success && lockResult.newContent) {
 						content = lockResult.newContent;
 						migratedCount++;
@@ -312,9 +241,7 @@ export class LockManager {
 		return result;
 	}
 
-	private parseEmbeddedLinks(content: string): ParsedLink[] {
-		const links: ParsedLink[] = [];
-
+	private *findEmbeddedLinks(content: string) {
 		// 正则表达式匹配嵌入链接: ![alt](url "title")
 		// 也支持无标题: ![alt](url)
 		const embedRegex = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
@@ -325,7 +252,7 @@ export class LockManager {
 			const start = match.index;
 			const end = start + fullMatch.length;
 
-			links.push({
+			yield {
 				start,
 				end,
 				original: fullMatch,
@@ -333,14 +260,11 @@ export class LockManager {
 				displayText: displayText || undefined,
 				title: title || undefined,
 				isEmbedded: true,
-			});
+			} satisfies ParsedLink;
 		}
-
-		return links;
 	}
 
 	private async migrateLink(
-		ctx: LockContext,
 		link: ParsedLink,
 		content: string,
 	): Promise<{
@@ -349,30 +273,18 @@ export class LockManager {
 		url?: string;
 		reason?: string;
 	}> {
-		if (ctx.signal.aborted) {
-			return { success: false, reason: "Cancelled" };
-		}
-
 		// 只处理HTTP/HTTPS链接
 		const lowerLink = link.link.toLowerCase();
 		if (
-			!lowerLink.startsWith("http://") &&
-			!lowerLink.startsWith("https://")
+			!(
+				lowerLink.startsWith("http://") ||
+				lowerLink.startsWith("https://")
+			)
 		) {
 			return { success: false, reason: t("notHTTPLink") };
 		}
 
-		// 检查是否已经是ipfs链接
-		if (link.link.startsWith("ipfs://")) {
-			return { success: false, reason: t("alreadyIPFS") };
-		}
-
-		// 检查是否已经是锁定链接
-		if (link.link.startsWith("internal.ipfs-locked:")) {
-			return { success: false, reason: t("alreadyLocked") };
-		}
-
-		const result = await this.migrateFromURL(ctx, link.link);
+		const result = await this.migrateFromURL(link.link);
 		if (!result.success) {
 			return {
 				success: false,
@@ -380,19 +292,9 @@ export class LockManager {
 			};
 		}
 
-		let newLinkText: string;
-
-		// 构建新的alt文本
-		const altText = link.displayText || link.link;
-		if (link.title) {
-			newLinkText = `![${altText}](${result.newURL} "${link.title}")`;
-		} else {
-			newLinkText = `![${altText}](${result.newURL})`;
-		}
-
 		const newContent =
 			content.substring(0, link.start) +
-			newLinkText +
+			link.original.replace("(" + link.link, "(" + result.newURL) +
 			content.substring(link.end);
 
 		return {
@@ -402,18 +304,11 @@ export class LockManager {
 		};
 	}
 
-	private async migrateFromURL(
-		ctx: LockContext,
-		url: string,
-	): Promise<{
+	private async migrateFromURL(url: string): Promise<{
 		success: boolean;
 		newURL?: string;
 		error?: string;
 	}> {
-		if (ctx.signal.aborted) {
-			return { success: false, error: "Cancelled" };
-		}
-
 		try {
 			// 验证URL
 			let parsedURL: URL;
@@ -447,16 +342,7 @@ export class LockManager {
 
 			// 从URL提取文件名
 			const pathname = parsedURL.pathname;
-			let filename = pathname.split("/").pop() || "unknown";
-
-			// 如果URL中有查询参数，尝试从Content-Disposition获取文件名
-			const contentDisposition = response.headers["content-disposition"];
-			if (contentDisposition) {
-				const match = contentDisposition.match(/filename="?([^"]+)"?/i);
-				if (match?.[1]) {
-					filename = match[1];
-				}
-			}
+			const filename = basename(pathname);
 
 			const fileObj = new File([blob], filename, {
 				type:
@@ -464,12 +350,11 @@ export class LockManager {
 					"application/octet-stream",
 			});
 
-			// 使用cacheDir如果设置，否则使用primaryDir
-			const targetDir =
+			const dir =
 				this.plugin.settings.downloadDir ||
 				this.plugin.settings.primaryDir;
 
-			const { cid } = await this.plugin.cas.save(targetDir, fileObj);
+			const { cid } = await this.plugin.cas.save(dir, fileObj);
 
 			// 创建新的锁定链接格式
 			const newURL = `internal.ipfs-locked:${cid.toString()},${url}`;
@@ -487,3 +372,66 @@ export class LockManager {
 		}
 	}
 }
+
+//#region 国际化字符串
+const { t } = defineLocales({
+	en: {
+		externalLink: "External link",
+		cannotResolvePath: "Cannot resolve file path",
+		excludedFile: "Excluded File",
+		fileNotExist: "File does not exist",
+		fileLockFailed: "File lock failed",
+		skipNote: (path: string) =>
+			`Skipped note ${path}: no external embedded links`,
+		skipNoteNoMetadata: (path: string) =>
+			`Skipped note ${path}: no metadata cache`,
+		errorProcessingNote: (path: string, error: string) =>
+			`Error processing note ${path}: ${error}`,
+		errorProcessingLink: (link: string, error: string) =>
+			`Error processing link ${link}: ${error}`,
+		migratedLink: (oldLink: string, newLink: string) =>
+			`Migrated link: ${oldLink} -> ${newLink}`,
+		skippedLink: (link: string, reason: string) =>
+			`Skipped link: ${link} (${reason})`,
+		updatedNote: (path: string, count: number) =>
+			`Updated note ${path}: migrated ${count} external embedded links`,
+		noLockNeeded: (path: string) =>
+			`Skipped note ${path}: no external embedded links to migrate`,
+		noActiveNote: "No active note",
+		cancelled: "Lock cancelled by user",
+		notHTTPLink: "Not an HTTP/HTTPS link",
+		nonEmbeddedLink: "Non-embedded link (skipping)",
+		downloadFailed: "Failed to download file",
+		invalidURL: "Invalid URL",
+		unsupportedProtocol: "Unsupported protocol",
+	},
+	zh: {
+		externalLink: "外部链接",
+		excludedFile: "排除的文件",
+		cannotResolvePath: "无法解析文件路径",
+		fileNotExist: "文件不存在",
+		fileLockFailed: "文件迁移失败",
+		skipNote: (path: string) => `跳过笔记 ${path}: 无外部嵌入链接`,
+		skipNoteNoMetadata: (path: string) => `跳过笔记 ${path}: 无元数据缓存`,
+		errorProcessingNote: (path: string, error: string) =>
+			`错误处理笔记 ${path}: ${error}`,
+		errorProcessingLink: (link: string, error: string) =>
+			`错误处理链接 ${link}: ${error}`,
+		migratedLink: (oldLink: string, newLink: string) =>
+			`迁移链接: ${oldLink} -> ${newLink}`,
+		skippedLink: (link: string, reason: string) =>
+			`跳过链接: ${link} (${reason})`,
+		updatedNote: (path: string, count: number) =>
+			`已更新笔记 ${path}: 迁移了 ${count} 个外部嵌入链接`,
+		noLockNeeded: (path: string) =>
+			`跳过笔记 ${path}: 没有可迁移的外部嵌入链接`,
+		noActiveNote: "没有活动的笔记",
+		cancelled: "已被用户取消",
+		notHTTPLink: "非HTTP/HTTPS链接",
+		nonEmbeddedLink: "非嵌入链接(跳过)",
+		downloadFailed: "下载文件失败",
+		invalidURL: "无效的URL",
+		unsupportedProtocol: "不支持的协议",
+	},
+});
+//#endregion
