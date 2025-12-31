@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.10](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.9...0.1.10) (2025-12-31)
+
+
+### Features
+
+* support external changes to cas dir ([24d391a](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/24d391aa7c437d09642547ef8f07bf80fc2650fd))
+* supports add lock to http url ([1b96450](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/1b964503d5b9a202535d29ecdb5765863e7f8226))
+
 ## [0.1.9](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.8...0.1.9) (2025-12-02)
 
 
