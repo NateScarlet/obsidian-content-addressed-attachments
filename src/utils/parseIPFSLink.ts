@@ -1,6 +1,6 @@
 import { CID } from "multiformats";
 
-export type IPFSLink = NonNullable<ReturnType<typeof parseIPFSLink>>;
+export type IPFSStandardURL = NonNullable<ReturnType<typeof parseIPFSLink>>;
 
 export default function parseIPFSLink(rawURL: string) {
 	if (rawURL.startsWith("ipfs://")) {
@@ -10,7 +10,6 @@ export default function parseIPFSLink(rawURL: string) {
 		}
 		const cid = CID.parse(url.hostname);
 		return {
-			rawURL,
 			cid,
 			url,
 			get filename() {
@@ -18,6 +17,9 @@ export default function parseIPFSLink(rawURL: string) {
 			},
 			get format() {
 				return url.searchParams.get("format") ?? "";
+			},
+			toString() {
+				return rawURL;
 			},
 		};
 	}

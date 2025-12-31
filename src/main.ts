@@ -26,6 +26,7 @@ import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 import insertAttachment from "./commands/insertAttachment";
 import insertFileAtCursor from "./commands/insertFileAtCursor";
 import { uniq } from "es-toolkit";
+import { LockManager } from "./LockManager";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -37,6 +38,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
 	private migrationManager: MigrationManager;
+	private lockManager: LockManager;
 
 	private placeholderImageURL: string;
 	private notFoundImageURL: string;
@@ -69,6 +71,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.cas = new CASImpl(this.app, this.casMetadata, () => {
 			return uniq([
 				this.settings.primaryDir,
+				this.settings.downloadDir,
 				...this.settings.gateways
 					.map((i) => i.downloadDir ?? "")
 					.filter((i) => !!i),
@@ -80,6 +83,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			() => this.settings,
 		);
 		this.migrationManager = this.stack.use(new MigrationManager(this));
+		this.lockManager = this.stack.use(new LockManager(this));
 
 		this.setupMutationObserver();
 
@@ -175,6 +179,30 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			callback: () => this.migrationManager.execute("all"),
 		});
 
+		this.addCommand({
+			id: "migrate-current-note",
+			name: t("lockCurrentNote"),
+			callback: () => this.migrationManager.execute("current"),
+		});
+
+		this.addCommand({
+			id: "migrate-all-notes",
+			name: t("lockAllNotes"),
+			callback: () => this.migrationManager.execute("all"),
+		});
+
+		this.addCommand({
+			id: "migrate-current-note",
+			name: t("lockCurrentNote"),
+			callback: () => this.lockManager.execute("current"),
+		});
+
+		this.addCommand({
+			id: "migrate-all-notes",
+			name: t("lockAllNotes"),
+			callback: () => this.lockManager.execute("all"),
+		});
+
 		// 注册文件管理器视图
 		this.registerView(
 			CAS_FILE_EXPLORER_VIEW_TYPE,
@@ -241,7 +269,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		for (const attr of ["src", "href"]) {
 			const value = el.getAttribute(attr);
-			if (value?.startsWith("ipfs://")) {
+			if (
+				value?.startsWith("ipfs://") ||
+				value?.startsWith("internal.ipfs-locked:")
+			) {
 				console.debug("🖼️ 处理 URL:", value);
 				if (el instanceof HTMLImageElement && attr === "src") {
 					el.src = this.placeholderImageURL;
@@ -265,7 +296,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	private async process(parent: ParentNode = document): Promise<void> {
 		const match = parent.querySelectorAll<HTMLElement>(
-			'[src^="ipfs://"], [href^="ipfs://"]',
+			'[src^="ipfs://"], [href^="ipfs://"], [src^="internal.ipfs-locked:"], [href^="internal.ipfs-locked:"]',
 		);
 
 		const jobs: Promise<void>[] = [];
@@ -296,16 +327,21 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 const { t } = defineLocales({
 	en: {
 		insertAttachment: "Insert attachment",
-		migrateCurrentNote: "Migrate files in current note",
-		migrateAllNotes: "Migrate files in all notes",
+		migrateCurrentNote: "Migrate local files (current note)",
+		migrateAllNotes: "Migrate local files (all notes)",
+		lockCurrentNote:
+			"Add checksum and auto-cache for web files (current note)",
+		lockAllNotes: "Add checksum and auto-cache for web files (all notes)",
 		loading: "Loading",
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS File Explorer",
 	},
 	zh: {
 		insertAttachment: "插入附件",
-		migrateCurrentNote: "迁移当前笔记中的文件",
-		migrateAllNotes: "迁移所有笔记中的文件",
+		migrateCurrentNote: "迁移本地文件（当前笔记）",
+		migrateAllNotes: "迁移本地文件 （所有笔记）",
+		lockCurrentNote: "为网络文件添加校验和自动缓存（当前笔记）",
+		lockAllNotes: "为网络文件添加校验和自动缓存（所有笔记）",
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",

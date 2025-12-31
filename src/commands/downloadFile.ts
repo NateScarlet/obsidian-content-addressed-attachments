@@ -1,11 +1,12 @@
 import { Notice } from "obsidian";
 import type { URLResolver } from "src/URLResolver";
 import defineLocales from "src/utils/defineLocales";
-import type { IPFSLink } from "src/utils/parseIPFSLink";
+import type { IPFSStandardURL } from "src/utils/parseIPFSLink";
+import type { IPFSLockedURL } from "src/utils/parseIPFSLockedURL";
 
 export default async function downloadFile(
 	resolver: URLResolver,
-	link: IPFSLink,
+	link: IPFSStandardURL | IPFSLockedURL,
 	filename?: string,
 ): Promise<void> {
 	const handle = await window
@@ -24,7 +25,7 @@ export default async function downloadFile(
 		i.hide(),
 	);
 
-	const result = await resolver.resolveURL(link.rawURL);
+	const result = await resolver.resolveURL(link.toString());
 	if (!result) {
 		new Notice(t("notAvailable"));
 		return;

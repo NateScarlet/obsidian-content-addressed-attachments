@@ -3,8 +3,7 @@ import type ContentAddressedAttachmentPlugin from "./main";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
 import findIPFSLinks from "./utils/findIPFSLinks";
-import type parseIPFSLink from "./utils/parseIPFSLink";
-import { Notice, type TFile } from "obsidian";
+import { Notice } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "src/lib/IncrementalScanProgress.svelte";
 
@@ -59,8 +58,11 @@ export default class ReferenceManager {
 		signal: AbortSignal | undefined,
 	): AsyncIterableIterator<string> {
 		const prefix = `ipfs://${cid.toString()}`;
+		const prefix2 = `internal.ipfs-locked:${cid.toString()},`;
 		for await (const normalizedPath of this.cache.find(cid, signal)) {
-			if (!(await this.verifyReference(normalizedPath, prefix))) {
+			if (
+				!(await this.verifyReference(normalizedPath, prefix, prefix2))
+			) {
 				// 缓存过时了，后台进行重建
 				this.loadFile(normalizedPath).catch((err) => {
 					console.error(`load latest file to cache failed`, err);
@@ -71,13 +73,17 @@ export default class ReferenceManager {
 		}
 	}
 
-	private async verifyReference(normalizedPath: string, prefix: string) {
+	private async verifyReference(
+		normalizedPath: string,
+		prefix: string,
+		prefix2: string,
+	) {
 		const file = this.plugin.app.vault.getFileByPath(normalizedPath);
 		if (!file) {
 			return false;
 		}
 		const content = await this.plugin.app.vault.cachedRead(file);
-		return content.includes(prefix);
+		return content.includes(prefix) || content.includes(prefix2);
 	}
 
 	private async incrementalScan() {
@@ -164,15 +170,7 @@ export default class ReferenceManager {
 		await this.cache.setCutoffAt(new Date(0), signal);
 	}
 
-	async *findReference(
-		cid: CID,
-		signal?: AbortSignal,
-	): AsyncIterableIterator<{
-		file: TFile;
-		pos: [startIndex: number, endIndex: number];
-		url: NonNullable<ReturnType<typeof parseIPFSLink>>;
-		title?: string;
-	}> {
+	async *findReference(cid: CID, signal?: AbortSignal) {
 		await this.incrementalScan();
 		const { vault } = this.plugin.app;
 		for await (const normalizedPath of this.cache.find(cid, signal)) {

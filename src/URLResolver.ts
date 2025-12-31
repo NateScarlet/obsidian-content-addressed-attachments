@@ -1,4 +1,4 @@
-import { App, requestUrl } from "obsidian";
+import { App, requestUrl, type RequestUrlResponse } from "obsidian";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
 import isAbortError from "./utils/isAbortError";
@@ -6,6 +6,7 @@ import type { Settings } from "./settings";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
 import showError from "./utils/showError";
+import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -50,11 +51,69 @@ export class URLResolver {
 	) {}
 
 	async resolveURL(rawURL: string): Promise<ResolveURLResult | undefined> {
+		const lockedURL = parseIPFSLockedURL(rawURL);
+		if (lockedURL) {
+			for await (const match of this.cas.lookup(lockedURL.cid)) {
+				return {
+					path: match.path,
+					url: this.app.vault.adapter.getResourcePath(match.path),
+				};
+			}
+			const resp = await requestUrl({
+				url: lockedURL.sourceURL.toString(),
+				throw: false,
+			});
+			return this.readResponse(
+				this.settings().downloadDir || this.settings().primaryDir,
+				resp,
+				{
+					cid: lockedURL.cid,
+				},
+			);
+		}
 		const data = this.prepareTemplateData(rawURL);
 		const { result } = await this.flight.do(data.cid.toString(), () => {
 			return this.doResolveURL(data);
 		});
 		return result;
+	}
+
+	private async readResponse(
+		dir: string,
+		resp: RequestUrlResponse,
+		expected: {
+			cid: CID;
+			format?: string;
+			filename?: string;
+		},
+	) {
+		const { cid, didCreate } = await this.cas.save(
+			dir,
+			new File(
+				[new Blob([resp.arrayBuffer], {})],
+				expected.filename ?? "",
+				{
+					type: (() => {
+						const ct = resp.headers["content-type"];
+						if (ct && ct !== "application/octet-stream") {
+							return ct;
+						}
+						return expected.format || undefined;
+					})(),
+				},
+			),
+		);
+		if (!cid.equals(expected.cid)) {
+			if (didCreate) {
+				await this.cas.trash(cid);
+			}
+			return;
+		}
+		return {
+			url: this.app.vault.adapter.getResourcePath(
+				this.cas.formatNormalizePath(dir, cid),
+			),
+		};
 	}
 
 	private async doResolveURL(
@@ -122,56 +181,20 @@ export class URLResolver {
 											console.debug("GOT", resp.headers);
 											const dir =
 												config.downloadDir ||
+												this.settings().downloadDir ||
 												this.settings().primaryDir;
-											const { cid, didCreate } =
-												await this.cas.save(
+											resolve(
+												await this.readResponse(
 													dir,
-													new File(
-														[
-															new Blob(
-																[
-																	resp.arrayBuffer,
-																],
-																{},
-															),
-														],
-														data.filename() || "",
-														{
-															type: (() => {
-																const ct =
-																	resp
-																		.headers[
-																		"content-type"
-																	];
-																if (
-																	ct &&
-																	ct !==
-																		"application/octet-stream"
-																) {
-																	return ct;
-																}
-																return (
-																	data.format() ||
-																	undefined
-																);
-															})(),
-														},
-													),
-												);
-											if (!cid.equals(data.cid)) {
-												if (didCreate) {
-													await this.cas.trash(cid);
-												}
-												return;
-											}
-											resolve({
-												url: this.app.vault.adapter.getResourcePath(
-													this.cas.formatNormalizePath(
-														dir,
-														cid,
-													),
+													resp,
+													{
+														cid: data.cid,
+														filename:
+															data.filename(),
+														format: data.format(),
+													},
 												),
-											});
+											);
 										}
 										return;
 									}

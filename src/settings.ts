@@ -7,6 +7,7 @@ export const EXAMPLE_URL =
 interface SettingsV1 {
 	version: 1;
 	primaryDir: string;
+	downloadDir: string;
 	gateways: GatewayConfig[];
 }
 
@@ -32,6 +33,7 @@ export function settingsFromInput(input: SettingsInput): Settings {
 	return {
 		version: 1,
 		primaryDir: input.casDir,
+		downloadDir: "",
 		gateways: input.gatewayURLs,
 	};
 }
@@ -40,6 +42,7 @@ export function getDefaultSettings(): Settings {
 	return {
 		version: 1,
 		primaryDir: ".attachments/cas",
+		downloadDir: "",
 		gateways: [
 			{
 				name: "IPFS.io",

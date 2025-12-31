@@ -38,6 +38,18 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+		new Setting(containerEl)
+			.setName(t("downloadDirectory"))
+			.setDesc(t("downloadDirectoryDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder(this.plugin.settings.primaryDir)
+					.setValue(this.plugin.settings.downloadDir)
+					.onChange(async (value) => {
+						this.plugin.settings.downloadDir = value;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName(t("gateways"))
@@ -194,6 +206,9 @@ const { t } = defineLocales({
 		primaryStorageDirectory: "Primary Storage Directory",
 		primaryStorageDirectoryDesc:
 			"Newly added attachments will be stored in this directory",
+		downloadDirectory: "Download Directory",
+		downloadDirectoryDesc:
+			"Downloaded file will be stored in this directory",
 		gateways: "Gateways",
 		gatewaysDesc:
 			"Used to fetch files not available locally, defined using Mustache template syntax. If the URL is empty, only read existing files from the download directory (set in options)",
@@ -208,7 +223,9 @@ const { t } = defineLocales({
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
-		primaryStorageDirectoryDesc: "新添加的附件会存储在其中",
+		primaryStorageDirectoryDesc: "存储新添加的附件",
+		downloadDirectory: "下载目录",
+		downloadDirectoryDesc: "存储从网络下载文件",
 		gateways: "网关",
 		gatewaysDesc:
 			"用于获取本地缺少的文件，使用 Mustache 模板语法定义 URL 格式。如果网址为空，则仅从下载目录（选项中设置）读取已有文件",

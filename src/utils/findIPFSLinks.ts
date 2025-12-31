@@ -1,18 +1,27 @@
-import parseIPFSLink from "./parseIPFSLink";
+import parseIPFSLink, { type IPFSStandardURL } from "./parseIPFSLink";
+import parseIPFSLockedURL, { type IPFSLockedURL } from "./parseIPFSLockedURL";
 
 export default function* findIPFSLinks(markdown: string): IterableIterator<{
 	pos: [startIndex: number, endIndex: number];
-	url: NonNullable<ReturnType<typeof parseIPFSLink>>;
+	url: NonNullable<
+		(IPFSStandardURL | IPFSLockedURL) &
+			Partial<IPFSStandardURL> &
+			Partial<IPFSLockedURL>
+	>;
 	title?: string;
 }> {
-	// 匹配任何 IPFS base32 链接，不支持含括号的链接，因为和 Markdown 链接语法冲突
+	// 匹配任何 IPFS base32 链接，包含新增的 internal.ipfs-locked 链接
 	const pattern = new RegExp(
 		"\\s*(" +
+			"(?:" +
 			"ipfs://" +
 			"(b[a-z2-7]{58})" + // base32 CID
 			"(/[-\\w$.+!*',;:@&=%]*)?" + // 路径
 			"(\\?[-\\w$.+!*',;:@&=/?%]*)?" + // 查询参数
 			"(#[-\\w$.+!*',;:@&=/?%]*)?" + // 片段
+			"|" +
+			"internal\\.ipfs-locked:b[a-z2-7]{58},[^\\s)]+" + // internal.ipfs-locked 链接
+			")" +
 			")\\s*",
 		"g",
 	);
@@ -23,10 +32,18 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 		const [fullMatch, rawURL] = match;
 		const startIndex = match.index;
 		const endIndex = startIndex + fullMatch.length;
-		const rawURLStartIndex = startIndex + fullMatch.indexOf("ipfs://");
 
-		// 解析IPFS链接
-		const url = parseIPFSLink(rawURL);
+		// 计算rawURL在原始字符串中的开始位置
+		const rawURLStartIndex = startIndex + fullMatch.indexOf(rawURL);
+
+		// 根据链接类型使用不同的解析函数
+		let url;
+		if (rawURL.startsWith("internal.ipfs-locked:")) {
+			url = parseIPFSLockedURL(rawURL);
+		} else {
+			url = parseIPFSLink(rawURL);
+		}
+
 		if (!url) continue;
 
 		// 检查链接前后是否有括号（Markdown链接语法）
