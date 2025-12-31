@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.11](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.10...0.1.11) (2025-12-31)
+
+
+### Bug Fixes
+
+* should not set default alt text on lock ([95430ab](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/95430abc8ca012f5d7e7e3989cdc344c83510162))
+
 ## [0.1.10](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.9...0.1.10) (2025-12-31)
 
 
