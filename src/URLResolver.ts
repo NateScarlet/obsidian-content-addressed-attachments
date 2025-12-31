@@ -87,6 +87,9 @@ export class URLResolver {
 			filename?: string;
 		},
 	) {
+		if (resp.status !== 200) {
+			return;
+		}
 		const { cid, didCreate } = await this.cas.save(
 			dir,
 			new File(
