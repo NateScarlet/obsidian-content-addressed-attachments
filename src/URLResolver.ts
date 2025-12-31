@@ -112,11 +112,11 @@ export class URLResolver {
 			}
 			return;
 		}
+		const path = this.cas.formatNormalizePath(dir, cid);
 		return {
-			url: this.app.vault.adapter.getResourcePath(
-				this.cas.formatNormalizePath(dir, cid),
-			),
-		};
+			url: this.app.vault.adapter.getResourcePath(path),
+			path,
+		} satisfies ResolveURLResult;
 	}
 
 	private async doResolveURL(
