@@ -8,10 +8,10 @@
 			scanningFiles: "Scanning and migrating files, please wait...",
 			lockComplete: "✅ Lock Complete",
 			lockInfo: "ℹ️ Lock Complete",
-			migratedFiles: (migrated: number) =>
-				`Successfully migrated: ${migrated} files`,
-			skippedFiles: (skipped: number) => `Skipped: ${skipped} files`,
-			errorFiles: (errors: number) => `Errors: ${errors}`,
+			migratedLinks: (migrated: number) =>
+				`Successfully migrated: ${migrated} links`,
+			skippedLinks: (skipped: number) => `Skipped: ${skipped} links`,
+			errors: (errors: number) => `Errors: ${errors}`,
 			processingFile: (current: number, total: number, file: string) =>
 				`Processing file ${current}/${total}: ${file}`,
 			viewDetails: "View Details",
@@ -29,9 +29,9 @@
 			scanningFiles: "正在扫描和迁移文件，请稍候...",
 			lockComplete: "✅ 迁移完成",
 			lockInfo: "ℹ️ 迁移完成",
-			migratedFiles: (migrated: number) => `成功迁移: ${migrated} 个文件`,
-			skippedFiles: (skipped: number) => `跳过: ${skipped} 个文件`,
-			errorFiles: (errors: number) => `错误: ${errors} 个`,
+			migratedLinks: (migrated: number) => `成功迁移: ${migrated} 个链接`,
+			skippedLinks: (skipped: number) => `跳过: ${skipped} 个链接`,
+			errors: (errors: number) => `错误: ${errors} 个`,
 			processingFile: (current: number, total: number, file: string) =>
 				`正在处理文件 ${current}/${total}: ${file}`,
 			viewDetails: "查看详细信息",
@@ -52,8 +52,8 @@
 	import type { LockProgress } from "../LockManager";
 
 	const progress: LockProgress = $state({
-		migrated: 0,
-		skipped: 0,
+		migratedLinks: 0,
+		skippedLinks: 0,
 		errors: 0,
 		details: [],
 		status: "processing",
@@ -75,7 +75,7 @@
 		if (error) return t("lockFailed");
 		if (isCancelled) return t("lockCancelled");
 		if (progress.status === "completed") {
-			return progress.migrated > 0
+			return progress.migratedLinks > 0
 				? t("lockComplete")
 				: t("lockInfo");
 		}
@@ -108,17 +108,17 @@
 		...(progress.status === "completed" || progress.status === "processing"
 			? [
 					{
-						text: t("migratedFiles")(progress.migrated),
+						text: t("migratedLinks")(progress.migratedLinks),
 						class: clsx`text-normal`,
 					},
 					{
-						text: t("skippedFiles")(progress.skipped),
+						text: t("skippedLinks")(progress.skippedLinks),
 						class: clsx`text-normal`,
 					},
 					...(progress.errors > 0
 						? [
 								{
-									text: t("errorFiles")(progress.errors),
+									text: t("errors")(progress.errors),
 									class: clsx`text-error`,
 								},
 							]
@@ -193,7 +193,7 @@
 
 	<!-- 动态统计信息 -->
 	<div class="my-3 lock-stats">
-		{#each statsItems as item, index (index) }
+		{#each statsItems as item, index (index)}
 			<p class="my-1 {item.class}">{item.text}</p>
 		{/each}
 	</div>

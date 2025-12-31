@@ -10,8 +10,8 @@ export interface LockProgress {
 	currentFile?: number;
 	totalFiles?: number;
 	currentFileName?: string;
-	migrated: number;
-	skipped: number;
+	migratedLinks: number;
+	skippedLinks: number;
 	errors: number;
 	details: string[];
 	cancelled?: boolean;
@@ -81,10 +81,6 @@ export class LockManager {
 		} catch (error) {
 			modal.showError(String(error));
 			throw error;
-		} finally {
-			if (this.currentStack === stack) {
-				this.currentStack = undefined; // 允许回收
-			}
 		}
 	}
 
@@ -110,8 +106,8 @@ export class LockManager {
 		const files = this.app.vault.getMarkdownFiles();
 		const result: LockProgress = {
 			status: "processing",
-			migrated: 0,
-			skipped: 0,
+			migratedLinks: 0,
+			skippedLinks: 0,
 			errors: 0,
 			details: [],
 			currentFile: 0,
@@ -136,8 +132,8 @@ export class LockManager {
 
 			try {
 				const noteResult = await this.migrateNote(ctx, file);
-				result.migrated += noteResult.migrated;
-				result.skipped += noteResult.skipped;
+				result.migratedLinks += noteResult.migratedLinks;
+				result.skippedLinks += noteResult.skippedLinks;
 				result.errors += noteResult.errors;
 				result.details.push(...noteResult.details);
 
@@ -161,8 +157,8 @@ export class LockManager {
 	): Promise<LockProgress> {
 		const result: LockProgress = {
 			status: "processing",
-			migrated: 0,
-			skipped: 0,
+			migratedLinks: 0,
+			skippedLinks: 0,
 			errors: 0,
 			details: [],
 		};
@@ -205,7 +201,7 @@ export class LockManager {
 							t("migratedLink")(link.link, lockResult.url || ""),
 						);
 					} else {
-						result.skipped++;
+						result.skippedLinks++;
 						result.details.push(
 							t("skippedLink")(
 								link.link,
@@ -223,13 +219,10 @@ export class LockManager {
 
 			if (migratedCount > 0 && !ctx.signal.aborted) {
 				await this.app.vault.modify(file, content);
-				result.migrated = migratedCount;
+				result.migratedLinks = migratedCount;
 				result.details.unshift(
 					t("updatedNote")(file.path, migratedCount),
 				);
-			} else {
-				result.skipped++;
-				result.details.unshift(t("noLockNeeded")(file.path));
 			}
 		} catch (err) {
 			result.errors++;
@@ -395,8 +388,6 @@ const { t } = defineLocales({
 			`Skipped link: ${link} (${reason})`,
 		updatedNote: (path: string, count: number) =>
 			`Updated note ${path}: migrated ${count} external embedded links`,
-		noLockNeeded: (path: string) =>
-			`Skipped note ${path}: no external embedded links to migrate`,
 		noActiveNote: "No active note",
 		cancelled: "Lock cancelled by user",
 		notHTTPLink: "Not an HTTP/HTTPS link",
@@ -414,17 +405,15 @@ const { t } = defineLocales({
 		skipNote: (path: string) => `跳过笔记 ${path}: 无外部嵌入链接`,
 		skipNoteNoMetadata: (path: string) => `跳过笔记 ${path}: 无元数据缓存`,
 		errorProcessingNote: (path: string, error: string) =>
-			`错误处理笔记 ${path}: ${error}`,
+			`处理笔记 ${path} 时出错: ${error}`,
 		errorProcessingLink: (link: string, error: string) =>
-			`错误处理链接 ${link}: ${error}`,
+			`处理链接 ${link} 时出错: ${error}`,
 		migratedLink: (oldLink: string, newLink: string) =>
 			`迁移链接: ${oldLink} -> ${newLink}`,
 		skippedLink: (link: string, reason: string) =>
 			`跳过链接: ${link} (${reason})`,
 		updatedNote: (path: string, count: number) =>
 			`已更新笔记 ${path}: 迁移了 ${count} 个外部嵌入链接`,
-		noLockNeeded: (path: string) =>
-			`跳过笔记 ${path}: 没有可迁移的外部嵌入链接`,
 		noActiveNote: "没有活动的笔记",
 		cancelled: "已被用户取消",
 		notHTTPLink: "非HTTP/HTTPS链接",
