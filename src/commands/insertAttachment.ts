@@ -1,6 +1,6 @@
 import { MarkdownView, type App } from "obsidian";
 import type { CAS } from "src/types/CAS";
-import formatMarkdownLink from "src/utils/formatMarkdownLink";
+import insertFileAtCursor from "./insertFileAtCursor";
 
 export default async function insertAttachment(
 	app: App,
@@ -19,11 +19,6 @@ export default async function insertAttachment(
 	const editor = view.editor;
 	for (const file of files) {
 		const { cid } = await cas.save(dir, file);
-		const text = formatMarkdownLink(file, cid);
-		editor.replaceRange(
-			text,
-			editor.getCursor("from"),
-			editor.getCursor("to"),
-		);
+		insertFileAtCursor(file, cid, editor);
 	}
 }
