@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.12](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.11...0.1.12) (2026-02-13)
+
+
+### Features
+
+* 插入附件后自动换行并移动光标 ([85383e7](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/85383e71a41a13ced745fab7022327b7a9f5c112))
+
 ## [0.1.11](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.10...0.1.11) (2025-12-31)
 
 
