@@ -334,7 +334,7 @@ const { t } = defineLocales({
 		lockAllNotes: "Add checksum and auto-cache for web files (all notes)",
 		loading: "Loading",
 		fileNotFound: "File not found",
-		openCASExplorer: "Open CAS File Explorer",
+		openCASExplorer: "Open CAS file explorer",
 	},
 	zh: {
 		insertAttachment: "插入附件",

@@ -7,10 +7,10 @@
 				"One header per line, format: Header-Name: header value",
 			headersPlaceholder:
 				"e.g.:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
-			downloadDir: "Download Directory",
+			downloadDir: "Download directory",
 			downloadDirPlaceholder:
 				"Relative path to vault root. Defaults to global download directory.",
-			delete: "Delete Gateway",
+			delete: "Delete gateway",
 		},
 		zh: {
 			headers: "请求头",

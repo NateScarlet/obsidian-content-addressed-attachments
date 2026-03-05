@@ -7,9 +7,9 @@
 	const { t } = defineLocales({
 		en: {
 			searchPlaceholder: "Search files...",
-			emptyTrash: "Empty Trash",
-			cleanUnreferenced: "Clean Unreferenced Files",
-			rebuildIndex: "Rebuild Index",
+			emptyTrash: "Empty trash",
+			cleanUnreferenced: "Clean unreferenced files",
+			rebuildIndex: "Rebuild index",
 			confirmEmptyTrash: `Permanently delete ALL files from trash? This action cannot be undone.`,
 		},
 		zh: {

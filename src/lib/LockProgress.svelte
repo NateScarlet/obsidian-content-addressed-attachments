@@ -4,20 +4,20 @@
 	//#region 国际化字符串
 	const { t } = defineLocales({
 		en: {
-			lockProgress: "File Lock Progress",
+			lockProgress: "File lock progress",
 			scanningFiles: "Scanning and migrating files, please wait...",
-			lockComplete: "✅ Lock Complete",
-			lockInfo: "ℹ️ Lock Complete",
+			lockComplete: "✅ Lock complete",
+			lockInfo: "ℹ️ Lock complete",
 			migratedLinks: (migrated: number) =>
 				`Successfully migrated: ${migrated} links`,
 			skippedLinks: (skipped: number) => `Skipped: ${skipped} links`,
 			errors: (errors: number) => `Errors: ${errors}`,
 			processingFile: (current: number, total: number, file: string) =>
 				`Processing file ${current}/${total}: ${file}`,
-			viewDetails: "View Details",
+			viewDetails: "View details",
 			close: "Close",
-			lockFailed: "❌ Lock Failed",
-			lockCancelled: "⏹️ Lock Cancelled",
+			lockFailed: "❌ Lock failed",
+			lockCancelled: "⏹️ Lock cancelled",
 			cancel: "Cancel",
 			cancelling: "Cancelling...",
 			remainingFiles: (remaining: number) =>

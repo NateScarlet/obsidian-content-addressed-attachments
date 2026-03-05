@@ -4,7 +4,7 @@
 	//#region 国际化字符串
 	const { t } = defineLocales({
 		en: {
-			templateSyntaxHelp: "Template Syntax Help",
+			templateSyntaxHelp: "Template syntax help",
 			templateDescription:
 				"URL templates use Mustache template syntax. The current implementation uses URL encoding instead of HTML escaping.",
 			variableSubstitution:
@@ -15,12 +15,12 @@
 				"Function call: {{#function}}content{{/function}} - Calls custom function to process content",
 			comment: "Comment: {{! comment }} - Not displayed in output",
 			viewDocumentation: "View complete Mustache syntax documentation",
-			encodingDescription: "Encoding Instructions",
+			encodingDescription: "Encoding instructions",
 			doubleBrace:
 				"Double braces {{variable}} are automatically URL encoded (encodeURIComponent)",
 			tripleBrace:
 				"Triple braces {{{variable}}} preserve raw content without any encoding",
-			availableVariables: "Available Template Variables",
+			availableVariables: "Available template variables",
 			rawURL: "{{rawURL}} - Original URL used in the note",
 			urlObject: "{{url}} - Parsed JavaScript URL object",
 			cid: "{{cid}} - IPFS root content ID, multiformats CID object, can also be formatted directly as a string",

@@ -31,6 +31,8 @@ export default async function downloadFile(
 		return;
 	}
 
+	// result.url is resolved local resource path (`app://` protocol)
+	// not use requestUrl because it only supports HTTP/HTTPS, and no cors required
 	const resp = await window.fetch(result.url);
 	const writable = stack.adopt(await handle.createWritable(), (w) =>
 		w.close(),

@@ -88,12 +88,12 @@ export function getDefaultSettings(): Settings {
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {
-		localGatewayExample: "Local Gateway Example",
-		githubExample: "Github Repository Example",
+		localGatewayExample: "Local gateway example",
+		githubExample: "GitHub repository example",
 	},
 	zh: {
 		localGatewayExample: "本地网关示例",
-		githubExample: "Github 仓库示例",
+		githubExample: "GitHub 仓库示例",
 	},
 });
 //#endregion

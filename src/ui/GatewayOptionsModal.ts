@@ -45,7 +45,7 @@ export default class GatewayOptionsModal extends Modal {
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {
-		title: "Gateway Options",
+		title: "Gateway options",
 	},
 	zh: {
 		title: "网关选项",

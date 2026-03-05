@@ -203,22 +203,22 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {
-		primaryStorageDirectory: "Primary Storage Directory",
+		primaryStorageDirectory: "Primary storage directory",
 		primaryStorageDirectoryDesc:
 			"Newly added attachments will be stored in this directory",
-		downloadDirectory: "Download Directory",
+		downloadDirectory: "Download directory",
 		downloadDirectoryDesc:
 			"Downloaded file will be stored in this directory",
 		gateways: "Gateways",
 		gatewaysDesc:
 			"Used to fetch files not available locally, defined using Mustache template syntax. If the URL is empty, only read existing files from the download directory (set in options)",
-		addGateway: "Add Gateway",
-		gatewayOptions: "Gateway Options",
+		addGateway: "Add gateway",
+		gatewayOptions: "Gateway options",
 		willDeleteGateway: (name: string) => `Will delete gateway '${name}'`,
-		newGateway: "New Gateway",
+		newGateway: "New gateway",
 		undo: "Undo",
-		configurationName: "Configuration Name",
-		urlTemplate: "URL Template (Mustache syntax)",
+		configurationName: "Configuration name",
+		urlTemplate: "URL template (Mustache syntax)",
 		examplePlaceholder: "e.g. .attachments/cas",
 	},
 	zh: {

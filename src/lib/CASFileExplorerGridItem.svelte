@@ -9,10 +9,10 @@
 			restore: "Restore",
 			indexedAt: "Indexed at",
 			trashedAt: "Trashed at",
-			fetchMore: "Fetch More",
+			fetchMore: "Fetch more",
 			canNotRestoreFromGateway: "Can not restore from gateway",
 			copied: "Copied markdown link to clipboard",
-			copyLink: "Copy Link",
+			copyLink: "Copy link",
 		},
 		zh: {
 			confirmPermanentDelete: (filename: string) =>

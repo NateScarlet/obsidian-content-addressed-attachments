@@ -9,9 +9,9 @@
 		en: {
 			all: "Local",
 			unreferenced: "Unreferenced",
-			recycleBin: "Recycle Bin",
+			recycleBin: "Recycle bin",
 			mode: "Mode",
-			activeNote: "Active Note",
+			activeNote: "Active note",
 		},
 		zh: {
 			all: "本地",

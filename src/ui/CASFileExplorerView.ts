@@ -51,7 +51,7 @@ export class CASFileExplorerView extends ItemView {
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {
-		casFileExplorer: "CAS File Explorer",
+		casFileExplorer: "CAS file explorer",
 	},
 	zh: {
 		casFileExplorer: "CAS 文件管理器",

@@ -9,7 +9,7 @@ const { t } = defineLocales({
 		externalLink: "External link",
 		alreadyIPFS: "Already IPFS link",
 		cannotResolvePath: "Cannot resolve file path",
-		excludedFile: "Excluded File",
+		excludedFile: "Excluded file",
 		fileNotExist: "File does not exist",
 		fileMigrationFailed: "File migration failed",
 		skipNote: (path: string) => `Skipped note ${path}: no file links`,

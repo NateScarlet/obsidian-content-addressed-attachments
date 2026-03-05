@@ -4,20 +4,20 @@
 	//#region 国际化字符串
 	const { t } = defineLocales({
 		en: {
-			migrationProgress: "File Migration Progress",
+			migrationProgress: "File migration progress",
 			scanningFiles: "Scanning and migrating files, please wait...",
-			migrationComplete: "✅ Migration Complete",
-			migrationInfo: "ℹ️ Migration Complete",
+			migrationComplete: "✅ Migration complete",
+			migrationInfo: "ℹ️ Migration complete",
 			migratedFiles: (migrated: number) =>
 				`Successfully migrated: ${migrated} files`,
 			skippedFiles: (skipped: number) => `Skipped: ${skipped} files`,
 			errorFiles: (errors: number) => `Errors: ${errors}`,
 			processingFile: (current: number, total: number, file: string) =>
 				`Processing file ${current}/${total}: ${file}`,
-			viewDetails: "View Details",
+			viewDetails: "View details",
 			close: "Close",
-			migrationFailed: "❌ Migration Failed",
-			migrationCancelled: "⏹️ Migration Cancelled",
+			migrationFailed: "❌ Migration failed",
+			migrationCancelled: "⏹️ Migration cancelled",
 			cancel: "Cancel",
 			cancelling: "Cancelling...",
 			remainingFiles: (remaining: number) =>
@@ -193,7 +193,7 @@
 
 	<!-- 动态统计信息 -->
 	<div class="my-3 migration-stats">
-		{#each statsItems as item, index (index) }
+		{#each statsItems as item, index (index)}
 			<p class="my-1 {item.class}">{item.text}</p>
 		{/each}
 	</div>

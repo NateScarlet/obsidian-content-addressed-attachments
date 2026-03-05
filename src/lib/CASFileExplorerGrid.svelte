@@ -5,7 +5,7 @@
 	const { t } = defineLocales({
 		en: {
 			noFiles: "No files found",
-			loadMore: "Load More",
+			loadMore: "Load more",
 		},
 		zh: {
 			noFiles: "未找到文件",

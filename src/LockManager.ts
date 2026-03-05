@@ -371,7 +371,7 @@ const { t } = defineLocales({
 	en: {
 		externalLink: "External link",
 		cannotResolvePath: "Cannot resolve file path",
-		excludedFile: "Excluded File",
+		excludedFile: "Excluded file",
 		fileNotExist: "File does not exist",
 		fileLockFailed: "File lock failed",
 		skipNote: (path: string) =>
