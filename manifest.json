@@ -1,7 +1,7 @@
 {
 	"id": "content-addressed-attachments",
 	"name": "Content-Addressed Attachments",
-	"version": "0.1.11",
+	"version": "0.1.12",
 	"minAppVersion": "1.0.0",
 	"description": "Content-addressed attachment storage for automatic deduplication. Works entirely locally; optionally uses GitHub private repositories for hosting.",
 	"author": "NateScarlet",
