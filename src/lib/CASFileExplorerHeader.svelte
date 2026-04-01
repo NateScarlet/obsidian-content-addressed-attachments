@@ -2,7 +2,6 @@
 	import showError from "src/utils/showError";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
-	import rebuildCASMetadata from "src/commands/rebuildCASMetadata";
 
 	const { t } = defineLocales({
 		en: {
@@ -10,45 +9,82 @@
 			emptyTrash: "Empty trash",
 			cleanUnreferenced: "Clean unreferenced files",
 			rebuildIndex: "Rebuild index",
-			confirmEmptyTrash: `Permanently delete ALL files from trash? This action cannot be undone.`,
 		},
 		zh: {
 			searchPlaceholder: "搜索文件...",
 			emptyTrash: "清空回收站",
 			cleanUnreferenced: "清理未引用文件",
 			rebuildIndex: "重建索引",
-			confirmEmptyTrash: `永久删除回收站中的所有个文件？此操作无法撤销。`,
 		},
 	});
 </script>
 
 <script lang="ts">
+	import showProgress from "src/utils/showProgress";
+
 	const { cas, casMetadata, referenceManager, query, mode } = getContext();
 
+	let loading = $state(false);
+
 	async function cleanUnreferenced() {
-		for await (const { node } of casMetadata.find({
-			filterBy: {
-				hasReference: false,
-			},
-			signal: undefined,
-		})) {
-			await cas.trash(node.cid);
+		if (loading) return;
+		loading = true;
+		const notice = showProgress(t("cleanUnreferenced"));
+		try {
+			let i = 0;
+			for await (const { node } of casMetadata.find({
+				filterBy: {
+					hasReference: false,
+				},
+				signal: undefined,
+			})) {
+				await cas.trash(node.cid);
+				i++;
+			notice.update(i, node.cid.toString());
+			}
+		} finally {
+			loading = false;
+			notice.hide();
 		}
 	}
 
 	async function rebuildIndex() {
-		await rebuildCASMetadata(casMetadata, cas.objects());
-		await referenceManager.clearCache();
+		if (loading) return;
+		loading = true;
+		const notice = showProgress(t("rebuildIndex"));
+		try {
+			let i = 0;
+			for await (const obj of cas.objects()) {
+				await casMetadata.merge(obj);
+				i++;
+				notice.update(i, obj.cid.toString());
+			}
+			await referenceManager.clearCache();
+		} finally {
+			loading = false;
+			notice.hide();
+		}
 	}
 
 	async function emptyTrash() {
-		for await (const { node } of casMetadata.find({
-			filterBy: {
-				isTrashed: true,
-			},
-			signal: undefined,
-		})) {
-			await cas.deleteIfTrashed(node.cid);
+		if (loading) return;
+		loading = true;
+		const notice = showProgress(t("emptyTrash"));
+		try {
+			let i = 0;
+			for await (const { node } of casMetadata.find({
+				filterBy: {
+					isTrashed: true,
+				},
+				signal: undefined,
+			})) {
+				await cas.deleteIfTrashed(node.cid);
+				i++;
+				notice.update(i, node.cid.toString());
+			}
+		} finally {
+			loading = false;
+			notice.hide();
 		}
 	}
 </script>
@@ -67,6 +103,7 @@
 		<button
 			type="button"
 			class="flex-none"
+			disabled={loading}
 			onclick={() => rebuildIndex().catch(showError)}
 		>
 			{t("rebuildIndex")}
@@ -75,6 +112,7 @@
 		<button
 			type="button"
 			class="flex-none"
+			disabled={loading}
 			onclick={() => emptyTrash().catch(showError)}
 		>
 			{t("emptyTrash")}
@@ -83,6 +121,7 @@
 		<button
 			type="button"
 			class="flex-none"
+			disabled={loading}
 			onclick={() => cleanUnreferenced().catch(showError)}
 		>
 			{t("cleanUnreferenced")}
