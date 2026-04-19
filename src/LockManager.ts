@@ -84,6 +84,49 @@ export class LockManager {
 		}
 	}
 
+	async lockLink(file: TFile, link: ParsedLink): Promise<void> {
+		const result = await this.migrateFromURL(link.link);
+		if (!result.success || !result.newURL) {
+			throw new Error(result.error || t("fileLockFailed"));
+		}
+
+		await this.app.vault.process(file, (content) => {
+			const prefix = content.substring(0, link.start);
+			const suffix = content.substring(link.end);
+			const originalText = content.substring(link.start, link.end);
+			const newText = originalText.replace(
+				"(" + link.link,
+				"(" + result.newURL!,
+			);
+			return prefix + newText + suffix;
+		});
+	}
+
+	async unlockLink(file: TFile, link: ParsedLink): Promise<void> {
+		if (!link.link.startsWith("internal.ipfs-locked:")) {
+			return;
+		}
+
+		const parts = link.link
+			.substring("internal.ipfs-locked:".length)
+			.split(",");
+		if (parts.length < 2) {
+			return;
+		}
+		const originalURL = parts.slice(1).join(",");
+
+		await this.app.vault.process(file, (content) => {
+			const prefix = content.substring(0, link.start);
+			const suffix = content.substring(link.end);
+			const originalText = content.substring(link.start, link.end);
+			const newText = originalText.replace(
+				"(" + link.link,
+				"(" + originalURL,
+			);
+			return prefix + newText + suffix;
+		});
+	}
+
 	[Symbol.dispose]() {
 		this.currentStack?.dispose();
 	}
@@ -173,7 +216,7 @@ export class LockManager {
 			let content = await this.app.vault.read(file);
 
 			// 解析嵌入链接
-			const embeddedLinks = Array.from(this.findEmbeddedLinks(content));
+			const embeddedLinks = Array.from(this.findLinks(content));
 
 			if (embeddedLinks.length === 0) {
 				result.details.push(t("skipNote")(file.path));
@@ -234,25 +277,44 @@ export class LockManager {
 		return result;
 	}
 
-	private *findEmbeddedLinks(content: string) {
-		// 正则表达式匹配嵌入链接: ![alt](url "title")
-		// 也支持无标题: ![alt](url)
-		const embedRegex = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g;
+	findLinkAtOffset(content: string, offset: number): ParsedLink | undefined {
+		// 寻找光标前的最后一个 [
+		const lastBracket = content.lastIndexOf("[", offset);
+		if (lastBracket === -1) return undefined;
+
+		// 检查是否是图片类型的链接 ![
+		const start =
+			lastBracket > 0 && content[lastBracket - 1] === "!"
+				? lastBracket - 1
+				: lastBracket;
+
+		const link = this.findLinks(content, start).next().value;
+		if (link && link.start === start && offset <= link.end) {
+			return link;
+		}
+
+		return undefined;
+	}
+
+	private *findLinks(content: string, startIndex = 0) {
+		// 正则表达式匹配链接: !?[alt](url "title")
+		const linkRegex = /(!?\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\))/g;
+		linkRegex.lastIndex = startIndex;
 
 		let match;
-		while ((match = embedRegex.exec(content)) !== null) {
-			const [fullMatch, displayText, link, title] = match;
+		while ((match = linkRegex.exec(content)) !== null) {
+			const [fullMatch, original, displayText, link, title] = match;
 			const start = match.index;
 			const end = start + fullMatch.length;
 
 			yield {
 				start,
 				end,
-				original: fullMatch,
+				original,
 				link: link.trim(),
 				displayText: displayText || undefined,
 				title: title || undefined,
-				isEmbedded: true,
+				isEmbedded: original.startsWith("!"),
 			} satisfies ParsedLink;
 		}
 	}

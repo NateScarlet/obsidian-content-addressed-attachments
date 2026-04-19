@@ -153,6 +153,51 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				}
 			}),
 		);
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu, editor, view) => {
+				if (!view.file) return;
+				const from = editor.getCursor("from");
+				const to = editor.getCursor("to");
+				const content = editor.getValue();
+
+				const link =
+					this.lockManager.findLinkAtOffset(
+						content,
+						editor.posToOffset(from),
+					) ??
+					this.lockManager.findLinkAtOffset(
+						content,
+						editor.posToOffset(to),
+					);
+
+				if (link) {
+					if (
+						link.link.startsWith("http://") ||
+						link.link.startsWith("https://")
+					) {
+						menu.addItem((item) => {
+							item.setTitle(t("lockLink"))
+								.setIcon("lock")
+								.onClick(() => {
+									this.lockManager
+										.lockLink(view.file!, link)
+										.catch(showError);
+								});
+						});
+					} else if (link.link.startsWith("internal.ipfs-locked:")) {
+						menu.addItem((item) => {
+							item.setTitle(t("unlockLink"))
+								.setIcon("lock-open")
+								.onClick(() => {
+									this.lockManager
+										.unlockLink(view.file!, link)
+										.catch(showError);
+								});
+						});
+					}
+				}
+			}),
+		);
 		//#endregion
 
 		this.addCommand({
@@ -180,25 +225,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "migrate-current-note",
-			name: t("lockCurrentNote"),
-			callback: () => this.migrationManager.execute("current"),
-		});
-
-		this.addCommand({
-			id: "migrate-all-notes",
-			name: t("lockAllNotes"),
-			callback: () => this.migrationManager.execute("all"),
-		});
-
-		this.addCommand({
-			id: "migrate-current-note",
+			id: "lock-current-note",
 			name: t("lockCurrentNote"),
 			callback: () => this.lockManager.execute("current"),
 		});
 
 		this.addCommand({
-			id: "migrate-all-notes",
+			id: "lock-all-notes",
 			name: t("lockAllNotes"),
 			callback: () => this.lockManager.execute("all"),
 		});
@@ -331,6 +364,8 @@ const { t } = defineLocales({
 		migrateAllNotes: "Migrate local files (all notes)",
 		lockCurrentNote: "Lock web files (current note)",
 		lockAllNotes: "Lock web files (all notes)",
+		lockLink: "Lock this link",
+		unlockLink: "Unlock this link",
 		loading: "Loading",
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS file explorer",
@@ -341,6 +376,8 @@ const { t } = defineLocales({
 		migrateAllNotes: "迁移本地文件 （所有笔记）",
 		lockCurrentNote: "锁定网络文件（当前笔记）",
 		lockAllNotes: "锁定网络文件（所有笔记）",
+		lockLink: "锁定此链接",
+		unlockLink: "解锁此链接",
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",
