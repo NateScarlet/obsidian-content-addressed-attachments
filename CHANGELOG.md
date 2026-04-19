@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.13](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.12...0.1.13) (2026-04-19)
+
+
+### Features
+
+* add context menu commands to lock or unlock individual links ([079976b](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/079976b2c654e01d851d177bad04920bfb41bcae))
+* add real-time progress notice and prevent concurrent execution for CAS file explorer actions ([073fea5](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/073fea5ef1b5a9beb95f7b4bd9ed34fb1ef3b9e6))
+
 ## [0.1.12](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.11...0.1.12) (2026-02-13)
 
 
