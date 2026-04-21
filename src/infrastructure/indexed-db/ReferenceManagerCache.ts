@@ -87,9 +87,11 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		);
 		if (didCreate) {
 			referenceChange.dispatch({
-				action: "add",
-				cid,
-				path: normalizedPath,
+				detail: {
+					action: "add",
+					cid,
+					path: normalizedPath,
+				},
 			});
 		}
 	}
@@ -183,7 +185,7 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 				return changes;
 			},
 		);
-		changes.forEach(referenceChange.dispatch);
+		changes.forEach((i) => referenceChange.dispatch({ detail: i }));
 		return changes.length;
 	}
 

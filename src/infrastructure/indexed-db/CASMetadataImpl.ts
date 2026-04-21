@@ -213,7 +213,7 @@ export class CASMetadataImpl implements CASMetadata {
 			signal,
 		);
 		if (result.didChange) {
-			casMetadataSave.dispatch(this.decode(result.after));
+			casMetadataSave.dispatch({ detail: this.decode(result.after) });
 		}
 		return result;
 	}
@@ -237,7 +237,7 @@ export class CASMetadataImpl implements CASMetadata {
 			signal,
 		);
 		if (existing) {
-			casMetadataDelete.dispatch(this.decode(existing));
+			casMetadataDelete.dispatch({ detail: this.decode(existing) });
 		}
 	}
 
