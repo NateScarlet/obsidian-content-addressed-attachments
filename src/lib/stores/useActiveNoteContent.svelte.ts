@@ -29,7 +29,7 @@ export default function useActiveNoteContent(
 
 		v.set(loadByActiveFile(app));
 		const refs = [
-			app.workspace.on("active-leaf-change", (editor) => {
+			app.workspace.on("active-leaf-change", () => {
 				v.set(loadByActiveFile(app));
 			}),
 			app.workspace.on("editor-change", (editor) => {

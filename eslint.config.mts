@@ -17,11 +17,14 @@ export default defineConfig([
 	},
 	internalPlugin,
 	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json"]),
-	// @ts-expect-error not typed
-	...obsidianmd.configs.recommended,
+	{
+		plugins: { obsidianmd },
+		// @ts-expect-error not typed
+		rules: obsidianmd.configs.recommended,
+	},
 	ts.configs.eslintRecommended,
 	...ts.configs.recommended,
-	svelte.configs["flat/recommended"],
+	...svelte.configs["flat/recommended"],
 	prettierRecommended,
 	{
 		files: ["**/*.ts", "**/*.svelte", "**/*.svelte.ts", "**/*.svelte.js"],
