@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.14](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.13...0.1.14) (2026-05-30)
+
+
+### Features
+
+* 自动从回收站恢复仍在被引用的文件 ([30ad6b7](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/30ad6b7cf4e97674a0750ab2fd89f4580cd7a738))
+
+
+### Bug Fixes
+
+* wrong minAppVersion ([254d50f](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/254d50fc59ede8a02967915517ffcaa36c58490c))
+
 ## [0.1.13](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.12...0.1.13) (2026-04-19)
 
 
