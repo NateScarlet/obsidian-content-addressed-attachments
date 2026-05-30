@@ -3,11 +3,12 @@
 	"license": "MIT",
 	"private": true,
 	"version": "0.1.13",
+	"packageManager": "pnpm@11.5.0",
 	"description": "Manage attachments without consider about it's location in Obsidian (https://obsidian.md)",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "npm run build:svelte-check && npm run build:esbuild",
+		"build": "pnpm run build:svelte-check && pnpm run build:esbuild",
 		"build:svelte-check": "svelte-check --tsconfig tsconfig.json",
 		"build:esbuild": "node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"

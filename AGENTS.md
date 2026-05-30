@@ -18,19 +18,19 @@
 ### 安装依赖
 
 ```powershell
-npm install
+pnpm install
 ```
 
 ### 监视并自动构建（开发模式）
 
 ```powershell
-npm run dev
+pnpm run dev
 ```
 
 ### 生产环境打包构建
 
 ```powershell
-npm run build
+pnpm run build
 ```
 
 该命令会依次执行 `npm run build:svelte-check` 诊断 Svelte 类型问题，以及 `npm run build:esbuild` 编译打包 js/css 资源。
