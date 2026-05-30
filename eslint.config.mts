@@ -36,7 +36,13 @@ export default (defineConfig as TypedDefineConfig)([
 			],
 		},
 	},
-	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json", "eslint.config.mts"]),
+	globalIgnores([
+		"node_modules/",
+		"*.js",
+		"*.mjs",
+		"*.json",
+		"eslint.config.mts",
+	]),
 	{
 		plugins: { obsidianmd },
 	},

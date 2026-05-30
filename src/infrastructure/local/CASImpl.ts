@@ -154,7 +154,7 @@ export class CASImpl implements CAS {
 				};
 			} catch (err) {
 				throw new Error(
-					`go invalid file in cas: ${normalizedPath}: ${err}`,
+					`go invalid file in cas: ${normalizedPath}: ${String(err)}`,
 				);
 			}
 		}

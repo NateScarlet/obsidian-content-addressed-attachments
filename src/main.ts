@@ -30,19 +30,19 @@ import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
-	public settings: Settings;
-	public cas: CAS;
-	public casMetadata: CASMetadata;
-	public urlResolver: URLResolver;
+	public settings!: Settings;
+	public cas!: CAS;
+	public casMetadata!: CASMetadata;
+	public urlResolver!: URLResolver;
 	public referenceManger = new ReferenceManager(this);
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
-	private migrationManager: MigrationManager;
-	private lockManager: LockManager;
+	private migrationManager!: MigrationManager;
+	private lockManager!: LockManager;
 
-	private placeholderImageURL: string;
-	private notFoundImageURL: string;
+	private placeholderImageURL!: string;
+	private notFoundImageURL!: string;
 
 	async onload() {
 		await this.loadSettings();
@@ -286,11 +286,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		const observer = this.stack.adopt(
 			new MutationObserver((mutations) => {
 				mutations.forEach((mutation) => {
-					if (mutation.target instanceof HTMLElement) {
+					if (mutation.target.instanceOf(HTMLElement)) {
 						this.process(mutation.target).catch(showError);
 					}
 					mutation.addedNodes.forEach((node) => {
-						if (node instanceof HTMLElement) {
+						if (node.instanceOf(HTMLElement)) {
 							this.process(node).catch(showError);
 						}
 					});
@@ -298,7 +298,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}),
 			(i) => i.disconnect(),
 		);
-		observer.observe(document.body, {
+		observer.observe(activeDocument.body, {
 			childList: true,
 			subtree: true,
 		});
@@ -319,7 +319,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				value?.startsWith("internal.ipfs-locked:")
 			) {
 				console.debug("🖼️ 处理 URL:", value);
-				if (el instanceof HTMLImageElement && attr === "src") {
+				if (el.instanceOf(HTMLImageElement) && attr === "src") {
 					el.src = this.placeholderImageURL;
 				}
 				const resolvedURL = await this.urlResolver.resolveURL(value);
@@ -328,7 +328,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					el.setAttr(`data-original-${attr}`, value);
 					el.setAttr(attr, resolvedURL.url);
 				} else {
-					if (el instanceof HTMLImageElement && attr === "src") {
+					if (el.instanceOf(HTMLImageElement) && attr === "src") {
 						el.src = this.notFoundImageURL;
 					} else {
 						el.setAttr(attr, value);
@@ -339,7 +339,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		}
 	}
 
-	private async process(parent: ParentNode = document): Promise<void> {
+	private async process(parent: ParentNode = activeDocument): Promise<void> {
 		const match = parent.querySelectorAll<HTMLElement>(
 			'[src^="ipfs://"], [href^="ipfs://"], [src^="internal.ipfs-locked:"], [href^="internal.ipfs-locked:"]',
 		);

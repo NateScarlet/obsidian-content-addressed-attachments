@@ -23,7 +23,7 @@
 	import showProgress from "src/utils/showProgress";
 	import emptyTrashCmd from "src/commands/emptyTrash";
 
-	const { app, cas, casMetadata, referenceManager, query, mode } = getContext();
+	const { cas, casMetadata, referenceManager, query, mode } = getContext();
 
 	let loading = $state(false);
 
@@ -41,7 +41,7 @@
 			})) {
 				await cas.trash(node.cid);
 				i++;
-			notice.update(i, node.cid.toString());
+				notice.update(i, node.cid.toString());
 			}
 		} finally {
 			loading = false;
@@ -72,13 +72,9 @@
 		loading = true;
 		const notice = showProgress(t("emptyTrash"));
 		try {
-			await emptyTrashCmd(
-				cas,
-				casMetadata,
-				(i, cidStr) => {
-					notice.update(i, cidStr);
-				},
-			);
+			await emptyTrashCmd(cas, casMetadata, (i, cidStr) => {
+				notice.update(i, cidStr);
+			});
 		} finally {
 			loading = false;
 			notice.hide();

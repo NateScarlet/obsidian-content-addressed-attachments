@@ -67,6 +67,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							enabled: true,
 						});
 						await this.plugin.saveSettings();
+						// eslint-disable-next-line @typescript-eslint/no-deprecated
 						this.display();
 					}),
 			);
@@ -131,6 +132,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 									this.plugin.settings.gateways[index] =
 										config;
 									this.plugin.saveSettings().catch(showError);
+									// eslint-disable-next-line @typescript-eslint/no-deprecated
 									this.display();
 								},
 								() => {
@@ -149,7 +151,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 											cancelled = true;
 										},
 									});
-									setTimeout(() => {
+									window.setTimeout(() => {
 										close();
 										if (cancelled) {
 											return;
@@ -161,6 +163,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 										this.plugin
 											.saveSettings()
 											.catch(showError);
+										// eslint-disable-next-line @typescript-eslint/no-deprecated
 										this.display();
 									}, delayMs);
 								},
