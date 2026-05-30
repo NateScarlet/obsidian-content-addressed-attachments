@@ -3,7 +3,7 @@ import type ContentAddressedAttachmentPlugin from "./main";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
 import findIPFSLinks from "./utils/findIPFSLinks";
-import { Notice } from "obsidian";
+import { Notice, TFile } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "src/lib/IncrementalScanProgress.svelte";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
@@ -79,8 +79,9 @@ export default class ReferenceManager {
 		prefix: string,
 		prefix2: string,
 	) {
-		const file = this.plugin.app.vault.getFileByPath(normalizedPath);
-		if (!file) {
+		const file =
+			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+		if (!(file instanceof TFile)) {
 			return false;
 		}
 		const content = await this.plugin.app.vault.cachedRead(file);
@@ -107,7 +108,8 @@ export default class ReferenceManager {
 		);
 		const progress = stack.adopt(
 			mount(IncrementalScanProgress, {
-				target: notice.containerEl,
+				// eslint-disable-next-line @typescript-eslint/no-deprecated, obsidianmd/no-unsupported-api
+				target: notice.containerEl ?? notice.noticeEl,
 				props: {
 					totalFiles: newFiles.length,
 				},
@@ -138,10 +140,13 @@ export default class ReferenceManager {
 	}
 
 	private async doLoadFile(normalizedPath: string) {
-		const file = this.plugin.app.vault.getFileByPath(normalizedPath);
+		const file =
+			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
 		await this.loadFileContent(
 			normalizedPath,
-			file ? await this.plugin.app.vault.cachedRead(file) : "",
+			file instanceof TFile
+				? await this.plugin.app.vault.cachedRead(file)
+				: "",
 		);
 	}
 
@@ -186,8 +191,8 @@ export default class ReferenceManager {
 		await this.incrementalScan();
 		const { vault } = this.plugin.app;
 		for await (const normalizedPath of this.cache.find(cid, signal)) {
-			const file = vault.getFileByPath(normalizedPath);
-			if (!file) {
+			const file = vault.getAbstractFileByPath(normalizedPath);
+			if (!(file instanceof TFile)) {
 				this.loadFile(normalizedPath).catch((err) => {
 					console.error(`load latest file to cache failed`, err);
 				});

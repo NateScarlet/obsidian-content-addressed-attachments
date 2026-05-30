@@ -241,10 +241,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "restore-referenced-files",
 			name: t("restoreReferencedFiles"),
 			callback: () => {
-				restoreReferencedFiles(
-					this.cas,
-					this.casMetadata,
-				).catch(showError);
+				restoreReferencedFiles(this.cas, this.casMetadata).catch(
+					showError,
+				);
 			},
 		});
 
@@ -279,7 +278,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			type: CAS_FILE_EXPLORER_VIEW_TYPE,
 			active: true,
 		});
-		await workspace.revealLeaf(leaf);
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		await workspace.revealLeaf?.(leaf);
 	}
 
 	private setupMutationObserver() {
