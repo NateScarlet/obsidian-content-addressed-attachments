@@ -1,4 +1,4 @@
-import { Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -241,9 +241,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "restore-referenced-files",
 			name: t("restoreReferencedFiles"),
 			callback: () => {
-				restoreReferencedFiles(this.cas, this.casMetadata).catch(
-					showError,
-				);
+				restoreReferencedFiles(this.cas, this.casMetadata)
+					.then((count) => {
+						if (count === 0) {
+							new Notice(t("noReferencedFilesToRestore"));
+						}
+					})
+					.catch(showError);
 			},
 		});
 
@@ -382,6 +386,8 @@ const { t } = defineLocales({
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS file explorer",
 		restoreReferencedFiles: "Restore referenced files from recycle bin",
+		noReferencedFilesToRestore:
+			"No referenced files to restore from the recycle bin.",
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -395,6 +401,7 @@ const { t } = defineLocales({
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",
 		restoreReferencedFiles: "从回收站恢复被引用的文件",
+		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
 	},
 });
 //#endregion
