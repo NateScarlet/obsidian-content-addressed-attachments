@@ -1,5 +1,5 @@
 import { Notice } from "obsidian";
-import OperationProgress from "src/lib/OperationProgress.svelte";
+import OperationProgress from "#src/lib/OperationProgress.svelte";
 import { mount, unmount } from "svelte";
 
 export default function showProgress(title: string) {

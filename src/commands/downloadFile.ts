@@ -1,8 +1,8 @@
 import { Notice } from "obsidian";
-import type { URLResolver } from "src/URLResolver";
-import defineLocales from "src/utils/defineLocales";
-import type { IPFSStandardURL } from "src/utils/parseIPFSLink";
-import type { IPFSLockedURL } from "src/utils/parseIPFSLockedURL";
+import type { URLResolver } from "#src/URLResolver";
+import defineLocales from "#src/utils/defineLocales";
+import type { IPFSStandardURL } from "#src/utils/parseIPFSLink";
+import type { IPFSLockedURL } from "#src/utils/parseIPFSLockedURL";
 
 export default async function downloadFile(
 	resolver: URLResolver,

@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import formatFileSize from "src/utils/formatFileSize";
+	import formatFileSize from "#src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 
 	const { t } = defineLocales({
@@ -53,7 +53,7 @@
 <script lang="ts">
 	import { getContext } from "./CASFileExplorer.svelte";
 	import { MarkdownView, Notice } from "obsidian";
-	import showError from "src/utils/showError";
+	import showError from "#src/utils/showError";
 	import { getAbortSignal } from "svelte";
 	import {
 		mdiDeleteAlertOutline,
@@ -61,10 +61,10 @@
 		mdiRestore,
 		mdiTrashCanOutline,
 	} from "@mdi/js";
-	import { referenceChange } from "src/events";
-	import staleWithRevalidate from "src/lib/stores/staleWhileRevalidate.svelte";
+	import { referenceChange } from "#src/events";
+	import staleWithRevalidate from "#src/lib/stores/staleWhileRevalidate.svelte";
 	import type { Attachment } from "svelte/attachments";
-	import type { CASMetadataObject } from "src/types/CASMetadata";
+	import type { CASMetadataObject } from "#src/types/CASMetadata";
 
 	const { cas, app, referenceManager } = getContext();
 

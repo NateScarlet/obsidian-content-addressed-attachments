@@ -5,7 +5,7 @@ import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/Reference
 import findIPFSLinks from "./utils/findIPFSLinks";
 import { Notice, TFile } from "obsidian";
 import { mount, unmount } from "svelte";
-import IncrementalScanProgress from "src/lib/IncrementalScanProgress.svelte";
+import IncrementalScanProgress from "#src/lib/IncrementalScanProgress.svelte";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 
 export interface ReferenceManagerCache {

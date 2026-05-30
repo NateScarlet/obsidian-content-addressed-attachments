@@ -1,8 +1,8 @@
 import { Modal, type App } from "obsidian";
-import type { GatewayConfig } from "src/URLResolver";
+import type { GatewayConfig } from "#src/URLResolver";
 import { mount, unmount } from "svelte";
-import GatewayOptionsEditor from "src/lib/GatewayOptionsEditor.svelte";
-import defineLocales from "src/utils/defineLocales";
+import GatewayOptionsEditor from "#src/lib/GatewayOptionsEditor.svelte";
+import defineLocales from "#src/utils/defineLocales";
 
 export default class GatewayOptionsModal extends Modal {
 	private stack = new DisposableStack();

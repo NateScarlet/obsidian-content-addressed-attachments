@@ -1,5 +1,5 @@
 import { MarkdownView, type App } from "obsidian";
-import type { CAS } from "src/types/CAS";
+import type { CAS } from "#src/types/CAS";
 import insertFileAtCursor from "./insertFileAtCursor";
 
 export default async function insertAttachment(

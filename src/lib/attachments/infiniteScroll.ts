@@ -1,6 +1,6 @@
 import { throttle } from "es-toolkit";
-import createEventListeners from "src/utils/createEventListeners";
-import isEventTargetScrollToEnd from "src/utils/isEventTargetScrollToEnd";
+import createEventListeners from "#src/utils/createEventListeners";
+import isEventTargetScrollToEnd from "#src/utils/isEventTargetScrollToEnd";
 import { tick } from "svelte";
 
 export default function infiniteScroll({

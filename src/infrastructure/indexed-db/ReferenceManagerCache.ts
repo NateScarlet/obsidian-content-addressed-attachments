@@ -1,8 +1,8 @@
 import { CID } from "multiformats";
-import { referenceChange } from "src/events";
-import type { ReferenceManagerCache } from "src/ReferenceManager";
-import executeIDBRequest from "src/utils/executeIDBRequest";
-import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
+import { referenceChange } from "#src/events";
+import type { ReferenceManagerCache } from "#src/ReferenceManager";
+import executeIDBRequest from "#src/utils/executeIDBRequest";
+import iterateIDBObjectStore from "#src/utils/iterateIDBObjectStore";
 
 const DB_NAME = "ReferenceCache_0f072df56a17";
 const DB_VERSION = 1;

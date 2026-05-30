@@ -1,8 +1,8 @@
 <script module lang="ts">
-	import formatFileSize from "src/utils/formatFileSize";
+	import formatFileSize from "#src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
-	import { casMetadataSave } from "src/events";
+	import { casMetadataSave } from "#src/events";
 	import { debounce } from "obsidian";
 
 	const { t } = defineLocales({

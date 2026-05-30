@@ -1,6 +1,6 @@
 import type { CID } from "multiformats";
 import type { Editor } from "obsidian";
-import formatMarkdownLink from "src/utils/formatMarkdownLink";
+import formatMarkdownLink from "#src/utils/formatMarkdownLink";
 
 export default function insertFileAtCursor(
 	file: File,

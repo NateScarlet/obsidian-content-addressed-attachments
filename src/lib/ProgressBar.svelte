@@ -1,5 +1,5 @@
 <script lang="ts">
-	import roundDecimal from "src/utils/roundDecimal";
+	import roundDecimal from "#src/utils/roundDecimal";
 
 	const {
 		value,

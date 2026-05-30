@@ -1,4 +1,4 @@
-import type { CASMetadataObject, CASMetadata } from "src/types/CASMetadata";
+import type { CASMetadataObject, CASMetadata } from "#src/types/CASMetadata";
 
 export default async function rebuildCASMetadata(
 	meta: CASMetadata,

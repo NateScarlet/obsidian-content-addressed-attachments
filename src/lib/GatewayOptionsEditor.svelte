@@ -27,8 +27,8 @@
 </script>
 
 <script lang="ts">
-	import type { GatewayConfig } from "src/URLResolver";
-	import defineLocales from "src/utils/defineLocales";
+	import type { GatewayConfig } from "#src/URLResolver";
+	import defineLocales from "#src/utils/defineLocales";
 	import textAreaAutoHeight from "./attachments/textareaAutoHeight.svelte";
 	import { mdiTrashCanOutline } from "@mdi/js";
 

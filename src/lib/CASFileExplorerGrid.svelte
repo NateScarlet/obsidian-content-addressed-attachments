@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { CASMetadataObject } from "src/types/CASMetadata";
+	import type { CASMetadataObject } from "#src/types/CASMetadata";
 	import defineLocales from "../utils/defineLocales";
 
 	const { t } = defineLocales({

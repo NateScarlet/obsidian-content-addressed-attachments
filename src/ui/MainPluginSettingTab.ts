@@ -3,12 +3,12 @@ import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
 import clsx from "clsx";
-import TemplateSyntaxHelp from "src/lib/TemplateSyntaxHelp.svelte";
-import TemplatePreview from "src/lib/TemplatePreview.svelte";
+import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
+import TemplatePreview from "#src/lib/TemplatePreview.svelte";
 import { mount, unmount } from "svelte";
-import showError from "src/utils/showError";
+import showError from "#src/utils/showError";
 import { mdiUndo } from "@mdi/js";
-import showButton from "src/utils/showButton";
+import showButton from "#src/utils/showButton";
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;

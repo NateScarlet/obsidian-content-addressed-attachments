@@ -4,10 +4,10 @@ import type {
 	CASMetadataObject,
 	CASMetadataObjectFilters,
 } from "../../types/CASMetadata";
-import type CASMetadataObjectFilterBuilder from "src/CASMetadataObjectFilterBuilder";
-import executeIDBRequest from "src/utils/executeIDBRequest";
-import iterateIDBObjectStore from "src/utils/iterateIDBObjectStore";
-import { casMetadataDelete, casMetadataSave } from "src/events";
+import type CASMetadataObjectFilterBuilder from "#src/CASMetadataObjectFilterBuilder";
+import executeIDBRequest from "#src/utils/executeIDBRequest";
+import iterateIDBObjectStore from "#src/utils/iterateIDBObjectStore";
+import { casMetadataDelete, casMetadataSave } from "#src/events";
 import { isEqual, uniqBy } from "es-toolkit";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";

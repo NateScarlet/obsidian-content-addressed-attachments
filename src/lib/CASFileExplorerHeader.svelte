@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import showError from "src/utils/showError";
+	import showError from "#src/utils/showError";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorer.svelte";
 
@@ -20,8 +20,8 @@
 </script>
 
 <script lang="ts">
-	import showProgress from "src/utils/showProgress";
-	import emptyTrashCmd from "src/commands/emptyTrash";
+	import showProgress from "#src/utils/showProgress";
+	import emptyTrashCmd from "#src/commands/emptyTrash";
 
 	const { cas, casMetadata, referenceManager, query, mode } = getContext();
 

@@ -30,7 +30,7 @@ import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
-	public settings!: Settings;
+	declare public settings: Settings;
 	public cas!: CAS;
 	public casMetadata!: CASMetadata;
 	public urlResolver!: URLResolver;

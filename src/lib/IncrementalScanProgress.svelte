@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import defineLocales from "src/utils/defineLocales";
+	import defineLocales from "#src/utils/defineLocales";
 
 	const { t } = defineLocales({
 		en: {

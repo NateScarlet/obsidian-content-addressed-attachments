@@ -3,10 +3,10 @@ import { base32upper } from "multiformats/bases/base32";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import { App, getBlobArrayBuffer } from "obsidian";
-import makeDirs from "src/utils/makeDirs";
+import makeDirs from "#src/utils/makeDirs";
 import { basename, dirname, join } from "path-browserify";
-import type { CAS } from "src/types/CAS";
-import type { CASMetadata, CASMetadataObject } from "src/types/CASMetadata";
+import type { CAS } from "#src/types/CAS";
+import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 
 export class CASImpl implements CAS {
 	private trashRelPath = ".trash";

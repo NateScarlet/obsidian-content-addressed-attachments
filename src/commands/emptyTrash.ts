@@ -1,5 +1,5 @@
-import type { CAS } from "src/types/CAS";
-import type { CASMetadata } from "src/types/CASMetadata";
+import type { CAS } from "#src/types/CAS";
+import type { CASMetadata } from "#src/types/CASMetadata";
 import restoreReferencedFiles from "./restoreReferencedFiles";
 
 /**

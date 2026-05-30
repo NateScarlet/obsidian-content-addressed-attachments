@@ -1,6 +1,6 @@
 import { App, Modal } from "obsidian";
 import type { LockProgress } from "../LockManager";
-import LockProgressComponent from "src/lib/LockProgress.svelte";
+import LockProgressComponent from "#src/lib/LockProgress.svelte";
 import { mount, unmount } from "svelte";
 
 export class LockProgressModal extends Modal {

@@ -1,6 +1,6 @@
 import type { CID } from "multiformats";
-import type { CAS } from "src/types/CAS";
-import type { CASMetadata } from "src/types/CASMetadata";
+import type { CAS } from "#src/types/CAS";
+import type { CASMetadata } from "#src/types/CASMetadata";
 import { Notice } from "obsidian";
 import defineLocales from "../utils/defineLocales";
 

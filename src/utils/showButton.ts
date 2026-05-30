@@ -1,5 +1,5 @@
 import { Notice } from "obsidian";
-import ButtonNotice from "src/lib/ButtonNotice.svelte";
+import ButtonNotice from "#src/lib/ButtonNotice.svelte";
 import { mount, unmount, type ComponentProps } from "svelte";
 
 export default function showButton(props: ComponentProps<typeof ButtonNotice>) {

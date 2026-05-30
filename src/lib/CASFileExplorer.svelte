@@ -37,16 +37,16 @@
 		CASMetadata,
 		CASMetadataObject,
 		CASMetadataObjectFilters,
-	} from "src/types/CASMetadata";
-	import type { CAS } from "src/types/CAS";
-	import ReferenceManager from "src/ReferenceManager";
+	} from "#src/types/CASMetadata";
+	import type { CAS } from "#src/types/CAS";
+	import ReferenceManager from "#src/ReferenceManager";
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerTabs.svelte";
 	import CASFileExplorerGrid from "./CASFileExplorerGrid.svelte";
-	import { casMetadataDelete, casMetadataSave } from "src/events";
-	import replaceArrayItemBy from "src/utils/replaceArrayItemBy";
+	import { casMetadataDelete, casMetadataSave } from "#src/events";
+	import replaceArrayItemBy from "#src/utils/replaceArrayItemBy";
 	import useActiveNoteContent from "./stores/useActiveNoteContent.svelte";
-	import findIPFSLinks from "src/utils/findIPFSLinks";
+	import findIPFSLinks from "#src/utils/findIPFSLinks";
 	import staleWithRevalidate from "./stores/staleWhileRevalidate.svelte";
 
 	// Props
