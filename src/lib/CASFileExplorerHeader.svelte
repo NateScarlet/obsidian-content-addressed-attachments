@@ -1,7 +1,7 @@
 <script module lang="ts">
 	import showError from "#src/utils/showError";
 	import defineLocales from "../utils/defineLocales";
-	import { getContext, Mode } from "./CASFileExplorer.svelte";
+	import { getContext, Mode } from "./CASFileExplorerContext";
 
 	const { t } = defineLocales({
 		en: {

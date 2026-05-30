@@ -36,19 +36,13 @@ export default (defineConfig as TypedDefineConfig)([
 			],
 		},
 	},
-	globalIgnores([
-		"node_modules/",
-		"*.js",
-		"*.mjs",
-		"*.json",
-		"eslint.config.mts",
-	]),
+	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json"]),
 	{
 		plugins: { obsidianmd },
 	},
 	...obsidianmd.configs.recommended,
 	ts.configs.eslintRecommended,
-	...ts.configs.recommended,
+	...ts.configs.recommendedTypeChecked,
 	...svelte.configs["flat/recommended"],
 	prettierRecommended,
 	{

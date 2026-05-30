@@ -11,6 +11,9 @@
 		"build": "pnpm run build:svelte-check && pnpm run build:esbuild",
 		"build:svelte-check": "svelte-check --tsconfig tsconfig.json",
 		"build:esbuild": "node esbuild.config.mjs production",
+		"check": "pnpm test && pnpm lint --fix",
+		"test": "svelte-check",
+		"lint": "eslint src",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"imports": {

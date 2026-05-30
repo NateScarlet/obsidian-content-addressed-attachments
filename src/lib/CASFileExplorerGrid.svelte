@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-	import { getContext } from "./CASFileExplorer.svelte";
+	import { getContext } from "./CASFileExplorerContext";
 	import CASFileExplorerGridItem from "./CASFileExplorerGridItem.svelte";
 	import infiniteScroll from "./attachments/infiniteScroll";
 

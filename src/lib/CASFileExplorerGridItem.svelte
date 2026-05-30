@@ -51,7 +51,7 @@
 </script>
 
 <script lang="ts">
-	import { getContext } from "./CASFileExplorer.svelte";
+	import { getContext } from "./CASFileExplorerContext";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
 	import { getAbortSignal } from "svelte";

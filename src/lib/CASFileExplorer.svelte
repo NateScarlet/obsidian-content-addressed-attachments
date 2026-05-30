@@ -1,37 +1,10 @@
 <script module lang="ts">
-	// 创建 Context 类型
-	interface CASFileExplorerContext {
-		// 依赖
-		cas: CAS;
-		casMetadata: CASMetadata;
-		referenceManager: ReferenceManager;
-		app: App;
-
-		// 状态
-		mode: { value: Mode };
-		query: { value: string };
-
-		fetchMore(): Promise<void>;
-	}
-
-	// 创建
-
-	const [getContext, setContext] = createContext<CASFileExplorerContext>();
-
-	export enum Mode {
-		LOCAL,
-		ACTIVE_NOTE,
-		UNREFERENCED,
-		RECYCLE_BIN,
-	}
-
-	export { getContext };
-
 	const PAGE_SIZE = 50;
 </script>
 
 <script lang="ts">
-	import { createContext, getAbortSignal } from "svelte";
+	import { getAbortSignal } from "svelte";
+	import { setContext, Mode } from "./CASFileExplorerContext";
 	import { type App } from "obsidian";
 	import type {
 		CASMetadata,
@@ -170,7 +143,7 @@
 	});
 
 	$effect(() => {
-		return casMetadataSave.subscribe(async (e) => {
+		return casMetadataSave.subscribe((e) => {
 			if (!$files) {
 				return;
 			}
@@ -187,7 +160,7 @@
 		});
 	});
 	$effect(() => {
-		return casMetadataDelete.subscribe(async (e) => {
+		return casMetadataDelete.subscribe((e) => {
 			if (!$files) {
 				return;
 			}
