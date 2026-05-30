@@ -5,9 +5,15 @@ import obsidianmd from "eslint-plugin-obsidianmd";
 import globals from "globals";
 import svelteConfig from "./svelte.config.mjs";
 import prettierRecommended from "eslint-plugin-prettier/recommended";
-import internalPlugin from "./scripts/eslint-plugin-internal";
+import replaceImport from "./scripts/eslint-rules/replace-import";
 
-export default defineConfig([
+// XXX: typescript rule typing is not compatible with official defineConfig, but it works at runtime
+// see https://github.com/typescript-eslint/typescript-eslint/issues/11543
+type TypedDefineConfig = (
+	...args: Parameters<typeof ts.config>
+) => ReturnType<typeof ts.config>;
+
+export default (defineConfig as TypedDefineConfig)([
 	{
 		languageOptions: {
 			globals: {
@@ -15,13 +21,26 @@ export default defineConfig([
 			},
 		},
 	},
-	internalPlugin,
-	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json"]),
+	{
+		plugins: {
+			local: {
+				rules: {
+					"replace-import": replaceImport,
+				},
+			},
+		},
+		rules: {
+			"local/replace-import": [
+				"error",
+				[{ from: "multiformats/dist/src", to: "multiformats" }],
+			],
+		},
+	},
+	globalIgnores(["node_modules/", "*.js", "*.mjs", "*.json", "eslint.config.mts"]),
 	{
 		plugins: { obsidianmd },
-		// @ts-expect-error not typed
-		rules: obsidianmd.configs.recommended,
 	},
+	...obsidianmd.configs.recommended,
 	ts.configs.eslintRecommended,
 	...ts.configs.recommended,
 	...svelte.configs["flat/recommended"],
