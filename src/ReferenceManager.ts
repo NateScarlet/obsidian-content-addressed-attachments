@@ -6,6 +6,7 @@ import findIPFSLinks from "./utils/findIPFSLinks";
 import { Notice } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "src/lib/IncrementalScanProgress.svelte";
+import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 
 export interface ReferenceManagerCache {
 	add(
@@ -151,7 +152,9 @@ export default class ReferenceManager {
 	) {
 		const startAt = new Date();
 		const jobs: Promise<void>[] = [];
+		const cids: CID[] = [];
 		for (const { url, title } of findIPFSLinks(markdown)) {
+			cids.push(url.cid);
 			jobs.push(
 				this.cache.add(url.cid, normalizedPath, signal),
 				this.plugin.cas.index({
@@ -164,6 +167,15 @@ export default class ReferenceManager {
 		}
 		await Promise.all(jobs);
 		await this.cache.expireByPath(normalizedPath, startAt, signal);
+
+		if (cids.length > 0) {
+			// 在解析出新链接后，自动检查并恢复仍在垃圾箱里的被引用文件
+			await restoreReferencedFiles(
+				this.plugin.cas,
+				this.plugin.casMetadata,
+				cids,
+			);
+		}
 	}
 
 	async clearCache(signal?: AbortSignal) {

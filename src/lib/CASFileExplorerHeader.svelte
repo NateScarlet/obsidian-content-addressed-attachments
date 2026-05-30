@@ -21,8 +21,9 @@
 
 <script lang="ts">
 	import showProgress from "src/utils/showProgress";
+	import emptyTrashCmd from "src/commands/emptyTrash";
 
-	const { cas, casMetadata, referenceManager, query, mode } = getContext();
+	const { app, cas, casMetadata, referenceManager, query, mode } = getContext();
 
 	let loading = $state(false);
 
@@ -71,17 +72,13 @@
 		loading = true;
 		const notice = showProgress(t("emptyTrash"));
 		try {
-			let i = 0;
-			for await (const { node } of casMetadata.find({
-				filterBy: {
-					isTrashed: true,
+			await emptyTrashCmd(
+				cas,
+				casMetadata,
+				(i, cidStr) => {
+					notice.update(i, cidStr);
 				},
-				signal: undefined,
-			})) {
-				await cas.deleteIfTrashed(node.cid);
-				i++;
-				notice.update(i, node.cid.toString());
-			}
+			);
 		} finally {
 			loading = false;
 			notice.hide();

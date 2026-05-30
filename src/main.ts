@@ -27,6 +27,7 @@ import insertAttachment from "./commands/insertAttachment";
 import insertFileAtCursor from "./commands/insertFileAtCursor";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
+import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public settings: Settings;
@@ -236,6 +237,17 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			callback: () => this.lockManager.execute("all"),
 		});
 
+		this.addCommand({
+			id: "restore-referenced-files",
+			name: t("restoreReferencedFiles"),
+			callback: () => {
+				restoreReferencedFiles(
+					this.cas,
+					this.casMetadata,
+				).catch(showError);
+			},
+		});
+
 		// 注册文件管理器视图
 		this.registerView(
 			CAS_FILE_EXPLORER_VIEW_TYPE,
@@ -369,6 +381,7 @@ const { t } = defineLocales({
 		loading: "Loading",
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS file explorer",
+		restoreReferencedFiles: "Restore referenced files from recycle bin",
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -381,6 +394,7 @@ const { t } = defineLocales({
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",
+		restoreReferencedFiles: "从回收站恢复被引用的文件",
 	},
 });
 //#endregion

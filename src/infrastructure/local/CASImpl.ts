@@ -164,6 +164,30 @@ export class CASImpl implements CAS {
 		return join(dir, this.formatRelPath(cid));
 	}
 
+	async restoreIfTrashed(cid: CID): Promise<boolean> {
+		for await (const match of this.lookup(cid)) {
+			if (match.isTrashed) {
+				const src = match.path;
+				const relPath = this.formatRelPath(cid);
+				const dst = this.getFilePath(match.dir, relPath);
+
+				await makeDirs(this.app.vault, dirname(dst));
+				await this.app.vault.adapter.rename(src, dst);
+
+				// 更新元数据以移出垃圾箱
+				await this.meta.merge({
+					cid,
+					indexedAt: new Date(),
+					trashedAt: undefined,
+					size: match.stat.size,
+				});
+
+				return true;
+			}
+		}
+		return false;
+	}
+
 	async load(
 		cid: CID,
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined> {

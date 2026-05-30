@@ -6,6 +6,7 @@ export interface CAS {
 	formatRelPath(cid: CID): string;
 	formatNormalizePath(dir: string, cid: CID): string;
 	trash(cid: CID): Promise<number>;
+	restoreIfTrashed(cid: CID): Promise<boolean>;
 	load(
 		cid: CID,
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined>;
