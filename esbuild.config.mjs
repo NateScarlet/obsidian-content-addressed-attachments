@@ -18,10 +18,16 @@ if you want to view the source, please visit the github repository of this plugi
 const prod = process.argv[2] === "production";
 
 process.NODE_ENV = prod ? "production" : "development";
-
 if (!prod) {
-	const triggerReload = debounce(() => {
-		console.log("Detected change in build outputs. Reloading Obsidian plugin...");
+	let isReloading = false;
+	let hasPendingReload = false;
+
+	const runReload = () => {
+		isReloading = true;
+		hasPendingReload = false;
+		console.log(
+			"Detected change in build outputs. Reloading Obsidian plugin...",
+		);
 		const reloadProcess = spawn(
 			"obsidian",
 			["plugin:reload", "id=content-addressed-attachments"],
@@ -30,9 +36,29 @@ if (!prod) {
 				stdio: "inherit",
 			},
 		);
+
+		const onFinished = () => {
+			isReloading = false;
+			// 如果在重载期间又有新的构建产物生成，在当前重载结束后立即追加一次重载，确保载入最新代码
+			if (hasPendingReload) {
+				runReload();
+			}
+		};
+
+		reloadProcess.on("close", onFinished);
 		reloadProcess.on("error", (err) => {
 			console.error("Failed to reload plugin via CLI:", err);
+			onFinished();
 		});
+	};
+
+	const triggerReload = debounce(() => {
+		// 避免多个重载进程并发执行导致 Obsidian 内部插件实例冲突，采用队列排队机制
+		if (isReloading) {
+			hasPendingReload = true;
+		} else {
+			runReload();
+		}
 	}, 500);
 
 	// 监听构建输出目录的产物文件变化来触发重载。
