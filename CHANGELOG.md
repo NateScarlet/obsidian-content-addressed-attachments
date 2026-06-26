@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.15](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.14...0.1.15) (2026-06-26)
+
+
+### Features
+
+* move full-vault operations from command palette to settings panel ([bcf1797](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/bcf1797d4252f08e2b9f7c4b54ea780cf89fecdb))
+
 ## [0.1.14](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.13...0.1.14) (2026-05-30)
 
 
