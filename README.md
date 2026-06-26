@@ -49,9 +49,8 @@ The "lock" feature allows you to securely cache external web images (HTTP/HTTPS 
     - Maintain data integrity and availability
 
 2. **How to Lock Images:**
-    - **Lock current note**: Processes all external image links in the active note
-    - **Lock all notes**: Processes all external image links across your entire vault
-    - Access via command palette: "Add checksum and auto-cache for web files"
+    - **Lock current note**: Processes all external image links in the active note (via command palette)
+    - **Lock all notes**: Processes all external image links across your entire vault (via Settings → Advanced operations)
 
 3. **Lock Process:**
     - Downloads images from web URLs
@@ -59,17 +58,27 @@ The "lock" feature allows you to securely cache external web images (HTTP/HTTPS 
     - Saves to configured download directory
     - Replaces original links with internal format: `internal.ipfs-locked:<cid>,<original-url>`
 
-### Migration Commands
+### Commands and Settings
 
-Use the command palette to manage attachments:
+Use the command palette for common operations:
 
 - **Migrate Local Files**:
     - "Migrate local files (current note)" - Convert local attachments in active note
-    - "Migrate local files (all notes)" - Convert local attachments across entire vault
 
 - **Lock Web Images**:
-    - "Add checksum and auto-cache for web files (current note)" - Lock images in active note
-    - "Add checksum and auto-cache for web files (all notes)" - Lock images across entire vault
+    - "Lock web files (current note)" - Lock images in active note
+
+- **CAS Maintenance**:
+    - "Restore referenced files from recycle bin" - Restore files that are still referenced but were deleted to the recycle bin
+
+### Advanced Operations (Settings Panel)
+
+Full-vault operations are available in Settings → Content-Addressed Attachments → Advanced operations:
+
+- **Migrate local files (all notes)** - Convert local attachments across entire vault
+- **Lock web files (all notes)** - Lock images across entire vault
+
+These operations are placed in settings to prevent accidental execution, as they process all notes in your vault.
 
 ### Link Formats
 

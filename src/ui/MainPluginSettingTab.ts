@@ -196,6 +196,29 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			}),
 			(i) => void unmount(i),
 		);
+
+		// 全库操作区域
+		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
+
+		new Setting(containerEl)
+			.setName(t("migrateAllNotes"))
+			.setDesc(t("migrateAllNotesDesc"))
+			.addButton((button) =>
+				button.setButtonText(t("execute")).onClick(() => {
+					this.plugin.migrationManager
+						.execute("all")
+						.catch(showError);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName(t("lockAllNotes"))
+			.setDesc(t("lockAllNotesDesc"))
+			.addButton((button) =>
+				button.setButtonText(t("execute")).onClick(() => {
+					this.plugin.lockManager.execute("all").catch(showError);
+				}),
+			);
 	}
 
 	onClose(): void {
@@ -223,6 +246,19 @@ const { t } = defineLocales({
 		configurationName: "Configuration name",
 		urlTemplate: "URL template (Mustache syntax)",
 		examplePlaceholder: "e.g. .attachments/cas",
+		advancedOperations: "Advanced operations",
+		migrateAllNotes: "Migrate local files (all notes)",
+		migrateAllNotesDesc:
+			"Migrate all local file links in all notes to IPFS links",
+		lockAllNotes: "Lock web files (all notes)",
+		lockAllNotesDesc:
+			"Download and lock all external web file links in all notes",
+		restoreReferencedFiles: "Restore referenced files",
+		restoreReferencedFilesDesc:
+			"Restore files that are still referenced but were deleted to the recycle bin",
+		execute: "Execute",
+		noReferencedFilesToRestore:
+			"No referenced files to restore from the recycle bin.",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -240,6 +276,15 @@ const { t } = defineLocales({
 		configurationName: "配置名称",
 		urlTemplate: "URL模板（Mustache语法）",
 		examplePlaceholder: "例如: .attachments/cas",
+		advancedOperations: "高级操作",
+		migrateAllNotes: "迁移本地文件（所有笔记）",
+		migrateAllNotesDesc: "将所有笔记中的本地文件链接迁移为 IPFS 链接",
+		lockAllNotes: "锁定网络文件（所有笔记）",
+		lockAllNotesDesc: "下载并锁定所有笔记中的外部网络文件链接",
+		restoreReferencedFiles: "恢复被引用的文件",
+		restoreReferencedFilesDesc: "恢复仍在被引用但已被删除到回收站的文件",
+		execute: "执行",
+		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
 	},
 });
 //#endregion

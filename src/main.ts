@@ -38,8 +38,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
-	private migrationManager!: MigrationManager;
-	private lockManager!: LockManager;
+	public migrationManager!: MigrationManager;
+	public lockManager!: LockManager;
 
 	private placeholderImageURL!: string;
 	private notFoundImageURL!: string;
@@ -220,21 +220,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "migrate-all-notes",
-			name: t("migrateAllNotes"),
-			callback: () => this.migrationManager.execute("all"),
-		});
-
-		this.addCommand({
 			id: "lock-current-note",
 			name: t("lockCurrentNote"),
 			callback: () => this.lockManager.execute("current"),
-		});
-
-		this.addCommand({
-			id: "lock-all-notes",
-			name: t("lockAllNotes"),
-			callback: () => this.lockManager.execute("all"),
 		});
 
 		this.addCommand({
@@ -377,9 +365,7 @@ const { t } = defineLocales({
 	en: {
 		insertAttachment: "Insert attachment",
 		migrateCurrentNote: "Migrate local files (current note)",
-		migrateAllNotes: "Migrate local files (all notes)",
 		lockCurrentNote: "Lock web files (current note)",
-		lockAllNotes: "Lock web files (all notes)",
 		lockLink: "Lock this link",
 		unlockLink: "Unlock this link",
 		loading: "Loading",
@@ -392,9 +378,7 @@ const { t } = defineLocales({
 	zh: {
 		insertAttachment: "插入附件",
 		migrateCurrentNote: "迁移本地文件（当前笔记）",
-		migrateAllNotes: "迁移本地文件 （所有笔记）",
 		lockCurrentNote: "锁定网络文件（当前笔记）",
-		lockAllNotes: "锁定网络文件（所有笔记）",
 		lockLink: "锁定此链接",
 		unlockLink: "解锁此链接",
 		loading: "正在加载",
