@@ -1,4 +1,4 @@
-import { App, requestUrl, type RequestUrlResponse } from "obsidian";
+import { App, Notice, requestUrl, type RequestUrlResponse } from "obsidian";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
 import isAbortError from "./utils/isAbortError";
@@ -291,6 +291,9 @@ export class URLResolver {
 			if (!key) {
 				console.warn(
 					`Encryption key ${header.keyFingerprint} not found for ${encryptedPath}`,
+				);
+				new Notice(
+					`Encryption key ${header.keyFingerprint} not found. Cannot decrypt ${encryptedPath}`,
 				);
 				return;
 			}

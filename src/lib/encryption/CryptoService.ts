@@ -187,25 +187,31 @@ export async function decrypt(
 
 	const data = new Uint8Array(encryptedData);
 	const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-	let headerStart = 0;
+	let offset = 0;
 
-	headerStart += 4;
-	headerStart += 2;
-	const fpLen = dv.getUint16(headerStart, true);
-	headerStart += 2;
-	headerStart += fpLen;
-	headerStart += IV_LENGTH;
+	// Skip magic(4) + version(2)
+	offset += 6;
+	// Skip fpLen field(2) + fingerprint data
+	const fpLen = dv.getUint16(offset, true);
+	offset += 2 + fpLen;
+	// Skip IV(12)
+	offset += IV_LENGTH;
+	// Skip authTag(16) — already extracted by parseHeader
+	offset += AUTH_TAG_LENGTH;
+	// Skip fmtLen field(2) + format string
+	const fmtLen = dv.getUint16(offset, true);
+	offset += 2 + fmtLen;
 
-	const ciphertextWithTag = data.slice(headerStart);
+	// Now offset points at the raw ciphertext (without GCM auth tag)
+	const ciphertext = data.slice(offset);
 
-	// Reconstruct the full encrypted payload (ciphertext + auth tag) as GCM expects it
+	// Reconstruct GCM input: ciphertext || authTag
 	const combined = new Uint8Array(
-		ciphertextWithTag.byteLength + AUTH_TAG_LENGTH,
+		ciphertext.byteLength + AUTH_TAG_LENGTH,
 	);
-	combined.set(ciphertextWithTag, 0);
-	combined.set(header.authTag, ciphertextWithTag.byteLength);
+	combined.set(ciphertext, 0);
+	combined.set(header.authTag, ciphertext.byteLength);
 
-	// eslint-disable-next-line no-restricted-globals
 	// eslint-disable-next-line no-restricted-globals
 	const plaintext = await crypto.subtle.decrypt(
 		{

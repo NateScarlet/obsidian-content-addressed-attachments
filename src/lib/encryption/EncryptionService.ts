@@ -1,5 +1,4 @@
-import { Platform, type App } from "obsidian";
-import type { CID } from "multiformats";
+import type { App } from "obsidian";
 import { KeyManager } from "./KeyManager";
 import {
 	encrypt as cryptoEncrypt,
@@ -26,30 +25,24 @@ export class EncryptionService {
 		return this.keyManager.isAvailable;
 	}
 
-	/** 加密文件并返回加密后的数据和原始格式信息 */
+	/** 加密文件内容，返回可直接用于 CAS.save 的 File 对象 */
 	async encryptFile(
 		keyFingerprint: string,
 		file: File,
-	): Promise<{ encryptedData: ArrayBuffer; cid: CID } | undefined> {
+	): Promise<{ encryptedFile: File; fingerprint: string }> {
 		const key = await this.keyManager.getKeyForEncrypt(keyFingerprint);
 		if (!key) throw new Error(`Encryption key ${keyFingerprint} not found`);
 
 		const buffer = await file.arrayBuffer();
-		const { data } = await cryptoEncrypt(key, buffer, file.type);
+		const { data, fingerprint } = await cryptoEncrypt(key, buffer, file.type);
 
-		// 创建一个 File 对象让 CAS.save() 处理（CID 由 CAS 计算）
-		// 返回加密后的 ArrayBuffer 和保存所需的 File
-		return { encryptedData: data, cid: undefined as unknown as CID };
-	}
+		const encryptedFile = new File(
+			[new Blob([data])],
+			file.name,
+			{ type: ENCRYPTED_FORMAT },
+		);
 
-	/** 获取加密后用于 CAS.save 的 File 对象 */
-	createEncryptedFile(
-		encryptedData: ArrayBuffer,
-		originalFilename: string,
-	): File {
-		return new File([new Blob([encryptedData])], originalFilename, {
-			type: ENCRYPTED_FORMAT,
-		});
+		return { encryptedFile, fingerprint };
 	}
 
 	/** 解密加密文件内容 */

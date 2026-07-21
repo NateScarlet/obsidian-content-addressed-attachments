@@ -16,11 +16,6 @@ function fingerprintToStorageKey(fingerprint: string): string {
 	return `${SECRET_STORAGE_KEY_PREFIX}${fingerprint}`;
 }
 
-function storageKeyToFingerprint(storageKey: string): string | undefined {
-	if (!storageKey.startsWith(SECRET_STORAGE_KEY_PREFIX)) return;
-	return storageKey.slice(SECRET_STORAGE_KEY_PREFIX.length);
-}
-
 function arrayBufferToBase64(buf: ArrayBuffer): string {
 	const bytes = new Uint8Array(buf);
 	let binary = "";
@@ -195,8 +190,4 @@ export class KeyManager {
 		);
 	}
 
-	/** 列出 SecretStorage 中的原始密钥记录（清理用） */
-	async listRawSecrets(): Promise<string[]> {
-		return this.app.secretStorage.listSecrets();
-	}
 }

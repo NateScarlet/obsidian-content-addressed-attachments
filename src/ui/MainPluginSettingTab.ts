@@ -1,4 +1,4 @@
-import { PluginSettingTab, Setting, Notice, Modal, App } from "obsidian";
+import { PluginSettingTab, Setting, Notice, Modal, type App } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
@@ -9,41 +9,6 @@ import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
-
-class ConfirmDeleteKeyModal extends Modal {
-	constructor(
-		app: App,
-		private keyName: string,
-		private keyFingerprint: string,
-		private onDelete: () => void,
-	) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "确认删除密钥" });
-		contentEl.createEl("p", {
-			text: `密钥 "${this.keyName}" (${this.keyFingerprint}) 删除后将无法解密以此密钥加密的文件。确定要删除吗？`,
-		});
-
-		new Setting(contentEl)
-			.addButton((btn) =>
-				btn
-					.setButtonText("取消")
-					.onClick(() => this.close()),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText("删除")
-					.setWarning()
-					.onClick(() => {
-						this.onDelete();
-						this.close();
-					}),
-			);
-	}
-}
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
@@ -266,11 +231,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				for (const key of keys) {
 					const setting = new Setting(containerEl)
 						.setName(key.name)
-						.setDesc(`指纹: ${key.fingerprint}`)
+						.setDesc(`${t("fingerprint")}: ${key.fingerprint}`)
 						.addButton((btn) =>
 							btn
 								.setIcon("clipboard-list")
-								.setTooltip("导出")
+								.setTooltip(t("export"))
 								.onClick(async () => {
 									const exported =
 										await this.plugin.encryptionService.keyManager.exportKey(
@@ -280,14 +245,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 										await navigator.clipboard.writeText(
 											exported,
 										);
-										new Notice("密钥已复制到剪贴板");
+										new Notice(t("keyExportSuccess"));
 									}
 								}),
 						)
 						.addButton((btn) =>
 							btn
 								.setIcon("trash")
-								.setTooltip("删除")
+								.setTooltip(t("delete"))
 								.onClick(() => {
 									new ConfirmDeleteKeyModal(
 										this.app,
@@ -309,7 +274,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				new Setting(containerEl)
 					.setName(t("createNewKey"))
 					.addText((text) => {
-						text.setPlaceholder("密钥名称");
+						text.setPlaceholder(t("keyNamePlaceholder"));
 						text.inputEl.dataset["keyName"] = "";
 					})
 					.addButton((btn) =>
@@ -321,12 +286,12 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 										'[data-key-name]',
 									);
 								const name =
-									nameInput?.value?.trim() || "未命名密钥";
+									nameInput?.value?.trim() || t("unnamedKey");
 								try {
 									await this.plugin.encryptionService.keyManager.createKey(
 										name,
 									);
-									new Notice(`密钥 "${name}" 已创建`);
+									new Notice(t("keyCreateSuccess")(name));
 									// eslint-disable-next-line @typescript-eslint/no-deprecated
 									this.display();
 								} catch (err) {
@@ -390,6 +355,17 @@ const { t } = defineLocales({
 			"Encryption requires Obsidian v1.11.4+. Please upgrade Obsidian to use this feature.",
 		createNewKey: "Create new key",
 		create: "Create",
+		keyExportSuccess: "Key copied to clipboard",
+		keyCreateSuccess: (name: string) => `Key "${name}" created`,
+		keyNamePlaceholder: "Key name",
+		unnamedKey: "Unnamed key",
+		confirmDeleteKeyTitle: "Confirm delete key",
+		confirmDeleteKeyDesc: (name: string, fp: string) =>
+			`Deleting key "${name}" (${fp}) will permanently lose access to files encrypted with it. Continue?`,
+		cancel: "Cancel",
+		delete: "Delete",
+		export: "Export",
+		fingerprint: "Fingerprint",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -422,6 +398,55 @@ const { t } = defineLocales({
 			"加密功能需要 Obsidian v1.11.4+。请升级 Obsidian 以使用此功能。",
 		createNewKey: "创建新密钥",
 		create: "创建",
+		keyExportSuccess: "密钥已复制到剪贴板",
+		keyCreateSuccess: (name: string) => `密钥 "${name}" 已创建`,
+		keyNamePlaceholder: "密钥名称",
+		unnamedKey: "未命名密钥",
+		confirmDeleteKeyTitle: "确认删除密钥",
+		confirmDeleteKeyDesc: (name: string, fp: string) =>
+			`密钥 "${name}" (${fp}) 删除后将无法解密以此密钥加密的文件。确定要删除吗？`,
+		cancel: "取消",
+		delete: "删除",
+		export: "导出",
+		fingerprint: "指纹",
 	},
 });
 //#endregion
+
+class ConfirmDeleteKeyModal extends Modal {
+	constructor(
+		app: App,
+		private keyName: string,
+		private keyFingerprint: string,
+		private onDelete: () => void,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: t("confirmDeleteKeyTitle") });
+		contentEl.createEl("p", {
+			text: t("confirmDeleteKeyDesc")(
+				this.keyName,
+				this.keyFingerprint,
+			),
+		});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("cancel"))
+					.onClick(() => this.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("delete"))
+					.setWarning()
+					.onClick(() => {
+						this.onDelete();
+						this.close();
+					}),
+			);
+	}
+}

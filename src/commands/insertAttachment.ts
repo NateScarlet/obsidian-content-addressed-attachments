@@ -25,25 +25,15 @@ export default async function insertAttachment(
 	const files = await Promise.all(handles.map((h) => h.getFile()));
 	const editor = view.editor;
 	for (const file of files) {
-		const encrypt = options?.encryptKeyFingerprint;
-		if (encrypt && encryptionService?.isAvailable) {
-			const key = await encryptionService.keyManager.getKeyForEncrypt(
-				encrypt,
-			);
-			if (!key)
-				throw new Error(
-					`Encryption key ${encrypt} not found in SecretStorage`,
+		if (
+			options?.encryptKeyFingerprint &&
+			encryptionService?.isAvailable
+		) {
+			const { encryptedFile } =
+				await encryptionService.encryptFile(
+					options.encryptKeyFingerprint,
+					file,
 				);
-			const buffer = await file.arrayBuffer();
-			const { encrypt: cryptoEncrypt } = await import(
-				"#src/lib/encryption/CryptoService"
-			);
-			const { data } = await cryptoEncrypt(key, buffer, file.type);
-			const encryptedFile = new File(
-				[new Blob([data])],
-				file.name,
-				{ type: "application/octet-stream" },
-			);
 			const { cid } = await cas.save(dir, encryptedFile);
 			insertFileAtCursor(file, cid, editor, true);
 		} else {
