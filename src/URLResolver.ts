@@ -9,6 +9,7 @@ import showError from "./utils/showError";
 import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type { EncryptionService } from "./lib/encryption/EncryptionService";
+import defineLocales from "./utils/defineLocales";
 import {
 	isEncryptedData,
 	parseHeader,
@@ -293,7 +294,7 @@ export class URLResolver {
 					`Encryption key ${header.keyFingerprint} not found for ${encryptedPath}`,
 				);
 				new Notice(
-					`Encryption key ${header.keyFingerprint} not found. Cannot decrypt ${encryptedPath}`,
+					t("keyNotFound")(header.keyFingerprint, encryptedPath),
 				);
 				return;
 			}
@@ -334,3 +335,14 @@ export class URLResolver {
 		}
 	}
 }
+
+const { t } = defineLocales({
+	en: {
+		keyNotFound: (fp: string, path: string) =>
+			`Encryption key ${fp} not found. Cannot decrypt ${path}`,
+	},
+	zh: {
+		keyNotFound: (fp: string, path: string) =>
+			`加密密钥 ${fp} 未找到，无法解密 ${path}`,
+	},
+});
