@@ -7,6 +7,13 @@ import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
 import showError from "./utils/showError";
 import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
+import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
+import type { EncryptionService } from "./lib/encryption/EncryptionService";
+import {
+	isEncryptedData,
+	parseHeader,
+	decrypt,
+} from "./lib/encryption/CryptoService";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -43,12 +50,22 @@ export interface ResolveURLResult {
 
 export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
+	private decryptedBlobStore = new Map<string, string>();
 
 	constructor(
 		private app: App,
 		private cas: CAS,
 		private settings: () => Settings,
+		private encryptionService?: EncryptionService,
 	) {}
+
+	/** 清理所有解密产生的 blob URL */
+	revokeAllBlobs(): void {
+		for (const url of this.decryptedBlobStore.values()) {
+			URL.revokeObjectURL(url);
+		}
+		this.decryptedBlobStore.clear();
+	}
 
 	async resolveURL(rawURL: string): Promise<ResolveURLResult | undefined> {
 		const lockedURL = parseIPFSLockedURL(rawURL);
@@ -125,6 +142,12 @@ export class URLResolver {
 		using stack = new DisposableStack();
 		const match = await this.cas.load(data.cid);
 		if (match) {
+			if (
+				data.format() === ENCRYPTED_FORMAT &&
+				this.encryptionService?.isAvailable
+			) {
+				return this.resolveEncryptedFile(match.normalizedPath);
+			}
 			return {
 				path: match.normalizedPath,
 				url: this.app.vault.adapter.getResourcePath(
@@ -247,5 +270,64 @@ export class URLResolver {
 		return mustache.render(config.urlTemplate, templateData, undefined, {
 			escape: encodeURIComponent,
 		});
+	}
+
+	private async resolveEncryptedFile(
+		encryptedPath: string,
+	): Promise<ResolveURLResult | undefined> {
+		if (!this.encryptionService) return;
+
+		try {
+			const encryptedData = await this.app.vault.adapter.readBinary(
+				encryptedPath,
+			);
+
+			if (!isEncryptedData(encryptedData)) return;
+
+			const header = parseHeader(encryptedData);
+			const key = await this.encryptionService.keyManager.getKey(
+				header.keyFingerprint,
+			);
+			if (!key) {
+				console.warn(
+					`Encryption key ${header.keyFingerprint} not found for ${encryptedPath}`,
+				);
+				return;
+			}
+
+			const plaintext = await decrypt(key, encryptedData);
+
+			const size = plaintext.byteLength;
+			const maxBlob = this.encryptionService.maxBlobSize;
+
+			if (size <= maxBlob) {
+				const blob = new Blob([plaintext], {
+					type: header.originalFormat || "application/octet-stream",
+				});
+				const url = URL.createObjectURL(blob);
+				this.decryptedBlobStore.set(encryptedPath, url);
+				return { url };
+			}
+
+			// 大文件：解密到临时缓存目录
+			const cacheDir = ".attachments/cas/decrypted-cache";
+			const cacheFilename = `dec-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+			const cachePath = `${cacheDir}/${cacheFilename}`;
+
+			const cacheDirExists =
+				await this.app.vault.adapter.exists(cacheDir);
+			if (!cacheDirExists) {
+				await this.app.vault.adapter.mkdir(cacheDir);
+			}
+
+			await this.app.vault.adapter.writeBinary(cachePath, plaintext);
+
+			return {
+				path: cachePath,
+				url: this.app.vault.adapter.getResourcePath(cachePath),
+			};
+		} catch (err) {
+			console.error("Failed to decrypt file:", encryptedPath, err);
+		}
 	}
 }

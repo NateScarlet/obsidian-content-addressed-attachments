@@ -1,4 +1,4 @@
-import { PluginSettingTab, Setting } from "obsidian";
+import { PluginSettingTab, Setting, Notice, Modal, App } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
@@ -9,6 +9,41 @@ import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
+
+class ConfirmDeleteKeyModal extends Modal {
+	constructor(
+		app: App,
+		private keyName: string,
+		private keyFingerprint: string,
+		private onDelete: () => void,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: "确认删除密钥" });
+		contentEl.createEl("p", {
+			text: `密钥 "${this.keyName}" (${this.keyFingerprint}) 删除后将无法解密以此密钥加密的文件。确定要删除吗？`,
+		});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText("取消")
+					.onClick(() => this.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText("删除")
+					.setWarning()
+					.onClick(() => {
+						this.onDelete();
+						this.close();
+					}),
+			);
+	}
+}
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
@@ -219,6 +254,96 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					this.plugin.lockManager.execute("all").catch(showError);
 				}),
 			);
+
+		//#region 加密设置
+		if (this.plugin.encryptionService?.isAvailable) {
+			new Setting(containerEl)
+				.setName(t("encryption"))
+				.setHeading();
+
+			// 密钥列表
+			this.plugin.encryptionService.listKeys().then((keys) => {
+				for (const key of keys) {
+					const setting = new Setting(containerEl)
+						.setName(key.name)
+						.setDesc(`指纹: ${key.fingerprint}`)
+						.addButton((btn) =>
+							btn
+								.setIcon("clipboard-list")
+								.setTooltip("导出")
+								.onClick(async () => {
+									const exported =
+										await this.plugin.encryptionService.keyManager.exportKey(
+											key.fingerprint,
+										);
+									if (exported) {
+										await navigator.clipboard.writeText(
+											exported,
+										);
+										new Notice("密钥已复制到剪贴板");
+									}
+								}),
+						)
+						.addButton((btn) =>
+							btn
+								.setIcon("trash")
+								.setTooltip("删除")
+								.onClick(() => {
+									new ConfirmDeleteKeyModal(
+										this.app,
+										key.name,
+										key.fingerprint,
+										async () => {
+											await this.plugin.encryptionService.keyManager.deleteKey(
+												key.fingerprint,
+											);
+											// eslint-disable-next-line @typescript-eslint/no-deprecated
+											this.display();
+										},
+									).open();
+								}),
+						);
+				}
+
+				// 创建新密钥
+				new Setting(containerEl)
+					.setName(t("createNewKey"))
+					.addText((text) => {
+						text.setPlaceholder("密钥名称");
+						text.inputEl.dataset["keyName"] = "";
+					})
+					.addButton((btn) =>
+						btn
+							.setButtonText(t("create"))
+							.onClick(async () => {
+								const nameInput =
+									containerEl.querySelector<HTMLInputElement>(
+										'[data-key-name]',
+									);
+								const name =
+									nameInput?.value?.trim() || "未命名密钥";
+								try {
+									await this.plugin.encryptionService.keyManager.createKey(
+										name,
+									);
+									new Notice(`密钥 "${name}" 已创建`);
+									// eslint-disable-next-line @typescript-eslint/no-deprecated
+									this.display();
+								} catch (err) {
+									showError(err);
+								}
+							}),
+					);
+			}).catch(showError);
+		} else {
+			new Setting(containerEl)
+				.setName(t("encryption"))
+				.setHeading();
+			new Setting(containerEl)
+				.setName(t("encryptionUnavailable"))
+				.setDesc(t("encryptionUnavailableDesc"));
+		}
+		//#endregion
 	}
 
 	onClose(): void {
@@ -259,6 +384,12 @@ const { t } = defineLocales({
 		execute: "Execute",
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
+		encryption: "Encryption",
+		encryptionUnavailable: "Encryption unavailable",
+		encryptionUnavailableDesc:
+			"Encryption requires Obsidian v1.11.4+. Please upgrade Obsidian to use this feature.",
+		createNewKey: "Create new key",
+		create: "Create",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -285,6 +416,12 @@ const { t } = defineLocales({
 		restoreReferencedFilesDesc: "恢复仍在被引用但已被删除到回收站的文件",
 		execute: "执行",
 		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
+		encryption: "加密",
+		encryptionUnavailable: "加密不可用",
+		encryptionUnavailableDesc:
+			"加密功能需要 Obsidian v1.11.4+。请升级 Obsidian 以使用此功能。",
+		createNewKey: "创建新密钥",
+		create: "创建",
 	},
 });
 //#endregion

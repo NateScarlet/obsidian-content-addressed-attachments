@@ -4,6 +4,19 @@ import defineLocales from "./utils/defineLocales";
 export const EXAMPLE_URL =
 	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
 
+export interface EncryptPathRule {
+	pattern: string;
+	keyFingerprint: string;
+}
+
+interface SettingsV2 {
+	version: 2;
+	primaryDir: string;
+	downloadDir: string;
+	gateways: GatewayConfig[];
+	encryptPathRules: EncryptPathRule[];
+}
+
 interface SettingsV1 {
 	version: 1;
 	primaryDir: string;
@@ -22,25 +35,41 @@ interface SettingsV0 {
 	}[];
 }
 
-export type SettingsInput = SettingsV0 | SettingsV1;
+export type SettingsInput = SettingsV0 | SettingsV1 | SettingsV2;
 
-export type Settings = SettingsV1;
+export type Settings = SettingsV2;
 
 export function settingsFromInput(input: SettingsInput): Settings {
-	if (input.version === 1) {
+	if (input.version === 2) {
 		return input;
 	}
+	if (input.version === 1) {
+		return {
+			version: 2,
+			primaryDir: input.primaryDir,
+			downloadDir: input.downloadDir,
+			gateways: input.gateways,
+			encryptPathRules: [],
+		};
+	}
+	const v0 = input as SettingsV0;
 	return {
-		version: 1,
-		primaryDir: input.casDir,
+		version: 2,
+		primaryDir: v0.casDir,
 		downloadDir: "",
-		gateways: input.gatewayURLs,
+		gateways: (v0.gatewayURLs ?? []).map((g) => ({
+			urlTemplate: g.urlTemplate,
+			name: g.name,
+			headers: g.headers,
+			enabled: g.enabled,
+		})),
+		encryptPathRules: [],
 	};
 }
 
 export function getDefaultSettings(): Settings {
 	return {
-		version: 1,
+		version: 2,
 		primaryDir: ".attachments/cas",
 		downloadDir: "",
 		gateways: [
@@ -82,6 +111,7 @@ export function getDefaultSettings(): Settings {
 				enabled: false,
 			},
 		],
+		encryptPathRules: [],
 	};
 }
 

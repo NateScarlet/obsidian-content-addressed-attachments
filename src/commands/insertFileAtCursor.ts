@@ -6,12 +6,13 @@ export default function insertFileAtCursor(
 	file: File,
 	cid: CID,
 	editor: Editor,
+	encrypted?: boolean,
 ) {
 	const from = editor.getCursor("from");
 	const to = editor.getCursor("to");
 	const hasSelection = from.line !== to.line || from.ch !== to.ch;
 
-	let text = formatMarkdownLink(file, cid);
+	let text = formatMarkdownLink(file, cid, encrypted);
 	if (!hasSelection && editor.getLine(from.line).trim() === "") {
 		text += "\n";
 	}

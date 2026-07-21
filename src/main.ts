@@ -28,6 +28,7 @@ import insertFileAtCursor from "./commands/insertFileAtCursor";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import { EncryptionService } from "./lib/encryption/EncryptionService";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -35,6 +36,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public casMetadata!: CASMetadata;
 	public urlResolver!: URLResolver;
 	public referenceManger = new ReferenceManager(this);
+	public encryptionService!: EncryptionService;
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
@@ -78,10 +80,12 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					.filter((i) => !!i),
 			]);
 		});
+		this.encryptionService = new EncryptionService(this.app);
 		this.urlResolver = new URLResolver(
 			this.app,
 			this.cas,
 			() => this.settings,
+			this.encryptionService,
 		);
 		this.migrationManager = this.stack.use(new MigrationManager(this));
 		this.lockManager = this.stack.use(new LockManager(this));
@@ -209,6 +213,26 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.app,
 					this.cas,
 					this.settings.primaryDir,
+				).catch(showError);
+			},
+		});
+
+		this.addCommand({
+			id: "insert-encrypted-attachment",
+			name: t("insertEncryptedAttachment"),
+			callback: async () => {
+				const keys = await this.encryptionService.listKeys();
+				if (keys.length === 0) {
+					new Notice(t("noEncryptionKeys"));
+					return;
+				}
+				// 使用第一个可用密钥
+				insertAttachment(
+					this.app,
+					this.cas,
+					this.settings.primaryDir,
+					this.encryptionService,
+					{ encryptKeyFingerprint: keys[0].fingerprint },
 				).catch(showError);
 			},
 		});
@@ -356,6 +380,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.urlResolver.revokeAllBlobs();
 		this.stack.dispose();
 	}
 }
@@ -364,6 +389,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 const { t } = defineLocales({
 	en: {
 		insertAttachment: "Insert attachment",
+		insertEncryptedAttachment: "Insert encrypted attachment",
+		noEncryptionKeys: "No encryption keys available. Create one in settings first.",
 		migrateCurrentNote: "Migrate local files (current note)",
 		lockCurrentNote: "Lock web files (current note)",
 		lockLink: "Lock this link",
@@ -377,6 +404,8 @@ const { t } = defineLocales({
 	},
 	zh: {
 		insertAttachment: "插入附件",
+		insertEncryptedAttachment: "插入加密附件",
+		noEncryptionKeys: "没有可用加密密钥。请在设置中先创建密钥。",
 		migrateCurrentNote: "迁移本地文件（当前笔记）",
 		lockCurrentNote: "锁定网络文件（当前笔记）",
 		lockLink: "锁定此链接",
