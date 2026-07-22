@@ -55,6 +55,7 @@ async function loadFileContent(
 	app: App,
 	cas: CAS,
 	cidStr: string,
+	fallbackFilename?: string,
 ): Promise<
 	{ buffer: ArrayBuffer; filename: string; format: string } | undefined
 > {
@@ -62,26 +63,12 @@ async function loadFileContent(
 	const match = await cas.load(cid);
 	if (match) {
 		const buffer = await app.vault.adapter.readBinary(match.normalizedPath);
-		const filename = match.normalizedPath.split("/").pop() ?? "";
+		// 使用调用者提供的回退文件名，而不是 CAS 路径（CAS 文件名是哈希值）
+		const filename = fallbackFilename ?? "";
 		return { buffer, filename, format: "" };
 	}
-	const gateways = ["https://ipfs.io/ipfs/", "https://dweb.link/ipfs/"];
-	for (const gw of gateways) {
-		try {
-			const url = `${gw}${cidStr}`;
-			const resp = await requestUrl({ url, throw: false });
-			if (resp.status === 200) {
-				const ct = resp.headers["content-type"] ?? "";
-				return {
-					buffer: resp.arrayBuffer,
-					filename: cidStr,
-					format: ct,
-				};
-			}
-		} catch {
-			/* next */
-		}
-	}
+	// 移除硬编码网关，所有网络请求应该通过 URLResolver 使用配置的网关
+	return undefined;
 }
 
 export async function encryptLink(
@@ -107,7 +94,7 @@ export async function encryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(app, cas, parsed.cid.toString());
+	const content = await loadFileContent(app, cas, parsed.cid.toString(), parsed.filename);
 	if (!content) {
 		new Notice("File not found");
 		return;
@@ -115,7 +102,7 @@ export async function encryptLink(
 
 	const file = new File(
 		[new Blob([content.buffer])],
-		parsed.filename || content.filename,
+		content.filename,
 		{
 			type: parsed.format || content.format || "application/octet-stream",
 		},
@@ -153,7 +140,7 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(app, cas, parsed.cid.toString());
+	const content = await loadFileContent(app, cas, parsed.cid.toString(), parsed.filename);
 	if (!content) {
 		new Notice("File not found");
 		return;
@@ -167,7 +154,7 @@ export async function decryptLink(
 
 	const file = new File(
 		[new Blob([decrypted.data])],
-		parsed.filename || "file",
+		content.filename || "file",
 		{ type: decrypted.mimeType },
 	);
 	const { cid: newCid } = await cas.save(dir, file);
@@ -211,12 +198,12 @@ export async function encryptNote(
 		const parsed = IPFSLink.parse(linkText);
 		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
-		const result = await loadFileContent(app, cas, parsed.cid.toString());
+		const result = await loadFileContent(app, cas, parsed.cid.toString(), parsed.filename);
 		if (!result) return undefined;
 
 		const origFile = new File(
 			[new Blob([result.buffer])],
-			parsed.filename || result.filename,
+			result.filename,
 			{
 				type:
 					parsed.format ||

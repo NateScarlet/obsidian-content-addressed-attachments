@@ -7,8 +7,6 @@ export const EXAMPLE_URL =
 export interface EncryptPathRule {
 	pattern: string;
 	keyFingerprint: string;
-}
-
 export interface Settings {
 	version: 1;
 	primaryDir: string;
@@ -17,6 +15,8 @@ export interface Settings {
 	encryptPathRules: EncryptPathRule[];
 	maxBlobSize: number;
 	decryptedCacheDir: string;
+	encryptionKeysSecretName?: string;
+}encryptionKeysSecretName?: string;
 }
 
 export const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB

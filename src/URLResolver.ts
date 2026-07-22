@@ -9,6 +9,7 @@ import showError from "./utils/showError";
 import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type { EncryptionService } from "./lib/encryption/EncryptionService";
+import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import defineLocales from "./utils/defineLocales";
 
 // 模板数据类型接口
@@ -300,10 +301,25 @@ export class URLResolver {
 					`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
 				);
 				new Notice(t("decryptedCacheDirNotSet")(encryptedPath));
-				const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200"><rect width="100%" height="100%" fill="%232d3748"/><text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="%23e2e8f0" font-family="sans-serif" font-size="14">Decryption cache directory not set</text><text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" fill="%23a0aec0" font-family="sans-serif" font-size="12">Please set Decrypted Cache Dir or increase Max Blob Size</text></svg>`;
-				return {
-					url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-				};
+
+				// 仅对图片类型生成图片占位符，其他类型返回简单提示
+				const mimeType = decrypted.mimeType;
+				const isImage = mimeType.startsWith("image/");
+
+				if (isImage) {
+					const svg = createImagePlaceholderSVG(
+						t("decryptedCacheDirNotSetPlaceholder"),
+						"error",
+					);
+					return {
+						url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+					};
+				} else {
+					// 非图片类型返回简单文本提示
+					return {
+						url: `data:text/plain;charset=utf-8,${encodeURIComponent(t("decryptedCacheDirNotSetSimple"))}`,
+					};
+				}
 			}
 
 			const cacheFilename = `dec-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -333,11 +349,18 @@ const { t } = defineLocales({
 			`Encryption key ${fp} not found. Cannot decrypt ${path}`,
 		decryptedCacheDirNotSet: (path: string) =>
 			`Decrypted cache directory not configured. Please set Decrypted Cache Dir or increase Max Blob Size for ${path}`,
+		decryptedCacheDirNotSetPlaceholder:
+			"Decryption cache directory not set",
+		decryptedCacheDirNotSetSimple:
+			"Decrypted cache directory not configured. Please set Decrypted Cache Dir or increase Max Blob Size.",
 	},
 	zh: {
 		keyNotFound: (fp: string, path: string) =>
 			`加密密钥 ${fp} 未找到，无法解密 ${path}`,
 		decryptedCacheDirNotSet: (path: string) =>
 			`未设置解密缓存目录。请在设置中配置文件解密缓存目录或提高内存解密上限：${path}`,
+		decryptedCacheDirNotSetPlaceholder: "未设置解密缓存目录",
+		decryptedCacheDirNotSetSimple:
+			"未设置解密缓存目录。请在设置中配置文件解密缓存目录或提高内存解密上限。",
 	},
 });

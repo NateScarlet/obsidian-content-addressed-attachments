@@ -40,10 +40,7 @@ export interface KeyStorage {
 		key: string,
 	): string | null | undefined | Promise<string | null | undefined>;
 	setSecret(key: string, value: string): void | Promise<void>;
-	listSecrets(): string[] | Promise<string[]>;
-}
-
-/** SecretStorage 中单条 entry 的结构 */
+} 中单条 entry 的结构 */
 export interface SecretEntry {
 	key: string; // base64 编码的密钥材料
 	name?: string;

@@ -22,11 +22,9 @@ export default async function insertAttachment(
 	const notePath = view.file?.path ?? "";
 
 	for (const file of files) {
-		const fingerprint = encryptionService?.isAvailable
-			? await encryptionService.resolveKeyForNotePath(notePath)
-			: undefined;
+		const fingerprint = await encryptionService?.resolveKeyForNotePath(notePath);
 
-		if (fingerprint && encryptionService?.isAvailable) {
+		if (fingerprint && encryptionService) {
 			const { encryptedFile } = await encryptionService.encryptFile(
 				fingerprint,
 				file,
