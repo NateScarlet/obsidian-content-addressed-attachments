@@ -27,6 +27,32 @@ describe("EncryptionService", () => {
 		});
 	});
 
+	describe("resolveKeyForNotePath", () => {
+		it("returns undefined if no rules match", async () => {
+			const key = await km.createKey("primary");
+			const service = new EncryptionService(km, () => ({
+				encryptPathRules: [{ pattern: "Secret/**", keyFingerprint: key.fingerprint }],
+			}));
+			expect(await service.resolveKeyForNotePath("Public/note.md")).toBeUndefined();
+		});
+
+		it("returns matching key fingerprint if rule matches", async () => {
+			const key = await km.createKey("primary");
+			const service = new EncryptionService(km, () => ({
+				encryptPathRules: [{ pattern: "Secret/**", keyFingerprint: key.fingerprint }],
+			}));
+			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(key.fingerprint);
+		});
+
+		it("falls back to primary key if rule keyFingerprint is empty", async () => {
+			const key = await km.createKey("primary");
+			const service = new EncryptionService(km, () => ({
+				encryptPathRules: [{ pattern: "Secret/**", keyFingerprint: "" }],
+			}));
+			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(key.fingerprint);
+		});
+	});
+
 	describe("encryptFile", () => {
 		it("produces encrypted file with correct type and content", async () => {
 			const keyInfo = await km.createKey("test");

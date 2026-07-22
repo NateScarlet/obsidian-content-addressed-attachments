@@ -104,6 +104,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				};
 		this.encryptionService = new EncryptionService(
 			new KeyManager(storage, hasSecretStorage),
+			() => this.settings,
 			this.settings.maxBlobSize,
 		);
 		this.urlResolver = new URLResolver(

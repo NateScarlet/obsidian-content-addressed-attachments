@@ -11,14 +11,36 @@ import {
 	type DecryptedFile,
 } from "./types";
 
+import type { Settings } from "#src/settings";
+import ignore from "ignore";
+
 export class EncryptionService {
 	constructor(
 		public readonly keyManager: KeyManager,
+		private readonly getSettings: () => Pick<
+			Settings,
+			"encryptPathRules"
+		> = () => ({
+			encryptPathRules: [],
+		}),
 		public readonly maxBlobSize: number = 20 * 1024 * 1024,
 	) {}
 
 	get isAvailable(): boolean {
 		return this.keyManager.isAvailable;
+	}
+
+	/** 根据笔记路径和规则决定使用哪个 key 加密 */
+	async resolveKeyForNotePath(notePath: string): Promise<string | undefined> {
+		const rules = this.getSettings().encryptPathRules;
+		const rule = rules.find(
+			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
+		);
+		if (!rule) return undefined;
+		return (
+			rule.keyFingerprint ||
+			(await this.keyManager.getPrimaryKey())?.fingerprint
+		);
 	}
 
 	/** 加密文件内容，返回可直接用于 CAS.save 的 File 对象 */
