@@ -14,7 +14,6 @@ describe("IPFSLink", () => {
 		expect(link?.cid.toString()).toBe(validCIDString);
 		expect(link?.filename).toBe("test.png");
 		expect(link?.format).toBe("image/png");
-		expect(link?.isImage).toBe(true);
 		expect(link?.isEncrypted).toBe(false);
 	});
 
@@ -29,7 +28,7 @@ describe("IPFSLink", () => {
 		expect(link?.isEncrypted).toBe(true);
 	});
 
-	it("formats markdown embed image for image files", () => {
+	it("formats markdown embed image when format is image/*", () => {
 		const cid = CID.parse(validCIDString);
 		const link = new IPFSLink({
 			cid,
@@ -41,7 +40,7 @@ describe("IPFSLink", () => {
 		);
 	});
 
-	it("formats standard markdown link for non-image files", () => {
+	it("formats standard markdown link for non-image format by default", () => {
 		const cid = CID.parse(validCIDString);
 		const link = new IPFSLink({
 			cid,
@@ -53,20 +52,18 @@ describe("IPFSLink", () => {
 		);
 	});
 
-	it("determines isImage strictly by format starting with image/", () => {
+	it("respects explicit embed option for encrypted images", () => {
 		const cid = CID.parse(validCIDString);
-		const nonImgLink = new IPFSLink({
+		const link = new IPFSLink({
 			cid,
-			filename: "fake.png",
-			format: "application/octet-stream",
+			filename: "photo.png",
+			format: ENCRYPTED_FORMAT,
 		});
-		expect(nonImgLink.isImage).toBe(false);
-
-		const imgLink = new IPFSLink({
-			cid,
-			filename: "photo",
-			format: "image/png",
-		});
-		expect(imgLink.isImage).toBe(true);
+		expect(link.toMarkdown({ embed: true })).toBe(
+			`![photo.png](ipfs://${validCIDString}?filename=photo.png&format=${encodeURIComponent(ENCRYPTED_FORMAT)})`,
+		);
+		expect(link.toMarkdown({ embed: false })).toBe(
+			`[photo.png](ipfs://${validCIDString}?filename=photo.png&format=${encodeURIComponent(ENCRYPTED_FORMAT)})`,
+		);
 	});
 });

@@ -22,10 +22,6 @@ export class IPFSLink {
 		return this.format === ENCRYPTED_FORMAT;
 	}
 
-	get isImage(): boolean {
-		return this.format.startsWith("image/");
-	}
-
 	get url(): URL {
 		return new URL(this.toURL());
 	}
@@ -62,8 +58,8 @@ export class IPFSLink {
 	/** 转换为 Markdown 格式链接 */
 	toMarkdown(options?: { embed?: boolean }): string {
 		const urlStr = this.toURL();
-		const embed = options?.embed ?? this.isImage;
-		const name = this.filename || (this.isImage ? "image" : "attachment");
+		const embed = options?.embed ?? this.format.startsWith("image/");
+		const name = this.filename || (embed ? "image" : "attachment");
 		return embed ? `![${name}](${urlStr})` : `[${name}](${urlStr})`;
 	}
 

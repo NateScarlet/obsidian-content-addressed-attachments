@@ -125,11 +125,12 @@ export async function encryptLink(
 		file,
 	);
 	const { cid: newCid } = await cas.save(dir, encryptedFile);
+	const isEmbed = linkText.trimStart().startsWith("!");
 	const newLink = new IPFSLink({
 		cid: newCid,
 		filename: encryptedFile.name,
 		format: ENCRYPTED_FORMAT,
-	}).toMarkdown();
+	}).toMarkdown({ embed: isEmbed });
 
 	editor.replaceRange(
 		newLink,
@@ -170,11 +171,12 @@ export async function decryptLink(
 		{ type: decrypted.mimeType },
 	);
 	const { cid: newCid } = await cas.save(dir, file);
+	const isEmbed = linkText.trimStart().startsWith("!");
 	const newLink = new IPFSLink({
 		cid: newCid,
 		filename: file.name,
 		format: file.type,
-	}).toMarkdown();
+	}).toMarkdown({ embed: isEmbed });
 
 	editor.replaceRange(
 		newLink,
@@ -228,11 +230,12 @@ export async function encryptNote(
 		);
 		const { cid: newCid } = await cas.save(dir, encryptedFile);
 
+		const isEmbed = linkText.trimStart().startsWith("!");
 		const encryptedLink = new IPFSLink({
 			cid: newCid,
 			filename: encryptedFile.name,
 			format: ENCRYPTED_FORMAT,
 		});
-		return encryptedLink.toMarkdown();
+		return encryptedLink.toMarkdown({ embed: isEmbed });
 	});
 }
