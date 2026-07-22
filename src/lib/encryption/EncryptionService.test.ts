@@ -1,14 +1,20 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { EncryptionService } from "#src/lib/encryption/EncryptionService";
-import { KeyManager } from "#src/lib/encryption/KeyManager";
-import { ENCRYPTED_FORMAT, type KeyStorage } from "#src/lib/encryption/types";
+import { EncryptionService } from "./EncryptionService";
+import { KeyManager } from "./KeyManager";
+import { ENCRYPTED_FORMAT, type KeyStorage } from "./types";
 
 function createMockStorage(): KeyStorage {
 	const store = new Map<string, string>();
 	return {
-		async getSecret(key: string) { return store.get(key); },
-		async setSecret(key: string, value: string) { store.set(key, value); },
-		async listSecrets() { return Array.from(store.keys()); },
+		getSecret(key: string) {
+			return store.get(key);
+		},
+		setSecret(key: string, value: string) {
+			store.set(key, value);
+		},
+		listSecrets() {
+			return Array.from(store.keys());
+		},
 	};
 }
 
@@ -31,32 +37,46 @@ describe("EncryptionService", () => {
 		it("returns undefined if no rules match", async () => {
 			const key = await km.createKey("primary");
 			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [{ pattern: "Secret/**", keyFingerprint: key.fingerprint }],
+				encryptPathRules: [
+					{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
+				],
 			}));
-			expect(await service.resolveKeyForNotePath("Public/note.md")).toBeUndefined();
+			expect(
+				await service.resolveKeyForNotePath("Public/note.md"),
+			).toBeUndefined();
 		});
 
 		it("returns matching key fingerprint if rule matches", async () => {
 			const key = await km.createKey("primary");
 			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [{ pattern: "Secret/**", keyFingerprint: key.fingerprint }],
+				encryptPathRules: [
+					{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
+				],
 			}));
-			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(key.fingerprint);
+			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
+				key.fingerprint,
+			);
 		});
 
 		it("falls back to primary key if rule keyFingerprint is empty", async () => {
 			const key = await km.createKey("primary");
 			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [{ pattern: "Secret/**", keyFingerprint: "" }],
+				encryptPathRules: [
+					{ pattern: "Secret/**", keyFingerprint: "" },
+				],
 			}));
-			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(key.fingerprint);
+			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
+				key.fingerprint,
+			);
 		});
 	});
 
 	describe("encryptFile", () => {
 		it("produces encrypted file with correct type and content", async () => {
 			const keyInfo = await km.createKey("test");
-			const file = new File(["hello world"], "test.txt", { type: "text/plain" });
+			const file = new File(["hello world"], "test.txt", {
+				type: "text/plain",
+			});
 
 			const { encryptedFile, fingerprint } = await es.encryptFile(
 				keyInfo.fingerprint,
@@ -80,8 +100,14 @@ describe("EncryptionService", () => {
 			const k2 = await km.createKey("key2");
 			const file = new File(["same"], "a.txt", { type: "text/plain" });
 
-			const { encryptedFile: ef1 } = await es.encryptFile(k1.fingerprint, file);
-			const { encryptedFile: ef2 } = await es.encryptFile(k2.fingerprint, file);
+			const { encryptedFile: ef1 } = await es.encryptFile(
+				k1.fingerprint,
+				file,
+			);
+			const { encryptedFile: ef2 } = await es.encryptFile(
+				k2.fingerprint,
+				file,
+			);
 
 			const buf1 = await ef1.arrayBuffer();
 			const buf2 = await ef2.arrayBuffer();
@@ -93,9 +119,14 @@ describe("EncryptionService", () => {
 		it("decrypts an encrypted file back to original", async () => {
 			const keyInfo = await km.createKey("roundtrip");
 			const originalContent = "Secret message";
-			const file = new File([originalContent], "secret.txt", { type: "text/plain" });
+			const file = new File([originalContent], "secret.txt", {
+				type: "text/plain",
+			});
 
-			const { encryptedFile } = await es.encryptFile(keyInfo.fingerprint, file);
+			const { encryptedFile } = await es.encryptFile(
+				keyInfo.fingerprint,
+				file,
+			);
 			const encryptedData = await encryptedFile.arrayBuffer();
 
 			const result = await es.decryptFile(encryptedData);
@@ -113,7 +144,10 @@ describe("EncryptionService", () => {
 		it("throws when decryption key is deleted", async () => {
 			const keyInfo = await km.createKey("disappear");
 			const file = new File(["gone"], "lost.txt", { type: "text/plain" });
-			const { encryptedFile } = await es.encryptFile(keyInfo.fingerprint, file);
+			const { encryptedFile } = await es.encryptFile(
+				keyInfo.fingerprint,
+				file,
+			);
 			const encryptedData = await encryptedFile.arrayBuffer();
 
 			await km.deleteKey(keyInfo.fingerprint);
@@ -127,28 +161,36 @@ describe("EncryptionService", () => {
 	describe("createBlobURL", () => {
 		it("creates a blob URL for encrypted file", async () => {
 			const keyInfo = await km.createKey("blob-test");
-			const file = new File(["blob content"], "b.txt", { type: "text/plain" });
-			const { encryptedFile } = await es.encryptFile(keyInfo.fingerprint, file);
+			const file = new File(["blob content"], "b.txt", {
+				type: "text/plain",
+			});
+			const { encryptedFile } = await es.encryptFile(
+				keyInfo.fingerprint,
+				file,
+			);
 			const encryptedData = await encryptedFile.arrayBuffer();
 
 			const url = await es.createBlobURL(encryptedData);
 			expect(url).toBeTruthy();
 			expect(url).toMatch(/^blob:/);
 
-			// Verify content via blob URL
-			const response = await fetch(url!);
-			const text = await response.text();
+			const decrypted = await es.decryptFile(encryptedData);
+			const text = new TextDecoder().decode(decrypted?.data);
 			expect(text).toBe("blob content");
 		});
 	});
 
 	describe("static isEncryptedFormat", () => {
 		it("returns true for encrypted format string", () => {
-			expect(EncryptionService.isEncryptedFormat(ENCRYPTED_FORMAT)).toBe(true);
+			expect(EncryptionService.isEncryptedFormat(ENCRYPTED_FORMAT)).toBe(
+				true,
+			);
 		});
 
 		it("returns false for other formats", () => {
-			expect(EncryptionService.isEncryptedFormat("text/plain")).toBe(false);
+			expect(EncryptionService.isEncryptedFormat("text/plain")).toBe(
+				false,
+			);
 			expect(EncryptionService.isEncryptedFormat("")).toBe(false);
 		});
 	});

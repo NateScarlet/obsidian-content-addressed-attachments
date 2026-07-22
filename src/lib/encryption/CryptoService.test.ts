@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { CryptoService } from "#src/lib/encryption/CryptoService";
+import { CryptoService } from "./CryptoService";
 
 describe("CryptoService", () => {
 	let cs: CryptoService;
@@ -25,7 +25,12 @@ describe("CryptoService", () => {
 		it("encrypts and decrypts a known plaintext", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("Hello, World!").buffer;
-			const { data, fingerprint } = await cs.encrypt(key, "1234567812345678", plaintext, "text/plain");
+			const { data, fingerprint } = await cs.encrypt(
+				key,
+				"1234567812345678",
+				plaintext,
+				"text/plain",
+			);
 
 			expect(fingerprint).toBe("1234567812345678");
 			expect(fingerprint.length).toBe(16); // 8 bytes as hex
@@ -38,12 +43,21 @@ describe("CryptoService", () => {
 
 		it("survives roundtrip with binary data", async () => {
 			const key = await cs.generateKey();
-			const binaryData = new Uint8Array([0, 1, 255, 128, 64, 32, 16, 8, 4, 2]).buffer;
-			const { data } = await cs.encrypt(key, "1234567812345678", binaryData, "application/octet-stream");
+			const binaryData = new Uint8Array([
+				0, 1, 255, 128, 64, 32, 16, 8, 4, 2,
+			]).buffer;
+			const { data } = await cs.encrypt(
+				key,
+				"1234567812345678",
+				binaryData,
+				"application/octet-stream",
+			);
 
 			const decrypted = await cs.decrypt(key, data);
 			const decryptedBytes = new Uint8Array(decrypted);
-			expect(Array.from(decryptedBytes)).toEqual([0, 1, 255, 128, 64, 32, 16, 8, 4, 2]);
+			expect(Array.from(decryptedBytes)).toEqual([
+				0, 1, 255, 128, 64, 32, 16, 8, 4, 2,
+			]);
 		});
 
 		it("produces different ciphertext for same plaintext with different keys", async () => {
@@ -51,8 +65,18 @@ describe("CryptoService", () => {
 			const key2 = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("same data").buffer;
 
-			const { data: data1, fingerprint: fp1 } = await cs.encrypt(key1, "fp11111111111111", plaintext, "text/plain");
-			const { data: data2, fingerprint: fp2 } = await cs.encrypt(key2, "fp22222222222222", plaintext, "text/plain");
+			const { data: data1, fingerprint: fp1 } = await cs.encrypt(
+				key1,
+				"fp11111111111111",
+				plaintext,
+				"text/plain",
+			);
+			const { data: data2, fingerprint: fp2 } = await cs.encrypt(
+				key2,
+				"fp22222222222222",
+				plaintext,
+				"text/plain",
+			);
 
 			expect(fp1).not.toBe(fp2);
 			expect(Buffer.from(data1).equals(Buffer.from(data2))).toBe(false);
@@ -61,7 +85,12 @@ describe("CryptoService", () => {
 		it("preserves original format through header", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("test").buffer;
-			const { data } = await cs.encrypt(key, "1234567812345678", plaintext, "image/png");
+			const { data } = await cs.encrypt(
+				key,
+				"1234567812345678",
+				plaintext,
+				"image/png",
+			);
 
 			const header = cs.parseHeader(data);
 			expect(header.originalFormat).toBe("image/png");
@@ -72,7 +101,12 @@ describe("CryptoService", () => {
 		it("extracts key fingerprint, IV, authTag, and format", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("test").buffer;
-			const { data, fingerprint } = await cs.encrypt(key, "1234567812345678", plaintext, "application/pdf");
+			const { data, fingerprint } = await cs.encrypt(
+				key,
+				"1234567812345678",
+				plaintext,
+				"application/pdf",
+			);
 
 			const header = cs.parseHeader(data);
 			expect(header.keyFingerprint).toBe(fingerprint);
@@ -81,12 +115,12 @@ describe("CryptoService", () => {
 			expect(header.originalFormat).toBe("application/pdf");
 		});
 
-		it("throws on bad magic", async () => {
+		it("throws on bad magic", () => {
 			const bad = new Uint8Array([0, 0, 0, 0, 0, 1]);
 			expect(() => cs.parseHeader(bad.buffer)).toThrow("bad magic");
 		});
 
-		it("throws on unsupported version", async () => {
+		it("throws on unsupported version", () => {
 			const bad = new Uint8Array([0x43, 0x45, 0x4e, 0x43, 0xff, 0xff]);
 			expect(() => cs.parseHeader(bad.buffer)).toThrow("Unsupported");
 		});
@@ -95,7 +129,12 @@ describe("CryptoService", () => {
 	describe("isEncryptedData", () => {
 		it("returns true for valid encrypted data", async () => {
 			const key = await cs.generateKey();
-			const { data } = await cs.encrypt(key, "1234567812345678", new ArrayBuffer(0), "text/plain");
+			const { data } = await cs.encrypt(
+				key,
+				"1234567812345678",
+				new ArrayBuffer(0),
+				"text/plain",
+			);
 			expect(cs.isEncryptedData(data)).toBe(true);
 		});
 
@@ -110,7 +149,9 @@ describe("CryptoService", () => {
 		});
 
 		it("returns false for too-short data", () => {
-			expect(cs.isEncryptedData(new Uint8Array([0x43, 0x45, 0x4e]).buffer)).toBe(false);
+			expect(
+				cs.isEncryptedData(new Uint8Array([0x43, 0x45, 0x4e]).buffer),
+			).toBe(false);
 		});
 	});
 
@@ -119,7 +160,12 @@ describe("CryptoService", () => {
 			const key1 = await cs.generateKey();
 			const key2 = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("secret").buffer;
-			const { data } = await cs.encrypt(key1, "1234567812345678", plaintext, "text/plain");
+			const { data } = await cs.encrypt(
+				key1,
+				"1234567812345678",
+				plaintext,
+				"text/plain",
+			);
 
 			await expect(cs.decrypt(key2, data)).rejects.toThrow();
 		});
@@ -128,29 +174,43 @@ describe("CryptoService", () => {
 	describe("encryptWithPassphrase / decryptWithPassphrase", () => {
 		it("roundtrips data with passphrase", async () => {
 			const original = JSON.stringify({ foo: "bar" });
-			const encrypted = await cs.encryptWithPassphrase(original, "my-passphrase");
+			const encrypted = await cs.encryptWithPassphrase(
+				original,
+				"my-passphrase",
+			);
 			expect(encrypted).toBeTruthy();
 
-			const parsed = JSON.parse(encrypted);
+			const parsed = JSON.parse(encrypted) as {
+				salt: string;
+				iv: string;
+				data: string;
+			};
 			expect(parsed.salt).toBeTruthy();
 			expect(parsed.iv).toBeTruthy();
 			expect(parsed.data).toBeTruthy();
 
-			const decrypted = await cs.decryptWithPassphrase(encrypted, "my-passphrase");
+			const decrypted = await cs.decryptWithPassphrase(
+				encrypted,
+				"my-passphrase",
+			);
 			expect(decrypted).toBe(original);
 		});
 
 		it("rejects wrong passphrase", async () => {
 			const original = "secret data";
-			const encrypted = await cs.encryptWithPassphrase(original, "correct");
-			await expect(cs.decryptWithPassphrase(encrypted, "wrong")).rejects.toThrow();
+			const encrypted = await cs.encryptWithPassphrase(
+				original,
+				"correct",
+			);
+			await expect(
+				cs.decryptWithPassphrase(encrypted, "wrong"),
+			).rejects.toThrow();
 		});
 
 		it("produces different ciphertext for same data with same passphrase", async () => {
 			const data = "same data";
 			const e1 = await cs.encryptWithPassphrase(data, "pass");
 			const e2 = await cs.encryptWithPassphrase(data, "pass");
-			// Different salt/IV ensures different output
 			expect(e1).not.toBe(e2);
 		});
 	});

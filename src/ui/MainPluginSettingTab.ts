@@ -200,29 +200,6 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			(i) => void unmount(i),
 		);
 
-		// 全库操作区域
-		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
-
-		new Setting(containerEl)
-			.setName(t("migrateAllNotes"))
-			.setDesc(t("migrateAllNotesDesc"))
-			.addButton((button) =>
-				button.setButtonText(t("execute")).onClick(() => {
-					this.plugin.migrationManager
-						.execute("all")
-						.catch(showError);
-				}),
-			);
-
-		new Setting(containerEl)
-			.setName(t("lockAllNotes"))
-			.setDesc(t("lockAllNotesDesc"))
-			.addButton((button) =>
-				button.setButtonText(t("execute")).onClick(() => {
-					this.plugin.lockManager.execute("all").catch(showError);
-				}),
-			);
-
 		//#region 加密设置
 		if (this.plugin.encryptionService?.isAvailable) {
 			new Setting(containerEl).setName(t("encryption")).setHeading();
@@ -276,6 +253,29 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				.setDesc(t("encryptionUnavailableDesc"));
 		}
 		//#endregion
+
+		// 全库操作区域
+		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
+
+		new Setting(containerEl)
+			.setName(t("migrateAllNotes"))
+			.setDesc(t("migrateAllNotesDesc"))
+			.addButton((button) =>
+				button.setButtonText(t("execute")).onClick(() => {
+					this.plugin.migrationManager
+						.execute("all")
+						.catch(showError);
+				}),
+			);
+
+		new Setting(containerEl)
+			.setName(t("lockAllNotes"))
+			.setDesc(t("lockAllNotesDesc"))
+			.addButton((button) =>
+				button.setButtonText(t("execute")).onClick(() => {
+					this.plugin.lockManager.execute("all").catch(showError);
+				}),
+			);
 	}
 
 	onClose(): void {
