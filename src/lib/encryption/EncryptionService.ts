@@ -11,10 +11,11 @@ import {
 	type DecryptedFile,
 } from "./types";
 
-const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB
-
 export class EncryptionService {
-	constructor(public readonly keyManager: KeyManager) {}
+	constructor(
+		public readonly keyManager: KeyManager,
+		public readonly maxBlobSize: number = 20 * 1024 * 1024,
+	) {}
 
 	get isAvailable(): boolean {
 		return this.keyManager.isAvailable;
@@ -75,11 +76,6 @@ export class EncryptionService {
 	/** 判断是否为加密格式标记 */
 	static isEncryptedFormat(format: string): boolean {
 		return format === ENCRYPTED_FORMAT;
-	}
-
-	/** 获取最大 blob 大小阈值 */
-	get maxBlobSize(): number {
-		return DEFAULT_MAX_BLOB_SIZE;
 	}
 
 	/** 列出可用密钥 */

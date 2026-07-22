@@ -5,6 +5,7 @@ import GatewayOptionsModal from "./GatewayOptionsModal";
 import clsx from "clsx";
 import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
+import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import type { KeyManager } from "#src/lib/encryption/KeyManager";
@@ -227,175 +228,24 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				.setName(t("encryption"))
 				.setHeading();
 
-			// 密钥列表
-			this.plugin.encryptionService.listKeys().then(async (keys) => {
-				for (const key of keys) {
-					const setting = new Setting(containerEl)
-						.setName(key.name)
-						.setDesc(`${t("fingerprint")}: ${key.fingerprint}`)
-						.addButton((btn) =>
-							btn
-								.setIcon("pencil")
-								.setTooltip(t("rename"))
-								.onClick(() => {
-									new RenameKeyModal(
-										this.app,
-										key.fingerprint,
-										key.name,
-										this.plugin.encryptionService.keyManager,
-									).open();
-								}),
-						)
-						.addButton((btn) =>
-							btn
-								.setIcon("trash")
-								.setTooltip(t("delete"))
-								.onClick(() => {
-									new ConfirmDeleteKeyModal(
-										this.app,
-										key.name,
-										key.fingerprint,
-										async () => {
-											await this.plugin.encryptionService.keyManager.deleteKey(
-												key.fingerprint,
-											);
-											// eslint-disable-next-line @typescript-eslint/no-deprecated
-											this.display();
-										},
-									).open();
-								}),
-						);
-				}
-
-				// 创建新密钥
-				new Setting(containerEl)
-					.setName(t("createNewKey"))
-					.addText((text) => {
-						text.setPlaceholder(t("keyNamePlaceholder"));
-						text.inputEl.dataset["keyName"] = "";
-					})
-					.addButton((btn) =>
-						btn
-							.setButtonText(t("create"))
-							.onClick(async () => {
-								const nameInput =
-									containerEl.querySelector<HTMLInputElement>(
-										'[data-key-name]',
-									);
-								const name =
-									nameInput?.value?.trim() || t("unnamedKey");
-								try {
-									await this.plugin.encryptionService.keyManager.createKey(
-										name,
-									);
-									new Notice(t("keyCreateSuccess")(name));
-									// eslint-disable-next-line @typescript-eslint/no-deprecated
-									this.display();
-								} catch (err) {
-									showError(err);
-								}
-							}),
-					);
-
-				new Setting(containerEl)
-					.addButton((btn) =>
-						btn
-							.setButtonText(t("exportAllKeys"))
-							.onClick(() => {
-								new ExportKeysModal(
-									this.app,
-									this.plugin.encryptionService.keyManager,
-								).open();
-							}),
-					)
-					.addButton((btn) =>
-						btn
-							.setButtonText(t("importKeys"))
-							.onClick(() => {
-								new ImportKeysModal(
-									this.app,
-									this.plugin.encryptionService.keyManager,
-								).open();
-							}),
-					);
-
-				// 自动加密路径规则
-				new Setting(containerEl)
-					.setName(t("encryptPathRules"))
-					.setDesc(t("encryptPathRulesDesc"))
-					.setHeading();
-
-				const allKeys = keys;
-				for (const rule of this.plugin.settings.encryptPathRules) {
-					const s = new Setting(containerEl)
-						.addText((text) =>
-							text
-								.setPlaceholder(t("encryptPathRulePatternPlaceholder"))
-								.setValue(rule.pattern)
-								.onChange(async (value) => {
-									rule.pattern = value;
-									await this.plugin.saveSettings();
-								}),
-						);
-
-					const keyNames = allKeys.map((k) => k.name);
-					const currentIndex = Math.max(
-						0,
-						allKeys.findIndex(
-							(k) => k.fingerprint === rule.keyFingerprint,
-						),
-					);
-					s.addDropdown((dd) => {
-						if (allKeys.length === 0) {
-							dd.addOption("", t("encryptPathRuleNoKeys"));
-						} else {
-							for (const k of allKeys) {
-								dd.addOption(k.fingerprint, k.name);
-							}
-						}
-						dd.setValue(
-							allKeys.length > 0
-								? rule.keyFingerprint
-								: "",
-						).onChange(async (value) => {
-							rule.keyFingerprint = value;
-							await this.plugin.saveSettings();
-						});
-					});
-
-					s.addExtraButton((btn) =>
-						btn
-							.setIcon("cross")
-							.setTooltip(t("delete"))
-							.onClick(async () => {
-								this.plugin.settings.encryptPathRules =
-									this.plugin.settings.encryptPathRules.filter(
-										(r) => r !== rule,
-									);
-								await this.plugin.saveSettings();
-								// eslint-disable-next-line @typescript-eslint/no-deprecated
-								this.display();
-							}),
-					);
-				}
-
-				new Setting(containerEl).addButton((btn) =>
-					btn
-						.setButtonText(t("addEncryptPathRule"))
-						.onClick(async () => {
-							this.plugin.settings.encryptPathRules.push({
-								pattern: "",
-								keyFingerprint:
-									allKeys.length > 0
-										? allKeys[0].fingerprint
-										: "",
-							});
-							await this.plugin.saveSettings();
-							// eslint-disable-next-line @typescript-eslint/no-deprecated
-							this.display();
-						}),
-				);
-			}).catch(showError);
+			const target = containerEl.createDiv();
+			this.stack.adopt(
+				mount(EncryptionSettingsComponent, {
+					target,
+					props: {
+						encryptionService: this.plugin.encryptionService,
+						settings: this.plugin.settings,
+						saveSettings: () => this.plugin.saveSettings(),
+						display: () => this.display(),
+						app: this.app,
+						RenameKeyModal,
+						ConfirmDeleteKeyModal,
+						ExportKeysModal,
+						ImportKeysModal,
+					},
+				}),
+				(i) => void unmount(i),
+			);
 		} else {
 			new Setting(containerEl)
 				.setName(t("encryption"))
@@ -471,7 +321,8 @@ const { t } = defineLocales({
 		keyPassphraseLabel: "Passphrase",
 		keyPassphrasePlaceholder: "Enter passphrase",
 		fingerprint: "Fingerprint",
-		keyRenameTitle: "Rename key",
+		keyEditTitle: "Edit key",
+		keyNameLabel: "Name",
 		keyRenamePlaceholder: "New name",
 		keyRenameSuccess: (name: string) => `Key renamed to "${name}"`,
 		keyImportTitle: "Import key",
@@ -484,14 +335,6 @@ const { t } = defineLocales({
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `Imported ${count} key(s)` : "No new keys to import",
 		keyImportErrorInvalid: "Wrong passphrase or invalid backup data",
-		encryptPathRules: "Auto-encrypt path rules",
-		encryptPathRulesDesc:
-			"Attachments inserted in notes under matching paths will be automatically encrypted with the selected key.",
-		encryptPathRulePattern: "Path pattern",
-		encryptPathRulePatternPlaceholder: "e.g. Secret/ or Projects/Client",
-		encryptPathRuleKey: "Key",
-		addEncryptPathRule: "Add rule",
-		encryptPathRuleNoKeys: "Create a key first",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -544,7 +387,8 @@ const { t } = defineLocales({
 		keyPassphraseLabel: "口令",
 		keyPassphrasePlaceholder: "输入口令",
 		fingerprint: "指纹",
-		keyRenameTitle: "重命名密钥",
+		keyEditTitle: "编辑密钥",
+		keyNameLabel: "名称",
 		keyRenamePlaceholder: "新名称",
 		keyRenameSuccess: (name: string) => `密钥已重命名为 "${name}"`,
 		keyImportTitle: "导入密钥",
@@ -557,19 +401,11 @@ const { t } = defineLocales({
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `已导入 ${count} 个密钥` : "没有需要导入的新密钥",
 		keyImportErrorInvalid: "口令错误或备份数据无效",
-		encryptPathRules: "自动加密路径规则",
-		encryptPathRulesDesc:
-			"在匹配路径的笔记中插入附件时将自动用所选密钥加密。",
-		encryptPathRulePattern: "路径匹配",
-		encryptPathRulePatternPlaceholder: "例如 Secret/ 或 Projects/Client",
-		encryptPathRuleKey: "密钥",
-		addEncryptPathRule: "添加规则",
-		encryptPathRuleNoKeys: "请先创建密钥",
 	},
 });
 //#endregion
 
-class RenameKeyModal extends Modal {
+export class RenameKeyModal extends Modal {
 	constructor(
 		app: App,
 		private fingerprint: string,
@@ -581,11 +417,11 @@ class RenameKeyModal extends Modal {
 
 	onOpen() {
 		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("keyRenameTitle") });
+		contentEl.createEl("h2", { text: t("keyEditTitle") });
 
 		let input: HTMLInputElement;
 		new Setting(contentEl)
-			.setName(t("rename"))
+			.setName(t("keyNameLabel"))
 			.addText((text) => {
 				text.setPlaceholder(t("keyRenamePlaceholder"));
 				text.setValue(this.currentName);
@@ -612,7 +448,7 @@ class RenameKeyModal extends Modal {
 	}
 }
 
-class ExportKeysModal extends Modal {
+export class ExportKeysModal extends Modal {
 	private passphraseInput!: HTMLInputElement;
 
 	constructor(
@@ -661,7 +497,7 @@ class ExportKeysModal extends Modal {
 	}
 }
 
-class ImportKeysModal extends Modal {
+export class ImportKeysModal extends Modal {
 	private passphraseInput!: HTMLInputElement;
 	private statusEl!: HTMLElement;
 	private encryptedData = "";
@@ -728,7 +564,7 @@ class ImportKeysModal extends Modal {
 	}
 }
 
-class ConfirmDeleteKeyModal extends Modal {
+export class ConfirmDeleteKeyModal extends Modal {
 	constructor(
 		app: App,
 		private keyName: string,

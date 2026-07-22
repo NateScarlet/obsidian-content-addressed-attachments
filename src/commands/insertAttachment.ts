@@ -2,6 +2,7 @@ import { MarkdownView, type App } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
 import type { EncryptPathRule } from "#src/settings";
+import ignore from "ignore";
 import insertFileAtCursor from "./insertFileAtCursor";
 
 export interface InsertAttachmentOptions {
@@ -12,7 +13,7 @@ function findMatchingRule(
 	rules: EncryptPathRule[],
 	notePath: string,
 ): EncryptPathRule | undefined {
-	return rules.find((r) => notePath.includes(r.pattern));
+	return rules.find((r) => ignore().add(r.pattern).ignores(notePath));
 }
 
 export default async function insertAttachment(

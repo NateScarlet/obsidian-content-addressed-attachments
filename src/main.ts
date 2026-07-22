@@ -91,6 +91,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			: { async getSecret() { return undefined; }, async setSecret() {}, async listSecrets() { return []; } };
 		this.encryptionService = new EncryptionService(
 			new KeyManager(storage, hasSecretStorage),
+			this.settings.maxBlobSize,
 		);
 		this.urlResolver = new URLResolver(
 			this.app,

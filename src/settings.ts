@@ -9,20 +9,18 @@ export interface EncryptPathRule {
 	keyFingerprint: string;
 }
 
-interface SettingsV2 {
-	version: 2;
-	primaryDir: string;
-	downloadDir: string;
-	gateways: GatewayConfig[];
-	encryptPathRules: EncryptPathRule[];
-}
-
-interface SettingsV1 {
+export interface Settings {
 	version: 1;
 	primaryDir: string;
 	downloadDir: string;
 	gateways: GatewayConfig[];
+	encryptPathRules: EncryptPathRule[];
+	maxBlobSize: number;
+	decryptedCacheDir: string;
 }
+
+export const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB
+export const DEFAULT_DECRYPTED_CACHE_DIR = ".attachments/cas/decrypted-cache";
 
 interface SettingsV0 {
 	version: undefined;
@@ -35,26 +33,15 @@ interface SettingsV0 {
 	}[];
 }
 
-export type SettingsInput = SettingsV0 | SettingsV1 | SettingsV2;
-
-export type Settings = SettingsV2;
+export type SettingsInput = SettingsV0 | { version: 1; primaryDir: string; downloadDir: string; gateways: GatewayConfig[]; encryptPathRules?: EncryptPathRule[]; maxBlobSize?: number; decryptedCacheDir?: string; };
 
 export function settingsFromInput(input: SettingsInput): Settings {
-	if (input.version === 2) {
-		return input;
-	}
 	if (input.version === 1) {
-		return {
-			version: 2,
-			primaryDir: input.primaryDir,
-			downloadDir: input.downloadDir,
-			gateways: input.gateways,
-			encryptPathRules: [],
-		};
+		return { ...input, encryptPathRules: input.encryptPathRules ?? [], maxBlobSize: input.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE, decryptedCacheDir: input.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR };
 	}
 	const v0 = input as SettingsV0;
 	return {
-		version: 2,
+		version: 1,
 		primaryDir: v0.casDir,
 		downloadDir: "",
 		gateways: (v0.gatewayURLs ?? []).map((g) => ({
@@ -64,12 +51,14 @@ export function settingsFromInput(input: SettingsInput): Settings {
 			enabled: g.enabled,
 		})),
 		encryptPathRules: [],
+		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
+		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
 	};
 }
 
 export function getDefaultSettings(): Settings {
 	return {
-		version: 2,
+		version: 1,
 		primaryDir: ".attachments/cas",
 		downloadDir: "",
 		gateways: [
@@ -112,6 +101,8 @@ export function getDefaultSettings(): Settings {
 			},
 		],
 		encryptPathRules: [],
+		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
+		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
 	};
 }
 

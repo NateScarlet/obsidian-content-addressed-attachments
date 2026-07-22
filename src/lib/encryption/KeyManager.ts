@@ -10,10 +10,11 @@ import {
 	decryptWithPassphrase,
 } from "./CryptoService";
 import {
-	STORAGE_KEY_PREFIX,
 	type EncryptionKeyInfo,
 	type KeyStorage,
 } from "./types";
+
+const STORAGE_KEY_PREFIX = "content-addressed-attachments-";
 
 function toStorageKey(fingerprint: string): string {
 	return `${STORAGE_KEY_PREFIX}${fingerprint}`;

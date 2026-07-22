@@ -6,13 +6,19 @@ import {
 	KEY_FINGERPRINT_BYTES,
 	KEY_ALGORITHM,
 	KEY_LENGTH,
-	PBKDF2_ITERATIONS,
-	SALT_LENGTH,
 	type EncryptedFileHeader,
 } from "./types";
 
+/** PBKDF2 迭代次数 */
+const PBKDF2_ITERATIONS = 600000;
+/** 口令加密盐值长度 */
+const SALT_LENGTH = 32;
+
 async function computeFingerprint(keyData: Uint8Array): Promise<string> {
-	const digestResult = await crypto.subtle.digest("SHA-256", keyData.buffer as ArrayBuffer);
+	const digestResult = await crypto.subtle.digest(
+		"SHA-256",
+		keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength) as ArrayBuffer,
+	);
 	const sha256Bytes = new Uint8Array(digestResult);
 	const fpBytes = sha256Bytes.slice(0, KEY_FINGERPRINT_BYTES);
 	return Array.from(fpBytes)
@@ -75,8 +81,7 @@ export async function encrypt(
 	const encrypted = await crypto.subtle.encrypt(
 		{
 			name: KEY_ALGORITHM,
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			iv: iv as any,
+			iv: iv.buffer.slice(iv.byteOffset, iv.byteOffset + iv.byteLength) as ArrayBuffer,
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,
@@ -215,17 +220,14 @@ export async function decrypt(
 	combined.set(ciphertext, 0);
 	combined.set(header.authTag, ciphertext.byteLength);
 
-	// eslint-disable-next-line no-restricted-globals
 	const plaintext = await crypto.subtle.decrypt(
 		{
 			name: KEY_ALGORITHM,
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			iv: header.iv as any,
+			iv: header.iv.buffer.slice(header.iv.byteOffset, header.iv.byteOffset + header.iv.byteLength) as ArrayBuffer,
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		combined as any,
+		combined.buffer.slice(combined.byteOffset, combined.byteOffset + combined.byteLength) as ArrayBuffer,
 	);
 
 	return plaintext;

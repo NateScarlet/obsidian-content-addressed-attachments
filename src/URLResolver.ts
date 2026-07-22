@@ -314,7 +314,7 @@ export class URLResolver {
 			}
 
 			// 大文件：解密到临时缓存目录
-			const cacheDir = ".attachments/cas/decrypted-cache";
+			const cacheDir = this.settings().decryptedCacheDir;
 			const cacheFilename = `dec-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 			const cachePath = `${cacheDir}/${cacheFilename}`;
 
