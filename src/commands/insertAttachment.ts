@@ -1,43 +1,13 @@
 import { MarkdownView, type App } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
-import type { EncryptPathRule } from "#src/settings";
-import ignore from "ignore";
 import insertFileAtCursor from "./insertFileAtCursor";
-
-export interface InsertAttachmentOptions {
-	encryptKeyFingerprint?: string;
-}
-
-function findMatchingRule(
-	rules: EncryptPathRule[],
-	notePath: string,
-): EncryptPathRule | undefined {
-	return rules.find(
-		(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
-	);
-}
-
-async function resolveKeyFingerprint(
-	encryptionService: EncryptionService,
-	rules: EncryptPathRule[],
-	notePath: string,
-): Promise<string | undefined> {
-	const rule = findMatchingRule(rules, notePath);
-	if (!rule) return;
-	return (
-		rule.keyFingerprint ||
-		(await encryptionService.keyManager.getPrimaryKey())?.fingerprint
-	);
-}
 
 export default async function insertAttachment(
 	app: App,
 	cas: CAS,
 	dir: string,
 	encryptionService?: EncryptionService,
-	options?: InsertAttachmentOptions,
-	encryptPathRules?: EncryptPathRule[],
 ) {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {
@@ -52,15 +22,9 @@ export default async function insertAttachment(
 	const notePath = view.file?.path ?? "";
 
 	for (const file of files) {
-		const fingerprint =
-			options?.encryptKeyFingerprint ??
-			(encryptionService && encryptPathRules
-				? await resolveKeyFingerprint(
-						encryptionService,
-						encryptPathRules,
-						notePath,
-					)
-				: undefined);
+		const fingerprint = encryptionService?.isAvailable
+			? await encryptionService.resolveKeyForNotePath(notePath)
+			: undefined;
 
 		if (fingerprint && encryptionService?.isAvailable) {
 			const { encryptedFile } = await encryptionService.encryptFile(
