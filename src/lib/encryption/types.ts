@@ -40,7 +40,6 @@ export interface KeyStorage {
 		key: string,
 	): string | null | undefined | Promise<string | null | undefined>;
 	setSecret(key: string, value: string): void | Promise<void>;
-	deleteSecret?(key: string): void | Promise<void>;
 	listSecrets(): string[] | Promise<string[]>;
 }
 

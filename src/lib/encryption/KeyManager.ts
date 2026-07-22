@@ -5,13 +5,18 @@ import {
 	type SecretEntry,
 } from "./types";
 
-const STORAGE_KEY_PREFIX = "content-addressed-attachments-";
+/** 默认存储密钥的 secret ID */
+export const DEFAULT_KEYS_STORAGE_ID = "encryption-keys-w1kxt3qz";
 
-function toStorageKey(fingerprint: string): string {
-	return `${STORAGE_KEY_PREFIX}${fingerprint}`;
+/** 密钥存储 JSON 格式 */
+interface KeysStorageData {
+	version: 1;
+	keys: Record<string, SecretEntry>;
 }
 
 export class KeyManager {
+	private keysStorageId: string = DEFAULT_KEYS_STORAGE_ID;
+
 	constructor(
 		private storage: KeyStorage,
 		private available = true,
@@ -22,71 +27,92 @@ export class KeyManager {
 		return this.available && Boolean(this.storage);
 	}
 
+	/** 获取当前存储密钥的 secret ID */
+	getKeysStorageId(): string {
+		return this.keysStorageId;
+	}
+
+	/** 设置存储密钥的 secret ID */
+	setKeysStorageId(id: string): void {
+		this.keysStorageId = id;
+	}
+
+	/** 读取并解析密钥存储数据 */
+	private async loadKeysData(): Promise<KeysStorageData> {
+		const stored = await this.storage.getSecret(this.keysStorageId);
+		if (!stored) {
+			return { version: 1, keys: {} };
+		}
+		try {
+			const data = JSON.parse(stored) as KeysStorageData;
+			if (data.version !== 1 || !data.keys) {
+				throw new Error("Invalid keys storage format");
+			}
+			return data;
+		} catch (err) {
+			throw new Error(
+				`Failed to parse keys storage: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	}
+
+	/** 保存密钥存储数据 */
+	private async saveKeysData(data: KeysStorageData): Promise<void> {
+		await this.storage.setSecret(
+			this.keysStorageId,
+			JSON.stringify(data, null, 2),
+		);
+	}
+
 	async createKey(name: string): Promise<EncryptionKeyInfo> {
 		const key = await this.cryptoService.generateKey();
 		const raw = await this.cryptoService.exportKeyRaw(key);
 		const fingerprint = await this.cryptoService.computeFingerprint(raw);
 		const priority = 0;
 
-		await this.storage.setSecret(
-			toStorageKey(fingerprint),
-			JSON.stringify({
-				key: this.cryptoService.arrayBufferToBase64(
-					raw.buffer as ArrayBuffer,
-				),
-				name,
-				createdAt: new Date().toISOString(),
-				priority,
-			}),
-		);
+		const data = await this.loadKeysData();
+		data.keys[fingerprint] = {
+			key: this.cryptoService.arrayBufferToBase64(raw.buffer as ArrayBuffer),
+			name,
+			createdAt: new Date().toISOString(),
+			priority,
+		};
+		await this.saveKeysData(data);
 
 		return { fingerprint, name, createdAt: new Date(), priority };
 	}
 
 	async setPrimaryKey(fingerprint: string): Promise<void> {
-		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
-		if (!stored) throw new Error(`Key ${fingerprint} not found`);
-		const entry = JSON.parse(stored) as SecretEntry;
+		const data = await this.loadKeysData();
+		const entry = data.keys[fingerprint];
+		if (!entry) throw new Error(`Key ${fingerprint} not found`);
+
 		const all = await this.listKeys();
-		const maxPriority = all.reduce(
-			(max, k) => Math.max(max, k.priority),
-			0,
-		);
+		const maxPriority = all.reduce((max, k) => Math.max(max, k.priority), 0);
 		entry.priority = maxPriority + 1;
-		await this.storage.setSecret(
-			toStorageKey(fingerprint),
-			JSON.stringify(entry),
-		);
+		await this.saveKeysData(data);
 	}
 
 	async deleteKey(fingerprint: string): Promise<void> {
-		const storage = this.storage as {
-			deleteSecret?: (key: string) => void | Promise<void>;
-		};
-		if (storage.deleteSecret) {
-			await storage.deleteSecret(toStorageKey(fingerprint));
-		} else {
-			// Fallback for storage without deleteSecret
-			await this.storage.setSecret(toStorageKey(fingerprint), "");
-		}
+		const data = await this.loadKeysData();
+		delete data.keys[fingerprint];
+		await this.saveKeysData(data);
 	}
 
 	async getKey(fingerprint: string): Promise<CryptoKey | undefined> {
-		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
-		if (!stored) return;
-		const entry = JSON.parse(stored) as SecretEntry;
+		const data = await this.loadKeysData();
+		const entry = data.keys[fingerprint];
+		if (!entry) return;
 		const raw = new Uint8Array(
 			this.cryptoService.base64ToArrayBuffer(entry.key),
 		);
 		return this.cryptoService.importKeyRaw(raw);
 	}
 
-	async getKeyForEncrypt(
-		fingerprint: string,
-	): Promise<CryptoKey | undefined> {
-		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
-		if (!stored) return;
-		const entry = JSON.parse(stored) as SecretEntry;
+	async getKeyForEncrypt(fingerprint: string): Promise<CryptoKey | undefined> {
+		const data = await this.loadKeysData();
+		const entry = data.keys[fingerprint];
+		if (!entry) return;
 		const raw = new Uint8Array(
 			this.cryptoService.base64ToArrayBuffer(entry.key),
 		);
@@ -94,29 +120,20 @@ export class KeyManager {
 	}
 
 	async hasKey(fingerprint: string): Promise<boolean> {
-		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
-		return !!stored;
+		const data = await this.loadKeysData();
+		return fingerprint in data.keys;
 	}
 
 	async listKeys(): Promise<EncryptionKeyInfo[]> {
-		const all = await this.storage.listSecrets();
+		const data = await this.loadKeysData();
 		const results: EncryptionKeyInfo[] = [];
-		for (const id of all) {
-			if (!id.startsWith(STORAGE_KEY_PREFIX)) continue;
-			const stored = await this.storage.getSecret(id);
-			if (!stored) continue;
-			try {
-				const entry = JSON.parse(stored) as SecretEntry;
-				const fingerprint = id.slice(STORAGE_KEY_PREFIX.length);
-				results.push({
-					fingerprint,
-					name: entry.name ?? "",
-					createdAt: new Date(entry.createdAt),
-					priority: entry.priority ?? 0,
-				});
-			} catch {
-				// skip corrupted entries
-			}
+		for (const [fingerprint, entry] of Object.entries(data.keys)) {
+			results.push({
+				fingerprint,
+				name: entry.name ?? "",
+				createdAt: new Date(entry.createdAt),
+				priority: entry.priority ?? 0,
+			});
 		}
 		results.sort((a, b) => b.priority - a.priority);
 		return results;
@@ -128,54 +145,28 @@ export class KeyManager {
 	}
 
 	async exportKey(fingerprint: string): Promise<string | undefined> {
-		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
-		if (!stored) return;
-		try {
-			const entry = JSON.parse(stored) as SecretEntry;
-			return entry.key;
-		} catch {
-			return stored ?? undefined;
-		}
+		const data = await this.loadKeysData();
+		const entry = data.keys[fingerprint];
+		return entry?.key;
 	}
 
 	async renameKey(fingerprint: string, newName: string): Promise<void> {
-		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
-		if (!stored) throw new Error(`Key ${fingerprint} not found`);
-		const entry = JSON.parse(stored) as SecretEntry;
+		const data = await this.loadKeysData();
+		const entry = data.keys[fingerprint];
+		if (!entry) throw new Error(`Key ${fingerprint} not found`);
 		entry.name = newName;
-		await this.storage.setSecret(
-			toStorageKey(fingerprint),
-			JSON.stringify(entry),
-		);
+		await this.saveKeysData(data);
 	}
 
 	async exportAllKeys(passphrase: string): Promise<string> {
-		const all = await this.storage.listSecrets();
-		const entries: Array<{
-			fingerprint: string;
-			key: string;
-			name: string;
-			createdAt: string;
-			priority: number;
-		}> = [];
-		for (const id of all) {
-			if (!id.startsWith(STORAGE_KEY_PREFIX)) continue;
-			const stored = await this.storage.getSecret(id);
-			if (!stored) continue;
-			try {
-				const entry = JSON.parse(stored) as SecretEntry;
-				const fingerprint = id.slice(STORAGE_KEY_PREFIX.length);
-				entries.push({
-					fingerprint,
-					key: entry.key,
-					name: entry.name ?? "",
-					createdAt: entry.createdAt,
-					priority: entry.priority ?? 0,
-				});
-			} catch {
-				// skip corrupted entries
-			}
-		}
+		const data = await this.loadKeysData();
+		const entries = Object.entries(data.keys).map(([fingerprint, entry]) => ({
+			fingerprint,
+			key: entry.key,
+			name: entry.name ?? "",
+			createdAt: entry.createdAt,
+			priority: entry.priority ?? 0,
+		}));
 		const plaintext = JSON.stringify(entries, null, 2);
 		return this.cryptoService.encryptWithPassphrase(plaintext, passphrase);
 	}
@@ -195,27 +186,24 @@ export class KeyManager {
 			createdAt: string;
 			priority: number;
 		}>;
+
+		const data = await this.loadKeysData();
 		let imported = 0;
 		for (const entry of entries) {
-			const existing = await this.storage.getSecret(
-				toStorageKey(entry.fingerprint),
-			);
-			if (existing) continue;
+			if (data.keys[entry.fingerprint]) continue;
 			const raw = new Uint8Array(
 				this.cryptoService.base64ToArrayBuffer(entry.key),
 			);
 			await this.cryptoService.importKeyRawEncrypt(raw);
-			await this.storage.setSecret(
-				toStorageKey(entry.fingerprint),
-				JSON.stringify({
-					key: entry.key,
-					name: entry.name,
-					createdAt: entry.createdAt,
-					priority: entry.priority ?? 0,
-				}),
-			);
+			data.keys[entry.fingerprint] = {
+				key: entry.key,
+				name: entry.name,
+				createdAt: entry.createdAt,
+				priority: entry.priority ?? 0,
+			};
 			imported++;
 		}
+		await this.saveKeysData(data);
 		return imported;
 	}
 
@@ -228,26 +216,20 @@ export class KeyManager {
 		);
 		const fingerprint = await this.cryptoService.computeFingerprint(raw);
 
-		const existing = await this.storage.getSecret(
-			toStorageKey(fingerprint),
-		);
-		if (existing) {
-			throw new Error(
-				`Key with fingerprint ${fingerprint} already exists`,
-			);
+		const data = await this.loadKeysData();
+		if (data.keys[fingerprint]) {
+			throw new Error(`Key with fingerprint ${fingerprint} already exists`);
 		}
 
 		await this.cryptoService.importKeyRawEncrypt(raw);
 
-		await this.storage.setSecret(
-			toStorageKey(fingerprint),
-			JSON.stringify({
-				key: keyMaterialBase64,
-				name,
-				createdAt: new Date().toISOString(),
-				priority: 0,
-			}),
-		);
+		data.keys[fingerprint] = {
+			key: keyMaterialBase64,
+			name,
+			createdAt: new Date().toISOString(),
+			priority: 0,
+		};
+		await this.saveKeysData(data);
 
 		return { fingerprint, name, createdAt: new Date(), priority: 0 };
 	}

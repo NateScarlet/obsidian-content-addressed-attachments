@@ -40,6 +40,7 @@ describe("EncryptionService", () => {
 				encryptPathRules: [
 					{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
 				],
+				maxBlobSize: 20 * 1024 * 1024,
 			}));
 			expect(
 				await service.resolveKeyForNotePath("Public/note.md"),
@@ -52,6 +53,7 @@ describe("EncryptionService", () => {
 				encryptPathRules: [
 					{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
 				],
+				maxBlobSize: 20 * 1024 * 1024,
 			}));
 			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
 				key.fingerprint,
@@ -64,6 +66,7 @@ describe("EncryptionService", () => {
 				encryptPathRules: [
 					{ pattern: "Secret/**", keyFingerprint: "" },
 				],
+				maxBlobSize: 20 * 1024 * 1024,
 			}));
 			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
 				key.fingerprint,

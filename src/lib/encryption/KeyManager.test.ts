@@ -57,15 +57,14 @@ describe("KeyManager", () => {
 
 		it("persists key data to storage", async () => {
 			const info = await km.createKey("persisted");
-			const stored = await storage.getSecret(
-				`content-addressed-attachments-${info.fingerprint}`,
-			);
+			const stored = await storage.getSecret("encryption-keys-w1kxt3qz");
 			expect(stored).toBeTruthy();
 
-			const entry = JSON.parse(stored!) as SecretEntry;
-			expect(entry.name).toBe("persisted");
-			expect(entry.key).toBeTruthy();
-			expect(entry.createdAt).toBeTruthy();
+			const data = JSON.parse(stored!) as { keys: Record<string, SecretEntry> };
+			expect(data.keys[info.fingerprint]).toBeTruthy();
+			expect(data.keys[info.fingerprint].name).toBe("persisted");
+			expect(data.keys[info.fingerprint].key).toBeTruthy();
+			expect(data.keys[info.fingerprint].createdAt).toBeTruthy();
 		});
 
 		it("returns different fingerprints for consecutive keys", async () => {

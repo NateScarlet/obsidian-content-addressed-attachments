@@ -265,7 +265,7 @@ export class CryptoService {
 		return buffer;
 	}
 
-	/** 用口令加密字符串，返回 JSON（包含算法参数以便未来兼容） */
+	/** 用口令加密字符串，返回 JSON（salt/iv/data 均为 base64） */
 	async encryptWithPassphrase(
 		plaintext: string,
 		passphrase: string,
@@ -328,12 +328,19 @@ export class CryptoService {
 			data: string;
 		};
 
-		// 使用写入的参数，缺失时回退到当前默认值以兼容旧数据
+		// 向后兼容：旧格式没有算法参数，使用默认值
 		const algorithm = parsed.algorithm ?? KEY_ALGORITHM;
 		const keyLength = parsed.keyLength ?? KEY_LENGTH;
 		const kdf = parsed.kdf ?? "PBKDF2";
 		const kdfHash = parsed.kdfHash ?? "SHA-256";
 		const iterations = parsed.iterations ?? PBKDF2_ITERATIONS;
+
+		if (kdf !== "PBKDF2") {
+			throw new Error(`Unsupported KDF: ${kdf}`);
+		}
+		if (algorithm !== KEY_ALGORITHM) {
+			throw new Error(`Unsupported algorithm: ${algorithm}`);
+		}
 
 		const keyMaterial = await crypto.subtle.importKey(
 			"raw",

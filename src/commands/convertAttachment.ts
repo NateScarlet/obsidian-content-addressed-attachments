@@ -105,7 +105,7 @@ export async function encryptLink(
 		return;
 	}
 	const parsed = IPFSLink.parse(linkText);
-	if (!parsed || parsed.isEncrypted) return;
+	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
 	const content = await loadFileContent(app, cas, parsed.cid.toString());
 	if (!content) {
@@ -151,7 +151,7 @@ export async function decryptLink(
 	linkText: string,
 ): Promise<void> {
 	const parsed = IPFSLink.parse(linkText);
-	if (!parsed || !parsed.isEncrypted) return;
+	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
 	const content = await loadFileContent(app, cas, parsed.cid.toString());
 	if (!content) {
@@ -195,7 +195,7 @@ export function findLinkAtPos(
 
 export function isEncryptedLink(linkText: string): boolean {
 	const parsed = IPFSLink.parse(linkText);
-	return Boolean(parsed?.isEncrypted);
+	return parsed?.format === ENCRYPTED_FORMAT;
 }
 
 export async function encryptNote(
@@ -209,7 +209,7 @@ export async function encryptNote(
 	const transformer = new VaultLinkTransformer(app);
 	return transformer.transformFile(file, async (_match, linkText) => {
 		const parsed = IPFSLink.parse(linkText);
-		if (!parsed || parsed.isEncrypted) return undefined;
+		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
 		const result = await loadFileContent(app, cas, parsed.cid.toString());
 		if (!result) return undefined;

@@ -14,7 +14,6 @@ describe("IPFSLink", () => {
 		expect(link?.cid.toString()).toBe(validCIDString);
 		expect(link?.filename).toBe("test.png");
 		expect(link?.format).toBe("image/png");
-		expect(link?.isEncrypted).toBe(false);
 	});
 
 	it("returns undefined for invalid URLs or wrong hostname length", () => {
@@ -22,10 +21,10 @@ describe("IPFSLink", () => {
 		expect(IPFSLink.parse("ipfs://shortcid")).toBeUndefined();
 	});
 
-	it("identifies encrypted format correctly", () => {
+	it("identifies encrypted format via format field", () => {
 		const encURL = `ipfs://${validCIDString}?filename=secret.txt&format=${encodeURIComponent(ENCRYPTED_FORMAT)}`;
 		const link = IPFSLink.parse(encURL);
-		expect(link?.isEncrypted).toBe(true);
+		expect(link?.format).toBe(ENCRYPTED_FORMAT);
 	});
 
 	it("formats markdown embed image when format is image/*", () => {

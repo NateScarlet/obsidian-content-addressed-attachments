@@ -14,13 +14,17 @@ export class EncryptionService {
 		private readonly keyManager: KeyManager,
 		private readonly getSettings: () => Pick<
 			Settings,
-			"encryptPathRules"
+			"encryptPathRules" | "maxBlobSize"
 		> = () => ({
 			encryptPathRules: [],
+			maxBlobSize: 20 * 1024 * 1024,
 		}),
 		private readonly cryptoService: CryptoService = new CryptoService(),
-		public readonly maxBlobSize: number = 20 * 1024 * 1024,
 	) {}
+
+	get maxBlobSize(): number {
+		return this.getSettings().maxBlobSize;
+	}
 
 	get isAvailable(): boolean {
 		return this.keyManager.isAvailable;
