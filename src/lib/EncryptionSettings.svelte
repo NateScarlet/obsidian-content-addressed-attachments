@@ -11,6 +11,7 @@
 	const { t } = defineLocales({
 		en: {
 			fingerprint: "Fingerprint",
+			createdAt: "Created at",
 			rename: "Rename",
 			delete: "Delete",
 			setAsPrimary: "Set as primary",
@@ -35,6 +36,7 @@
 		},
 		zh: {
 			fingerprint: "指纹",
+			createdAt: "创建时间",
 			rename: "重命名",
 			delete: "删除",
 			setAsPrimary: "设为主密钥",
@@ -196,7 +198,10 @@
 					<span class="text-xs bg-accent text-accent-inverse px-1 py-0.5 rounded shrink-0">{t("primary")}</span>
 				{/if}
 			</div>
-			<span class="text-xs text-base-400 truncate">{t("fingerprint")}: {key.fingerprint}</span>
+			<div class="flex flex-wrap gap-x-3 text-xs text-base-400">
+				<span class="truncate">{t("fingerprint")}: {key.fingerprint}</span>
+				<span class="truncate">{t("createdAt")}: {key.createdAt instanceof Date ? key.createdAt.toLocaleString() : new Date(key.createdAt).toLocaleString()}</span>
+			</div>
 		</div>
 		<div class="flex gap-1 shrink-0">
 			{#if key !== keys[0]}
