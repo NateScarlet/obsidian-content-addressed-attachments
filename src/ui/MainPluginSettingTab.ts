@@ -7,6 +7,7 @@ import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
+import type { KeyManager } from "#src/lib/encryption/KeyManager";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
 
@@ -235,18 +236,32 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.addButton((btn) =>
 							btn
 								.setIcon("clipboard-list")
-								.setTooltip(t("export"))
+								.setTooltip(t("exportKey"))
 								.onClick(async () => {
 									const exported =
 										await this.plugin.encryptionService.keyManager.exportKey(
 											key.fingerprint,
 										);
 									if (exported) {
-										await navigator.clipboard.writeText(
+										new BackupKeyModal(
+											this.app,
+											key.name,
 											exported,
-										);
-										new Notice(t("keyExportSuccess"));
+										).open();
 									}
+								}),
+						)
+						.addButton((btn) =>
+							btn
+								.setIcon("pencil")
+								.setTooltip(t("rename"))
+								.onClick(() => {
+									new RenameKeyModal(
+										this.app,
+										key.fingerprint,
+										key.name,
+										this.plugin.encryptionService.keyManager,
+									).open();
 								}),
 						)
 						.addButton((btn) =>
@@ -297,6 +312,18 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								} catch (err) {
 									showError(err);
 								}
+							}),
+					);
+
+				new Setting(containerEl)
+					.addButton((btn) =>
+						btn
+							.setButtonText(t("importKey"))
+							.onClick(() => {
+								new ImportKeyModal(
+									this.app,
+									this.plugin.encryptionService.keyManager,
+								).open();
 							}),
 					);
 			}).catch(showError);
@@ -364,8 +391,23 @@ const { t } = defineLocales({
 			`Deleting key "${name}" (${fp}) will permanently lose access to files encrypted with it. Continue?`,
 		cancel: "Cancel",
 		delete: "Delete",
-		export: "Export",
+		exportKey: "Backup key",
+		rename: "Rename",
+		importKey: "Import key",
 		fingerprint: "Fingerprint",
+		keyBackupTitle: "Backup key",
+		keyBackupDesc:
+			"Copy the key below and store it securely. You can import it on another device to access encrypted files.",
+		keyBackupLabel: "Key material (base64)",
+		keyRenameTitle: "Rename key",
+		keyRenamePlaceholder: "New name",
+		keyRenameSuccess: (name: string) => `Key renamed to "${name}"`,
+		keyImportTitle: "Import key",
+		keyImportDesc:
+			"Paste a key from another device to access encrypted files synced to this vault.",
+		keyImportPlaceholder: "Paste key material here",
+		keyImportSuccess: (name: string) => `Key "${name}" imported`,
+		keyImportErrorInvalid: "Invalid key material",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -407,11 +449,172 @@ const { t } = defineLocales({
 			`密钥 "${name}" (${fp}) 删除后将无法解密以此密钥加密的文件。确定要删除吗？`,
 		cancel: "取消",
 		delete: "删除",
-		export: "导出",
+		exportKey: "备份密钥",
+		rename: "重命名",
+		importKey: "导入密钥",
 		fingerprint: "指纹",
+		keyBackupTitle: "备份密钥",
+		keyBackupDesc:
+			"复制下面的密钥数据并安全保存。在新设备上导入它可以解密已加密的文件。",
+		keyBackupLabel: "密钥材料（base64）",
+		keyRenameTitle: "重命名密钥",
+		keyRenamePlaceholder: "新名称",
+		keyRenameSuccess: (name: string) => `密钥已重命名为 "${name}"`,
+		keyImportTitle: "导入密钥",
+		keyImportDesc:
+			"从另一台设备粘贴密钥，以访问该库中已加密的文件。",
+		keyImportPlaceholder: "在此粘贴密钥数据",
+		keyImportSuccess: (name: string) => `密钥 "${name}" 已导入`,
+		keyImportErrorInvalid: "密钥数据无效",
 	},
 });
 //#endregion
+
+class BackupKeyModal extends Modal {
+	constructor(
+		app: App,
+		private keyName: string,
+		private keyMaterial: string,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: t("keyBackupTitle") });
+		contentEl.createEl("p", { text: t("keyBackupDesc") });
+
+		new Setting(contentEl)
+			.setName(t("keyBackupLabel"))
+			.setDesc(this.keyName)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("cancel"))
+					.onClick(() => this.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("exportKey"))
+					.onClick(async () => {
+						await navigator.clipboard.writeText(this.keyMaterial);
+						new Notice(t("keyExportSuccess"));
+					}),
+			);
+
+		contentEl.createEl("textarea", {
+			text: this.keyMaterial,
+			attr: {
+				readonly: "true",
+				style: "width: 100%; min-height: 60px; font-family: monospace;",
+			},
+		});
+	}
+}
+
+class RenameKeyModal extends Modal {
+	constructor(
+		app: App,
+		private fingerprint: string,
+		private currentName: string,
+		private keyManager: KeyManager,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: t("keyRenameTitle") });
+
+		let input: HTMLInputElement;
+		new Setting(contentEl)
+			.setName(t("rename"))
+			.addText((text) => {
+				text.setPlaceholder(t("keyRenamePlaceholder"));
+				text.setValue(this.currentName);
+				input = text.inputEl;
+			});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("cancel"))
+					.onClick(() => this.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("rename"))
+					.setCta()
+					.onClick(async () => {
+						const newName = input.value?.trim() || this.currentName;
+						await this.keyManager.renameKey(this.fingerprint, newName);
+						new Notice(t("keyRenameSuccess")(newName));
+						this.close();
+					}),
+			);
+	}
+}
+
+class ImportKeyModal extends Modal {
+	constructor(
+		app: App,
+		private keyManager: KeyManager,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: t("keyImportTitle") });
+		contentEl.createEl("p", { text: t("keyImportDesc") });
+
+		let nameInput: HTMLInputElement;
+		let keyInput: HTMLTextAreaElement;
+
+		new Setting(contentEl)
+			.setName(t("keyNamePlaceholder"))
+			.addText((text) => {
+				text.setPlaceholder(t("keyNamePlaceholder"));
+				nameInput = text.inputEl;
+			});
+
+		keyInput = contentEl.createEl("textarea", {
+			attr: {
+				placeholder: t("keyImportPlaceholder"),
+				style: "width: 100%; min-height: 80px; font-family: monospace;",
+			},
+		});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("cancel"))
+					.onClick(() => this.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("importKey"))
+					.setCta()
+					.onClick(async () => {
+						const keyMaterial = keyInput.value?.trim();
+						if (!keyMaterial) {
+							new Notice(t("keyImportErrorInvalid"));
+							return;
+						}
+						const name = nameInput.value?.trim() || t("unnamedKey");
+						try {
+							const info = await this.keyManager.importKey(
+								name,
+								keyMaterial,
+							);
+							new Notice(t("keyImportSuccess")(info.name));
+							this.close();
+						} catch (err) {
+							showError(err);
+						}
+					}),
+			);
+	}
+}
 
 class ConfirmDeleteKeyModal extends Modal {
 	constructor(

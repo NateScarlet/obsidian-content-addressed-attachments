@@ -121,6 +121,14 @@ export class KeyManager {
 		}
 	}
 
+	async renameKey(fingerprint: string, newName: string): Promise<void> {
+		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
+		if (!stored) throw new Error(`Key ${fingerprint} not found`);
+		const entry = JSON.parse(stored);
+		entry.name = newName;
+		await this.storage.setSecret(toStorageKey(fingerprint), JSON.stringify(entry));
+	}
+
 	async importKey(
 		name: string,
 		keyMaterialBase64: string,

@@ -124,6 +124,21 @@ describe("KeyManager", () => {
 		});
 	});
 
+	describe("renameKey", () => {
+		it("renames an existing key", async () => {
+			const info = await km.createKey("old-name");
+			await km.renameKey(info.fingerprint, "new-name");
+
+			const keys = await km.listKeys();
+			const renamed = keys.find((k) => k.fingerprint === info.fingerprint);
+			expect(renamed?.name).toBe("new-name");
+		});
+
+		it("throws for nonexistent key", async () => {
+			await expect(km.renameKey("ghost", "name")).rejects.toThrow("not found");
+		});
+	});
+
 	describe("exportKey / importKey", () => {
 		it("exports key material for an existing key", async () => {
 			const info = await km.createKey("exportable");
