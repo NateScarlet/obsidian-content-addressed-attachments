@@ -13,6 +13,7 @@
 			createdAt: "Created at",
 			rename: "Rename",
 			delete: "Delete",
+			restore: "Restore",
 			setAsPrimary: "Set as primary",
 			primary: "Primary",
 			createNewKey: "Create new key",
@@ -25,7 +26,7 @@
 			encryptPathRules: "Auto-encrypt path rules",
 			encryptPathRulesDesc:
 				"Gitignore-style rules. One pattern per line. Lines starting with # are comments. Attachments in matching notes are automatically encrypted with the selected key.",
-			encryptPathRulePatternPlaceholder: "# Example:\nSecret/**\nProjects/*\n*.docx",
+			encryptPathRulePatternPlaceholder: "# Example:\nSecret/**\nProjects/*",
 			addEncryptPathRule: "Add rule",
 			encryptPathRuleNoKeys: "Create a key first",
 			encryptMatchingNotes: "Encrypt existing links",
@@ -33,12 +34,20 @@
 			noKeys: "No encryption keys yet.",
 			keyCreateSuccess: (name: string) => `Key "${name}" created`,
 			primarySetSuccess: (name: string) => `"${name}" set as primary key`,
+			deletedKeys: "Deleted keys",
+			deletedKeysCount: (n: number) => `${n} deleted key(s)`,
+			noDeletedKeys: "No deleted keys",
+			permanentlyDelete: "Permanently delete",
+			permanentlyDeleteDesc: "Permanently delete keys deleted more than X days ago",
+			days: "days",
+			permanentlyDeleteConfirm: "Permanently delete keys older than the specified days? This cannot be undone.",
 		},
 		zh: {
 			fingerprint: "指纹",
 			createdAt: "创建时间",
 			rename: "重命名",
 			delete: "删除",
+			restore: "恢复",
 			setAsPrimary: "设为主密钥",
 			primary: "主密钥",
 			createNewKey: "创建新密钥",
@@ -51,7 +60,7 @@
 			encryptPathRules: "自动加密路径规则",
 			encryptPathRulesDesc:
 				"Gitignore 格式规则，每行一条。以 # 开头的行为注释。匹配的笔记中插入附件时自动用所选密钥加密。",
-			encryptPathRulePatternPlaceholder: "# 示例:\nSecret/**\nProjects/*\n*.docx",
+			encryptPathRulePatternPlaceholder: "# 示例:\nSecret/**\nProjects/*",
 			addEncryptPathRule: "添加规则",
 			encryptPathRuleNoKeys: "请先创建密钥",
 			encryptMatchingNotes: "加密已有链接",
@@ -59,6 +68,13 @@
 			noKeys: "暂无加密密钥。",
 			keyCreateSuccess: (name: string) => `密钥 "${name}" 已创建`,
 			primarySetSuccess: (name: string) => `"${name}" 已设为主密钥`,
+			deletedKeys: "已删除的密钥",
+			deletedKeysCount: (n: number) => `${n} 个已删除的密钥`,
+			noDeletedKeys: "没有已删除的密钥",
+			permanentlyDelete: "永久删除",
+			permanentlyDeleteDesc: "永久删除超过 X 天前删除的密钥",
+			days: "天",
+			permanentlyDeleteConfirm: "确定要永久删除超过指定天数的密钥吗？此操作不可撤销。",
 		},
 	});
 
@@ -68,7 +84,6 @@
 		saveSettings,
 		display,
 		app,
-		ConfirmDeleteKeyModal,
 		ExportKeysModal,
 		ImportKeysModal,
 		onEncryptMatchingNotes,
@@ -78,19 +93,16 @@
 		saveSettings: () => Promise<void>;
 		display: () => void;
 		app: App;
-		ConfirmDeleteKeyModal: new (
-			app: App,
-			name: string,
-			fingerprint: string,
-			onDelete: () => Promise<void>,
-		) => { open(): void };
 		ExportKeysModal: new (app: App, encryptionService: EncryptionService) => { open(): void };
 		ImportKeysModal: new (app: App, encryptionService: EncryptionService) => { open(): void };
 		onEncryptMatchingNotes: (keyFingerprint: string, pattern: string) => Promise<void>;
 	} = $props();
 
 	let keys = $state<EncryptionKeyInfo[]>([]);
+	let deletedKeys = $state<EncryptionKeyInfo[]>([]);
 	let newKeyName = $state("");
+	let showDeletedKeys = $state(false);
+	let permanentDeleteDays = $state(7);
 
 	function formatYearMonth(date: Date | string): string {
 		const d = date instanceof Date ? date : new Date(date);
@@ -112,6 +124,7 @@
 	async function loadKeys() {
 		try {
 			keys = await encryptionService.listKeys();
+			deletedKeys = await encryptionService.listDeletedKeys();
 		} catch (err) {
 			showError(err);
 		}
@@ -153,12 +166,38 @@
 		}
 	}
 
-	function deleteKey(key: EncryptionKeyInfo) {
-		new ConfirmDeleteKeyModal(app, keyDisplayName(key), key.fingerprint, async () => {
+	async function deleteKey(key: EncryptionKeyInfo) {
+		try {
 			await encryptionService.deleteKey(key.fingerprint);
 			await loadKeys();
 			display();
-		}).open();
+		} catch (err) {
+			showError(err);
+		}
+	}
+
+	async function restoreKey(key: EncryptionKeyInfo) {
+		try {
+			await encryptionService.restoreKey(key.fingerprint);
+			await loadKeys();
+			display();
+		} catch (err) {
+			showError(err);
+		}
+	}
+
+	async function permanentlyDeleteKeys() {
+		if (!confirm(t("permanentlyDeleteConfirm"))) return;
+		try {
+			const count = await encryptionService.permanentlyDeleteKeys(
+				permanentDeleteDays,
+			);
+			new Notice(`Permanently deleted ${count} key(s)`);
+			await loadKeys();
+			display();
+		} catch (err) {
+			showError(err);
+		}
 	}
 
 	function openExportModal() {
@@ -275,6 +314,66 @@
 		{t("importKeys")}
 	</button>
 </div>
+
+<!-- 已删除密钥折叠区域 -->
+{#if deletedKeys.length > 0}
+	<hr class="my-4 border-base-300" />
+	<button
+		type="button"
+		class="flex items-center gap-1 text-sm text-base-400 hover:text-base-600 w-full text-left"
+		onclick={() => (showDeletedKeys = !showDeletedKeys)}
+	>
+		<span class="text-xs">{showDeletedKeys ? "▼" : "▶"}</span>
+		<span>{t("deletedKeys")} ({t("deletedKeysCount")(deletedKeys.length)})</span>
+	</button>
+
+	{#if showDeletedKeys}
+		<div class="mt-2">
+			{#each deletedKeys as key (key.fingerprint)}
+				<div class="flex items-center justify-between gap-2 py-2 border-b border-base-200 opacity-60">
+					<div class="flex flex-col min-w-0 flex-1">
+						<div class="text-sm font-medium">
+							{keyDisplayName(key)}
+						</div>
+						<div class="flex flex-wrap gap-x-3 text-xs text-base-400">
+							<span class="truncate">{t("fingerprint")}: {key.fingerprint}</span>
+							{#if key.deletedAt}
+								<span class="truncate">Deleted: {key.deletedAt.toLocaleString()}</span>
+							{/if}
+						</div>
+					</div>
+					<div class="flex gap-1 shrink-0">
+						<button
+							type="button"
+							class="px-2 py-1 text-sm hover:bg-accent/10 rounded"
+							onclick={() => restoreKey(key)}
+						>
+							{t("restore")}
+						</button>
+					</div>
+				</div>
+			{/each}
+
+			<div class="flex items-center gap-2 mt-3">
+				<span class="text-xs text-base-400">{t("permanentlyDeleteDesc")}</span>
+				<input
+					type="number"
+					class="w-16 text-xs"
+					min="0"
+					bind:value={permanentDeleteDays}
+				/>
+				<span class="text-xs text-base-400">{t("days")}</span>
+				<button
+					type="button"
+					class="px-2 py-1 text-xs border border-error/40 text-error rounded hover:bg-error/10"
+					onclick={permanentlyDeleteKeys}
+				>
+					{t("permanentlyDelete")}
+				</button>
+			</div>
+		</div>
+	{/if}
+{/if}
 
 <hr class="my-4 border-base-300" />
 

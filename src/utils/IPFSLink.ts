@@ -52,9 +52,8 @@ export class IPFSLink {
 	}
 
 	/** 转换为 Markdown 格式链接 */
-	toMarkdown(options?: { embed?: boolean }): string {
+	toMarkdown(embed: boolean): string {
 		const urlStr = this.toURL();
-		const embed = options?.embed ?? this.format.startsWith("image/");
 		const name = this.filename || (embed ? "image" : "attachment");
 		return embed ? `![${name}](${urlStr})` : `[${name}](${urlStr})`;
 	}

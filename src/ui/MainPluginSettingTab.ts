@@ -2,7 +2,6 @@ import { PluginSettingTab, Setting, Notice } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
-import { ConfirmDeleteKeyModal } from "./modals/ConfirmDeleteKeyModal";
 import { ExportKeysModal } from "./modals/ExportKeysModal";
 import { ImportKeysModal } from "./modals/ImportKeysModal";
 import clsx from "clsx";
@@ -211,15 +210,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				mount(EncryptionSettingsComponent, {
 					target,
 					props: {
-						encryptionService: this.plugin.encryptionService,
-						settings: this.plugin.settings,
-						saveSettings: () => this.plugin.saveSettings(),
-						// eslint-disable-next-line @typescript-eslint/no-deprecated
-						display: () => this.display(),
-						app: this.app,
-						ConfirmDeleteKeyModal,
-						ExportKeysModal,
-						ImportKeysModal,
+							encryptionService: this.plugin.encryptionService,
+							settings: this.plugin.settings,
+							saveSettings: () => this.plugin.saveSettings(),
+							// eslint-disable-next-line @typescript-eslint/no-deprecated
+							display: () => this.display(),
+							app: this.app,
+							ExportKeysModal,
+							ImportKeysModal,
 						onEncryptMatchingNotes: async (
 							keyFingerprint: string,
 							pattern: string,
@@ -232,13 +230,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							for (const file of files) {
 								if (ignore().add(pattern).ignores(file.path)) {
 									const count = await encryptNote(
-										this.app,
-										this.plugin.cas,
-										this.plugin.encryptionService,
-										file,
-										keyFingerprint,
-										this.plugin.settings.primaryDir,
-									);
+											this.app,
+											this.plugin.cas,
+											this.plugin.encryptionService,
+											this.plugin.urlResolver,
+											file,
+											keyFingerprint,
+											this.plugin.settings.primaryDir,
+										);
 									total += count;
 								}
 							}
@@ -312,54 +311,11 @@ const { t } = defineLocales({
 		lockAllNotes: "Lock web files (all notes)",
 		lockAllNotesDesc:
 			"Download and lock all external web file links in all notes",
-		restoreReferencedFiles: "Restore referenced files",
-		restoreReferencedFilesDesc:
-			"Restore files that are still referenced but were deleted to the recycle bin",
 		execute: "Execute",
-		noReferencedFilesToRestore:
-			"No referenced files to restore from the recycle bin.",
 		encryption: "Encryption",
 		encryptionUnavailable: "Encryption unavailable",
 		encryptionUnavailableDesc:
 			"Encryption requires Obsidian v1.11.4+. Please upgrade Obsidian to use this feature.",
-		createNewKey: "Create new key",
-		create: "Create",
-		keyExportSuccess: "Key copied to clipboard",
-		keyCreateSuccess: (name: string) => `Key "${name}" created`,
-		keyNamePlaceholder: "Key name",
-		unnamedKey: "Unnamed key",
-		confirmDeleteKeyTitle: "Confirm delete key",
-		confirmDeleteKeyDesc: (name: string, fp: string) =>
-			`Deleting key "${name}" (${fp}) will permanently lose access to files encrypted with it. Continue?`,
-		cancel: "Cancel",
-		delete: "Delete",
-		exportKey: "Backup key",
-		rename: "Rename",
-		importKeys: "Import keys from backup",
-		exportAllKeys: "Export all keys",
-		exportAllKeysSuccess: "All keys copied to clipboard",
-		keyExportTitle: "Export keys",
-		keyExportDesc:
-			"Enter a passphrase to encrypt the exported keys. You will need this passphrase to import them on another device.",
-		keyPassphraseLabel: "Passphrase",
-		keyPassphrasePlaceholder: "Enter passphrase",
-		fingerprint: "Fingerprint",
-		keyEditTitle: "Edit key",
-		keyNameLabel: "Name",
-		keyRenamePlaceholder: "New name",
-		keyRenameSuccess: (name: string) => `Key renamed to "${name}"`,
-		keyImportTitle: "Import key",
-		keyImportDesc:
-			"Paste a key from another device to access encrypted files synced to this vault.",
-		keyImportReadingClipboard: "Reading clipboard…",
-		keyImportClipboardOk: "Encrypted key data found in clipboard.",
-		keyImportClipboardInvalid:
-			"Clipboard does not contain valid key backup data.",
-		keyImportClipboardUnavailable:
-			"Cannot read clipboard. Copy the backup data first.",
-		keyImportSuccess: (count: number) =>
-			count > 0 ? `Imported ${count} key(s)` : "No new keys to import",
-		keyImportErrorInvalid: "Wrong passphrase or invalid backup data",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -382,49 +338,11 @@ const { t } = defineLocales({
 		migrateAllNotesDesc: "将所有笔记中的本地文件链接迁移为 IPFS 链接",
 		lockAllNotes: "锁定网络文件（所有笔记）",
 		lockAllNotesDesc: "下载并锁定所有笔记中的外部网络文件链接",
-		restoreReferencedFiles: "恢复被引用的文件",
-		restoreReferencedFilesDesc: "恢复仍在被引用但已被删除到回收站的文件",
 		execute: "执行",
-		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
 		encryption: "加密",
 		encryptionUnavailable: "加密不可用",
 		encryptionUnavailableDesc:
 			"加密功能需要 Obsidian v1.11.4+。请升级 Obsidian 以使用此功能。",
-		createNewKey: "创建新密钥",
-		create: "创建",
-		keyExportSuccess: "密钥已复制到剪贴板",
-		keyCreateSuccess: (name: string) => `密钥 "${name}" 已创建`,
-		keyNamePlaceholder: "密钥名称",
-		unnamedKey: "未命名密钥",
-		confirmDeleteKeyTitle: "确认删除密钥",
-		confirmDeleteKeyDesc: (name: string, fp: string) =>
-			`密钥 "${name}" (${fp}) 删除后将无法解密以此密钥加密的文件。确定要删除吗？`,
-		cancel: "取消",
-		delete: "删除",
-		exportKey: "备份密钥",
-		rename: "重命名",
-		importKeys: "从备份导入密钥",
-		exportAllKeys: "导出全部密钥",
-		exportAllKeysSuccess: "全部密钥已复制到剪贴板",
-		keyExportTitle: "导出密钥",
-		keyExportDesc:
-			"输入口令加密导出的密钥数据。导入到另一台设备时需要同一口令。",
-		keyPassphraseLabel: "口令",
-		keyPassphrasePlaceholder: "输入口令",
-		fingerprint: "指纹",
-		keyEditTitle: "编辑密钥",
-		keyNameLabel: "名称",
-		keyRenamePlaceholder: "新名称",
-		keyRenameSuccess: (name: string) => `密钥已重命名为 "${name}"`,
-		keyImportTitle: "导入密钥",
-		keyImportDesc: "从另一台设备粘贴密钥，以访问该库中已加密的文件。",
-		keyImportReadingClipboard: "正在读取剪贴板…",
-		keyImportClipboardOk: "剪贴板中已检测到加密的密钥备份数据。",
-		keyImportClipboardInvalid: "剪贴板中未找到有效的密钥备份数据。",
-		keyImportClipboardUnavailable: "无法读取剪贴板。请先复制备份数据。",
-		keyImportSuccess: (count: number) =>
-			count > 0 ? `已导入 ${count} 个密钥` : "没有需要导入的新密钥",
-		keyImportErrorInvalid: "口令错误或备份数据无效",
 	},
 });
 //#endregion

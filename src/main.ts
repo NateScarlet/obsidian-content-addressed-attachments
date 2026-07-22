@@ -24,7 +24,8 @@ import showError from "./utils/showError";
 import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 import insertAttachment from "./commands/insertAttachment";
-import insertFileAtCursor from "./commands/insertFileAtCursor";
+import insertIPFSLinkAtCursor from "./commands/insertIPFSLinkAtCursor";
+import { IPFSLink } from "./utils/IPFSLink";
 import {
 	encryptLink,
 	decryptLink,
@@ -102,10 +103,15 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			},
 		};
 		this.encryptionService = new EncryptionService(
-			new KeyManager(storage, hasSecretStorage),
-			() => this.settings,
-			undefined,
-		);
+				new KeyManager(
+					storage,
+					() => this.settings,
+					() => this.saveSettings(),
+					hasSecretStorage,
+				),
+				() => this.settings,
+				undefined,
+			);
 		this.urlResolver = new URLResolver(
 			this.app,
 			this.cas,
@@ -138,27 +144,37 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							this.settings.primaryDir,
 							file,
 						);
-						insertFileAtCursor(file, cid, editor);
+						const link = new IPFSLink({
+							cid,
+							filename: file.name,
+							format: file.type,
+						});
+						insertIPFSLinkAtCursor(editor, link, { embed: file.type.startsWith("image/") });
+						}
 					}
-				}
-			}),
-		);
+				}),
+			);
 
-		this.registerEvent(
-			this.app.workspace.on("editor-drop", async (e, editor) => {
-				const files = e.dataTransfer?.files;
-				if (e.defaultPrevented || !files?.length) {
-					return;
-				}
-				for (let i = 0; i < files.length; i++) {
-					const file = files.item(i);
-					e.preventDefault();
-					if (file) {
-						const { cid } = await this.cas.save(
-							this.settings.primaryDir,
-							file,
-						);
-						insertFileAtCursor(file, cid, editor);
+			this.registerEvent(
+				this.app.workspace.on("editor-drop", async (e, editor) => {
+					const files = e.dataTransfer?.files;
+					if (e.defaultPrevented || !files?.length) {
+						return;
+					}
+					for (let i = 0; i < files.length; i++) {
+						const file = files.item(i);
+						e.preventDefault();
+						if (file) {
+							const { cid } = await this.cas.save(
+								this.settings.primaryDir,
+								file,
+							);
+							const link = new IPFSLink({
+								cid,
+								filename: file.name,
+								format: file.type,
+							});
+							insertIPFSLinkAtCursor(editor, link, { embed: file.type.startsWith("image/") });
 					}
 				}
 			}),
@@ -232,15 +248,16 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 									.setIcon("lock-open")
 									.onClick(() => {
 										decryptLink(
-											this.app,
-											this.cas,
-											this.encryptionService,
-											this.settings.primaryDir,
-											editor,
-											link.start,
-											link.end,
-											link.link,
-										).catch(showError);
+												this.app,
+												this.cas,
+												this.encryptionService,
+												this.urlResolver,
+												this.settings.primaryDir,
+												editor,
+												link.start,
+												link.end,
+												link.link,
+											).catch(showError);
 									});
 							});
 						} else {
@@ -249,16 +266,17 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 									.setIcon("lock")
 									.onClick(() => {
 										encryptLink(
-											this.app,
-											this.cas,
-											this.encryptionService,
-											this.settings.primaryDir,
-											editor,
-											link.start,
-											link.end,
-											link.link,
-											view.file?.path,
-										).catch(showError);
+												this.app,
+												this.cas,
+												this.encryptionService,
+												this.urlResolver,
+												this.settings.primaryDir,
+												editor,
+												link.start,
+												link.end,
+												link.link,
+												view.file?.path,
+											).catch(showError);
 									});
 							});
 						}

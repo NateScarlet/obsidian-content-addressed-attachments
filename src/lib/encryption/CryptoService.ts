@@ -1,16 +1,18 @@
-import {
-	HEADER_MAGIC,
-	HEADER_VERSION,
-	IV_LENGTH,
-	AUTH_TAG_LENGTH,
-	KEY_FINGERPRINT_BYTES,
-	KEY_ALGORITHM,
-	KEY_LENGTH,
-	type EncryptedFileHeader,
-} from "./types";
+import type { EncryptedFileHeader } from "./types";
+
+/** 加密文件头幻数 "CENC" */
+const HEADER_MAGIC = new Uint8Array([0x43, 0x45, 0x4e, 0x43]);
+const HEADER_VERSION = 1;
+
+/** AES-256-GCM 参数 */
+const IV_LENGTH = 12;
+const AUTH_TAG_LENGTH = 16; // 128 bits
+const KEY_FINGERPRINT_BYTES = 8; // 64 bits
+const KEY_ALGORITHM = "AES-GCM";
+const KEY_LENGTH = 256;
 
 /** PBKDF2 迭代次数 */
-const PBKDF2_ITERATIONS = 600000;
+const PBKDF2_ITERATIONS = 1_500_000;
 /** 口令加密盐值长度 */
 const SALT_LENGTH = 32;
 

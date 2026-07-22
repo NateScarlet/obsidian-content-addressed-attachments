@@ -1,6 +1,5 @@
 import {
 	Notice,
-	requestUrl,
 	type App,
 	type TFile,
 	type Editor,
@@ -8,6 +7,7 @@ import {
 import { CID } from "multiformats/cid";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { URLResolver } from "#src/URLResolver";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import findIPFSLinks from "#src/utils/findIPFSLinks";
 import { IPFSLink } from "#src/utils/IPFSLink";
@@ -55,6 +55,7 @@ async function loadFileContent(
 	app: App,
 	cas: CAS,
 	cidStr: string,
+	urlResolver: URLResolver,
 	fallbackFilename?: string,
 ): Promise<
 	{ buffer: ArrayBuffer; filename: string; format: string } | undefined
@@ -67,14 +68,22 @@ async function loadFileContent(
 		const filename = fallbackFilename ?? "";
 		return { buffer, filename, format: "" };
 	}
-	// 移除硬编码网关，所有网络请求应该通过 URLResolver 使用配置的网关
-	return undefined;
+
+	// 本地未找到时，通过 URLResolver 尝试从网关下载
+	const rawURL = `ipfs://${cidStr}`;
+	const resolved = await urlResolver.resolveURL(rawURL);
+	if (resolved?.path) {
+		const buffer = await app.vault.adapter.readBinary(resolved.path);
+		const filename = fallbackFilename ?? "";
+		return { buffer, filename, format: "" };
+	}
 }
 
 export async function encryptLink(
 	app: App,
 	cas: CAS,
 	encryptionService: EncryptionService,
+	urlResolver: URLResolver,
 	dir: string,
 	editor: Editor,
 	linkStart: number,
@@ -94,7 +103,7 @@ export async function encryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(app, cas, parsed.cid.toString(), parsed.filename);
+	const content = await loadFileContent(app, cas, parsed.cid.toString(), urlResolver, parsed.filename);
 	if (!content) {
 		new Notice("File not found");
 		return;
@@ -117,7 +126,7 @@ export async function encryptLink(
 		cid: newCid,
 		filename: encryptedFile.name,
 		format: ENCRYPTED_FORMAT,
-	}).toMarkdown({ embed: isEmbed });
+	}).toMarkdown(isEmbed);
 
 	editor.replaceRange(
 		newLink,
@@ -131,6 +140,7 @@ export async function decryptLink(
 	app: App,
 	cas: CAS,
 	encryptionService: EncryptionService,
+	urlResolver: URLResolver,
 	dir: string,
 	editor: Editor,
 	linkStart: number,
@@ -140,7 +150,7 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(app, cas, parsed.cid.toString(), parsed.filename);
+	const content = await loadFileContent(app, cas, parsed.cid.toString(), urlResolver, parsed.filename);
 	if (!content) {
 		new Notice("File not found");
 		return;
@@ -163,7 +173,7 @@ export async function decryptLink(
 		cid: newCid,
 		filename: file.name,
 		format: file.type,
-	}).toMarkdown({ embed: isEmbed });
+	}).toMarkdown(isEmbed);
 
 	editor.replaceRange(
 		newLink,
@@ -189,6 +199,7 @@ export async function encryptNote(
 	app: App,
 	cas: CAS,
 	encryptionService: EncryptionService,
+	urlResolver: URLResolver,
 	file: TFile,
 	keyFingerprint: string,
 	dir: string,
@@ -198,7 +209,7 @@ export async function encryptNote(
 		const parsed = IPFSLink.parse(linkText);
 		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
-		const result = await loadFileContent(app, cas, parsed.cid.toString(), parsed.filename);
+		const result = await loadFileContent(app, cas, parsed.cid.toString(), urlResolver, parsed.filename);
 		if (!result) return undefined;
 
 		const origFile = new File(
@@ -223,6 +234,6 @@ export async function encryptNote(
 			filename: encryptedFile.name,
 			format: ENCRYPTED_FORMAT,
 		});
-		return encryptedLink.toMarkdown({ embed: isEmbed });
+		return encryptedLink.toMarkdown(isEmbed);
 	});
 }

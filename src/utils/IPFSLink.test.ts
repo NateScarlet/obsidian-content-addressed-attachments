@@ -34,7 +34,7 @@ describe("IPFSLink", () => {
 			filename: "photo.jpg",
 			format: "image/jpeg",
 		});
-		expect(link.toMarkdown()).toBe(
+		expect(link.toMarkdown(true)).toBe(
 			`![photo.jpg](ipfs://${validCIDString}?filename=photo.jpg&format=image%2Fjpeg)`,
 		);
 	});
@@ -46,7 +46,7 @@ describe("IPFSLink", () => {
 			filename: "doc.pdf",
 			format: "application/pdf",
 		});
-		expect(link.toMarkdown()).toBe(
+		expect(link.toMarkdown(false)).toBe(
 			`[doc.pdf](ipfs://${validCIDString}?filename=doc.pdf&format=application%2Fpdf)`,
 		);
 	});
@@ -58,10 +58,10 @@ describe("IPFSLink", () => {
 			filename: "photo.png",
 			format: ENCRYPTED_FORMAT,
 		});
-		expect(link.toMarkdown({ embed: true })).toBe(
+		expect(link.toMarkdown(true)).toBe(
 			`![photo.png](ipfs://${validCIDString}?filename=photo.png&format=${encodeURIComponent(ENCRYPTED_FORMAT)})`,
 		);
-		expect(link.toMarkdown({ embed: false })).toBe(
+		expect(link.toMarkdown(false)).toBe(
 			`[photo.png](ipfs://${validCIDString}?filename=photo.png&format=${encodeURIComponent(ENCRYPTED_FORMAT)})`,
 		);
 	});

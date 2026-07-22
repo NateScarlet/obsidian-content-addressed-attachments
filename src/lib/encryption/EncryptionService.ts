@@ -110,9 +110,24 @@ export class EncryptionService {
 		return this.keyManager.createKey(name);
 	}
 
-	/** 删除密钥 */
+	/** 删除密钥（软删除） */
 	async deleteKey(fingerprint: string): Promise<void> {
 		return this.keyManager.deleteKey(fingerprint);
+	}
+
+	/** 恢复已软删除的密钥 */
+	async restoreKey(fingerprint: string): Promise<void> {
+		return this.keyManager.restoreKey(fingerprint);
+	}
+
+	/** 永久删除超过指定天数的已删除密钥 */
+	async permanentlyDeleteKeys(olderThanDays: number): Promise<number> {
+		return this.keyManager.permanentlyDeleteKeys(olderThanDays);
+	}
+
+	/** 列出已删除的密钥 */
+	async listDeletedKeys(): Promise<EncryptionKeyInfo[]> {
+		return this.keyManager.listDeletedKeys();
 	}
 
 	/** 导出单条密钥 */

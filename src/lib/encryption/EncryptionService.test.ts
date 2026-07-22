@@ -4,27 +4,28 @@ import { KeyManager } from "./KeyManager";
 import { ENCRYPTED_FORMAT, type KeyStorage } from "./types";
 
 function createMockStorage(): KeyStorage {
-	const store = new Map<string, string>();
-	return {
-		getSecret(key: string) {
-			return store.get(key);
-		},
-		setSecret(key: string, value: string) {
-			store.set(key, value);
-		},
-		listSecrets() {
-			return Array.from(store.keys());
-		},
-	};
-}
+		const store = new Map<string, string>();
+		return {
+			getSecret(key: string) {
+				return store.get(key);
+			},
+			setSecret(key: string, value: string) {
+				store.set(key, value);
+			},
+		};
+	}
 
-describe("EncryptionService", () => {
-	let es: EncryptionService;
-	let km: KeyManager;
+	function createMockSettings(): { encryptionKeysSecretId?: string } {
+		return {};
+	}
 
-	beforeEach(() => {
-		km = new KeyManager(createMockStorage());
-		es = new EncryptionService(km);
+	describe("EncryptionService", () => {
+		let es: EncryptionService;
+		let km: KeyManager;
+
+		beforeEach(() => {
+			km = new KeyManager(createMockStorage(), createMockSettings, async () => {});
+			es = new EncryptionService(km);
 	});
 
 	describe("isAvailable", () => {
