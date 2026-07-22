@@ -1,13 +1,10 @@
-/* eslint-disable @typescript-eslint/no-deprecated */
-import parseIPFSLink, { type IPFSStandardURL } from "./parseIPFSLink";
+import { IPFSLink } from "./IPFSLink";
 import parseIPFSLockedURL, { type IPFSLockedURL } from "./parseIPFSLockedURL";
 
 export type IPFSLinkMatch = {
 	pos: [startIndex: number, endIndex: number];
 	url: NonNullable<
-		(IPFSStandardURL | IPFSLockedURL) &
-			Partial<IPFSStandardURL> &
-			Partial<IPFSLockedURL>
+		(IPFSLink | IPFSLockedURL) & Partial<IPFSLink> & Partial<IPFSLockedURL>
 	>;
 	title?: string;
 };
@@ -46,7 +43,7 @@ export default function* findIPFSLinks(
 		if (rawURL.startsWith("internal.ipfs-locked:")) {
 			url = parseIPFSLockedURL(rawURL);
 		} else {
-			url = parseIPFSLink(rawURL);
+			url = IPFSLink.parse(rawURL);
 		}
 
 		if (!url) continue;

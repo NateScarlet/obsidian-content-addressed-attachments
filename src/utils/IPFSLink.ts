@@ -31,6 +31,10 @@ export class IPFSLink {
 		);
 	}
 
+	get url(): URL {
+		return new URL(this.toURL());
+	}
+
 	/**
 	 * 解析字符串（支持 ipfs:// 开头的完整 URL 或链接文本）
 	 */

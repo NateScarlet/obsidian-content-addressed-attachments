@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-deprecated */
 import {
 	Notice,
 	requestUrl,
@@ -10,7 +9,6 @@ import { CID } from "multiformats/cid";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
-import parseIPFSLink from "#src/utils/parseIPFSLink";
 import findIPFSLinks from "#src/utils/findIPFSLinks";
 import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
@@ -106,8 +104,8 @@ export async function encryptLink(
 		new Notice(t("noKeyAvailable"));
 		return;
 	}
-	const parsed = parseIPFSLink(linkText);
-	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
+	const parsed = IPFSLink.parse(linkText);
+	if (!parsed || parsed.isEncrypted) return;
 
 	const content = await loadFileContent(app, cas, parsed.cid.toString());
 	if (!content) {
@@ -151,8 +149,8 @@ export async function decryptLink(
 	linkEnd: number,
 	linkText: string,
 ): Promise<void> {
-	const parsed = parseIPFSLink(linkText);
-	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
+	const parsed = IPFSLink.parse(linkText);
+	if (!parsed || !parsed.isEncrypted) return;
 
 	const content = await loadFileContent(app, cas, parsed.cid.toString());
 	if (!content) {
@@ -194,8 +192,8 @@ export function findLinkAtPos(
 }
 
 export function isEncryptedLink(linkText: string): boolean {
-	const parsed = parseIPFSLink(linkText);
-	return parsed?.format === ENCRYPTED_FORMAT;
+	const parsed = IPFSLink.parse(linkText);
+	return Boolean(parsed?.isEncrypted);
 }
 
 export async function encryptNote(
