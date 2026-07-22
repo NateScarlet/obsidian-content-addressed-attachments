@@ -3,7 +3,6 @@ import parseIPFSLockedURL, { type IPFSLockedURL } from "./parseIPFSLockedURL";
 
 export type IPFSLinkMatch = {
 	pos: [startIndex: number, endIndex: number];
-	fullPos: [startIndex: number, endIndex: number];
 	url: NonNullable<
 		(IPFSLink | IPFSLockedURL) & Partial<IPFSLink> & Partial<IPFSLockedURL>
 	>;
@@ -22,7 +21,8 @@ export default function* findIPFSLinks(
 			"(b[a-z2-7]{58})" + // base32 CID
 			"(/[-\\w$.+!*',;:@&=%]*)?" + // 路径
 			"(\\?[-\\w$.+!*',;:@&=/?%]*)?" + // 查询参数
-			"(#[-\\w$.+!*',;:@&=/?%]*)?" + // 片段
+			"(#[" +
+			"-\\w$.+!*',;:@&=/?%]*)?" + // 片段
 			"|" +
 			"internal\\.ipfs-locked:b[a-z2-7]{58},[^\\s)]+" + // internal.ipfs-locked 链接
 			")" +
@@ -57,8 +57,6 @@ export default function* findIPFSLinks(
 
 		let title: string | undefined;
 		let isEmbed = false;
-		let fullStart = rawURLStartIndex;
-		let fullEnd = rawURLStartIndex + rawURL.length;
 
 		// 如果被括号包裹，并且前面是 `](`，则是 Markdown 链接
 		if (before === "](" && after === ")") {
@@ -84,7 +82,7 @@ export default function* findIPFSLinks(
 				}
 			}
 
-			// 如果找到了 `[`，提取标题和完整范围
+			// 如果找到了 `[`，提取标题和是否为嵌入
 			if (bracketStart !== -1) {
 				title =
 					markdown
@@ -99,17 +97,12 @@ export default function* findIPFSLinks(
 
 				if (bracketStart > 0 && markdown[bracketStart - 1] === "!") {
 					isEmbed = true;
-					fullStart = bracketStart - 1;
-				} else {
-					fullStart = bracketStart;
 				}
-				fullEnd = endIndex + 1;
 			}
 		}
 
 		yield {
 			pos: [rawURLStartIndex, rawURLStartIndex + rawURL.length],
-			fullPos: [fullStart, fullEnd],
 			url,
 			isEmbed,
 			title,

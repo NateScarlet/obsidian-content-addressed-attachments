@@ -95,11 +95,13 @@ describe("convertAttachment", () => {
 			expect(pos?.text).toBe(url);
 		});
 
-		it("detects attachment link position when cursor is on alt text", () => {
+		it("detects attachment link position when cursor is on IPFS URL", () => {
 			const url = `ipfs://${validCIDString}?filename=photo.png&format=image%2Fpng`;
 			const markdown = `Intro ![photo.png|200](${url}) outro`;
-			// 光标放在 ! 字符或 alt text "photo.png" 上
-			const pos = findLinkAtPos(markdown, markdown.indexOf("photo.png"));
+			const pos = findLinkAtPos(
+				markdown,
+				markdown.indexOf(validCIDString),
+			);
 
 			expect(pos).toBeDefined();
 			expect(pos?.isEmbed).toBe(true);

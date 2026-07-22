@@ -5,7 +5,7 @@ describe("findIPFSLinks", () => {
 	const validCIDString =
 		"bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di";
 
-	it("correctly identifies image embed Markdown syntax and fullPos", () => {
+	it("correctly identifies image embed Markdown syntax and pos", () => {
 		const rawUrl = `ipfs://${validCIDString}?filename=photo.png&format=image%2Fpng`;
 		const markdown = `Text before ![photo.png](${rawUrl}) text after`;
 
@@ -19,13 +19,9 @@ describe("findIPFSLinks", () => {
 		// pos should be raw URL range
 		const rawText = markdown.slice(match.pos[0], match.pos[1]);
 		expect(rawText).toBe(rawUrl);
-
-		// fullPos should include leading ![ and trailing )
-		const fullText = markdown.slice(match.fullPos[0], match.fullPos[1]);
-		expect(fullText).toBe(`![photo.png](${rawUrl})`);
 	});
 
-	it("correctly identifies standard link Markdown syntax and fullPos", () => {
+	it("correctly identifies standard link Markdown syntax and pos", () => {
 		const rawUrl = `ipfs://${validCIDString}?filename=document.pdf&format=application%2Fpdf`;
 		const markdown = `Text before [document.pdf](${rawUrl}) text after`;
 
@@ -35,9 +31,6 @@ describe("findIPFSLinks", () => {
 		const match = matches[0];
 		expect(match.isEmbed).toBe(false);
 		expect(match.title).toBe("document.pdf");
-
-		const fullText = markdown.slice(match.fullPos[0], match.fullPos[1]);
-		expect(fullText).toBe(`[document.pdf](${rawUrl})`);
 	});
 
 	it("correctly handles bare raw IPFS URLs without Markdown brackets", () => {
@@ -49,6 +42,6 @@ describe("findIPFSLinks", () => {
 
 		const match = matches[0];
 		expect(match.isEmbed).toBe(false);
-		expect(match.pos).toEqual(match.fullPos);
+		expect(markdown.slice(match.pos[0], match.pos[1])).toBe(rawUrl);
 	});
 });

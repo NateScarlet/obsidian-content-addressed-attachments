@@ -65,13 +65,12 @@ function findLinkAtOffset(
 ): LinkPos | undefined {
 	const links = Array.from(findIPFSLinks(content));
 	for (const link of links) {
-		const [fullStart, fullEnd] = link.fullPos;
-		if (fullStart <= offset && offset <= fullEnd) {
-			const [urlStart, urlEnd] = link.pos;
+		const [start, end] = link.pos;
+		if (start <= offset && offset <= end) {
 			return {
-				start: urlStart,
-				end: urlEnd,
-				text: content.slice(urlStart, urlEnd),
+				start,
+				end,
+				text: content.slice(start, end),
 				isEmbed: link.isEmbed,
 			};
 		}
