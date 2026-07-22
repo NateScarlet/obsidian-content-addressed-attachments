@@ -96,22 +96,24 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				return Promise.resolve(undefined);
 			},
 			setSecret() {
-				throw new Error("Secret storage is not available in this Obsidian version");
+				throw new Error(
+					"Secret storage is not available in this Obsidian version",
+				);
 			},
 			listSecrets() {
 				return Promise.resolve([]);
 			},
 		};
 		this.encryptionService = new EncryptionService(
-				new KeyManager(
-					storage,
-					() => this.settings,
-					() => this.saveSettings(),
-					hasSecretStorage,
-				),
+			new KeyManager(
+				storage,
 				() => this.settings,
-				undefined,
-			);
+				() => this.saveSettings(),
+				hasSecretStorage,
+			),
+			() => this.settings,
+			undefined,
+		);
 		this.urlResolver = new URLResolver(
 			this.app,
 			this.cas,
@@ -149,32 +151,36 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							filename: file.name,
 							format: file.type,
 						});
-						insertIPFSLinkAtCursor(editor, link, { embed: file.type.startsWith("image/") });
-						}
+						insertIPFSLinkAtCursor(editor, link, {
+							embed: file.type.startsWith("image/"),
+						});
 					}
-				}),
-			);
+				}
+			}),
+		);
 
-			this.registerEvent(
-				this.app.workspace.on("editor-drop", async (e, editor) => {
-					const files = e.dataTransfer?.files;
-					if (e.defaultPrevented || !files?.length) {
-						return;
-					}
-					for (let i = 0; i < files.length; i++) {
-						const file = files.item(i);
-						e.preventDefault();
-						if (file) {
-							const { cid } = await this.cas.save(
-								this.settings.primaryDir,
-								file,
-							);
-							const link = new IPFSLink({
-								cid,
-								filename: file.name,
-								format: file.type,
-							});
-							insertIPFSLinkAtCursor(editor, link, { embed: file.type.startsWith("image/") });
+		this.registerEvent(
+			this.app.workspace.on("editor-drop", async (e, editor) => {
+				const files = e.dataTransfer?.files;
+				if (e.defaultPrevented || !files?.length) {
+					return;
+				}
+				for (let i = 0; i < files.length; i++) {
+					const file = files.item(i);
+					e.preventDefault();
+					if (file) {
+						const { cid } = await this.cas.save(
+							this.settings.primaryDir,
+							file,
+						);
+						const link = new IPFSLink({
+							cid,
+							filename: file.name,
+							format: file.type,
+						});
+						insertIPFSLinkAtCursor(editor, link, {
+							embed: file.type.startsWith("image/"),
+						});
 					}
 				}
 			}),
@@ -248,16 +254,16 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 									.setIcon("lock-open")
 									.onClick(() => {
 										decryptLink(
-												this.app,
-												this.cas,
-												this.encryptionService,
-												this.urlResolver,
-												this.settings.primaryDir,
-												editor,
-												link.start,
-												link.end,
-												link.link,
-											).catch(showError);
+											this.app,
+											this.cas,
+											this.encryptionService,
+											this.urlResolver,
+											this.settings.primaryDir,
+											editor,
+											link.start,
+											link.end,
+											link.link,
+										).catch(showError);
 									});
 							});
 						} else {
@@ -266,17 +272,17 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 									.setIcon("lock")
 									.onClick(() => {
 										encryptLink(
-												this.app,
-												this.cas,
-												this.encryptionService,
-												this.urlResolver,
-												this.settings.primaryDir,
-												editor,
-												link.start,
-												link.end,
-												link.link,
-												view.file?.path,
-											).catch(showError);
+											this.app,
+											this.cas,
+											this.encryptionService,
+											this.urlResolver,
+											this.settings.primaryDir,
+											editor,
+											link.start,
+											link.end,
+											link.link,
+											view.file?.path,
+										).catch(showError);
 									});
 							});
 						}

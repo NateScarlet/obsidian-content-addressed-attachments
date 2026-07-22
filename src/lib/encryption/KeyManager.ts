@@ -30,7 +30,9 @@ export class KeyManager {
 
 	/** 获取当前存储密钥的 secret ID */
 	getKeysStorageId(): string {
-		return this.getSettings().encryptionKeysSecretId ?? DEFAULT_KEYS_STORAGE_ID;
+		return (
+			this.getSettings().encryptionKeysSecretId ?? DEFAULT_KEYS_STORAGE_ID
+		);
 	}
 
 	/** 设置存储密钥的 secret ID */
@@ -75,7 +77,9 @@ export class KeyManager {
 
 		const data = await this.loadKeysData();
 		data.keys[fingerprint] = {
-			key: this.cryptoService.arrayBufferToBase64(raw.buffer as ArrayBuffer),
+			key: this.cryptoService.arrayBufferToBase64(
+				raw.buffer as ArrayBuffer,
+			),
 			name,
 			createdAt: new Date().toISOString(),
 			priority,
@@ -88,10 +92,14 @@ export class KeyManager {
 	async setPrimaryKey(fingerprint: string): Promise<void> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
-		if (!entry || entry.deletedAt) throw new Error(`Key ${fingerprint} not found`);
+		if (!entry || entry.deletedAt)
+			throw new Error(`Key ${fingerprint} not found`);
 
 		const all = await this.listKeys();
-		const maxPriority = all.reduce((max, k) => Math.max(max, k.priority), 0);
+		const maxPriority = all.reduce(
+			(max, k) => Math.max(max, k.priority),
+			0,
+		);
 		entry.priority = maxPriority + 1;
 		await this.saveKeysData(data);
 	}
@@ -109,7 +117,8 @@ export class KeyManager {
 	async restoreKey(fingerprint: string): Promise<void> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
-		if (!entry || !entry.deletedAt) throw new Error(`Key ${fingerprint} is not deleted`);
+		if (!entry || !entry.deletedAt)
+			throw new Error(`Key ${fingerprint} is not deleted`);
 		delete entry.deletedAt;
 		await this.saveKeysData(data);
 	}
@@ -144,7 +153,9 @@ export class KeyManager {
 		return this.cryptoService.importKeyRaw(raw);
 	}
 
-	async getKeyForEncrypt(fingerprint: string): Promise<CryptoKey | undefined> {
+	async getKeyForEncrypt(
+		fingerprint: string,
+	): Promise<CryptoKey | undefined> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
 		if (!entry || entry.deletedAt) return;
@@ -213,7 +224,8 @@ export class KeyManager {
 	async renameKey(fingerprint: string, newName: string): Promise<void> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
-		if (!entry || entry.deletedAt) throw new Error(`Key ${fingerprint} not found`);
+		if (!entry || entry.deletedAt)
+			throw new Error(`Key ${fingerprint} not found`);
 		entry.name = newName;
 		await this.saveKeysData(data);
 	}
@@ -221,14 +233,16 @@ export class KeyManager {
 	async exportAllKeys(passphrase: string): Promise<string> {
 		const data = await this.loadKeysData();
 		// 导出时包含已删除的密钥，以便备份恢复
-		const entries = Object.entries(data.keys).map(([fingerprint, entry]) => ({
-			fingerprint,
-			key: entry.key,
-			name: entry.name ?? "",
-			createdAt: entry.createdAt,
-			priority: entry.priority ?? 0,
-			deletedAt: entry.deletedAt,
-		}));
+		const entries = Object.entries(data.keys).map(
+			([fingerprint, entry]) => ({
+				fingerprint,
+				key: entry.key,
+				name: entry.name ?? "",
+				createdAt: entry.createdAt,
+				priority: entry.priority ?? 0,
+				deletedAt: entry.deletedAt,
+			}),
+		);
 		const plaintext = JSON.stringify(entries, null, 2);
 		return this.cryptoService.encryptWithPassphrase(plaintext, passphrase);
 	}
@@ -253,7 +267,8 @@ export class KeyManager {
 		const data = await this.loadKeysData();
 		let imported = 0;
 		for (const entry of entries) {
-			if (data.keys[entry.fingerprint]) continue;
+			const existing = data.keys[entry.fingerprint];
+			if (existing && !existing.deletedAt) continue;
 			const raw = new Uint8Array(
 				this.cryptoService.base64ToArrayBuffer(entry.key),
 			);
@@ -281,7 +296,9 @@ export class KeyManager {
 
 		const data = await this.loadKeysData();
 		if (data.keys[fingerprint]) {
-			throw new Error(`Key with fingerprint ${fingerprint} already exists`);
+			throw new Error(
+				`Key with fingerprint ${fingerprint} already exists`,
+			);
 		}
 
 		await this.cryptoService.importKeyRawEncrypt(raw);

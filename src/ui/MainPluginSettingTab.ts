@@ -210,14 +210,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				mount(EncryptionSettingsComponent, {
 					target,
 					props: {
-							encryptionService: this.plugin.encryptionService,
-							settings: this.plugin.settings,
-							saveSettings: () => this.plugin.saveSettings(),
-							// eslint-disable-next-line @typescript-eslint/no-deprecated
-							display: () => this.display(),
-							app: this.app,
-							ExportKeysModal,
-							ImportKeysModal,
+						encryptionService: this.plugin.encryptionService,
+						settings: this.plugin.settings,
+						saveSettings: () => this.plugin.saveSettings(),
+						// eslint-disable-next-line @typescript-eslint/no-deprecated
+						display: () => this.display(),
+						app: this.app,
+						ExportKeysModal,
+						ImportKeysModal,
 						onEncryptMatchingNotes: async (
 							keyFingerprint: string,
 							pattern: string,
@@ -230,14 +230,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							for (const file of files) {
 								if (ignore().add(pattern).ignores(file.path)) {
 									const count = await encryptNote(
-											this.app,
-											this.plugin.cas,
-											this.plugin.encryptionService,
-											this.plugin.urlResolver,
-											file,
-											keyFingerprint,
-											this.plugin.settings.primaryDir,
-										);
+										this.app,
+										this.plugin.cas,
+										this.plugin.encryptionService,
+										this.plugin.urlResolver,
+										file,
+										keyFingerprint,
+										this.plugin.settings.primaryDir,
+									);
 									total += count;
 								}
 							}

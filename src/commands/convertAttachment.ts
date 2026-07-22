@@ -1,9 +1,4 @@
-import {
-	Notice,
-	type App,
-	type TFile,
-	type Editor,
-} from "obsidian";
+import { Notice, type App, type TFile, type Editor } from "obsidian";
 import { CID } from "multiformats/cid";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
@@ -36,6 +31,7 @@ interface LinkPos {
 	start: number;
 	end: number;
 	text: string;
+	isEmbed: boolean;
 }
 
 function findLinkAtOffset(
@@ -44,9 +40,14 @@ function findLinkAtOffset(
 ): LinkPos | undefined {
 	const links = Array.from(findIPFSLinks(content));
 	for (const link of links) {
-		const [start, end] = link.pos;
+		const [start, end] = link.fullPos;
 		if (start <= offset && offset <= end) {
-			return { start, end, text: content.slice(start, end) };
+			return {
+				start,
+				end,
+				text: content.slice(start, end),
+				isEmbed: link.isEmbed,
+			};
 		}
 	}
 }
@@ -103,19 +104,21 @@ export async function encryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(app, cas, parsed.cid.toString(), urlResolver, parsed.filename);
+	const content = await loadFileContent(
+		app,
+		cas,
+		parsed.cid.toString(),
+		urlResolver,
+		parsed.filename,
+	);
 	if (!content) {
 		new Notice("File not found");
 		return;
 	}
 
-	const file = new File(
-		[new Blob([content.buffer])],
-		content.filename,
-		{
-			type: parsed.format || content.format || "application/octet-stream",
-		},
-	);
+	const file = new File([new Blob([content.buffer])], content.filename, {
+		type: parsed.format || content.format || "application/octet-stream",
+	});
 	const { encryptedFile } = await encryptionService.encryptFile(
 		fingerprint,
 		file,
@@ -150,7 +153,13 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(app, cas, parsed.cid.toString(), urlResolver, parsed.filename);
+	const content = await loadFileContent(
+		app,
+		cas,
+		parsed.cid.toString(),
+		urlResolver,
+		parsed.filename,
+	);
 	if (!content) {
 		new Notice("File not found");
 		return;
@@ -209,7 +218,13 @@ export async function encryptNote(
 		const parsed = IPFSLink.parse(linkText);
 		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
-		const result = await loadFileContent(app, cas, parsed.cid.toString(), urlResolver, parsed.filename);
+		const result = await loadFileContent(
+			app,
+			cas,
+			parsed.cid.toString(),
+			urlResolver,
+			parsed.filename,
+		);
 		if (!result) return undefined;
 
 		const origFile = new File(

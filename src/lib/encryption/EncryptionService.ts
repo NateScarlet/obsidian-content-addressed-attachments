@@ -33,7 +33,7 @@ export class EncryptionService {
 	/** 根据笔记路径和规则决定使用哪个 key 加密 */
 	async resolveKeyForNotePath(notePath: string): Promise<string | undefined> {
 		if (!this.isAvailable) return undefined;
-		
+
 		const rules = this.getSettings().encryptPathRules;
 		const rule = rules.find(
 			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),

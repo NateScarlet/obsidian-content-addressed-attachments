@@ -1,5 +1,4 @@
 import { CID } from "multiformats/cid";
-import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 
 export interface IPFSLinkOptions {
 	cid: CID;
@@ -23,12 +22,13 @@ export class IPFSLink {
 	}
 
 	/**
-	 * 解析字符串（支持 ipfs:// 开头的完整 URL 或链接文本）
+	 * 解析字符串（支持 ipfs:// 开头的完整 URL 或包含 ipfs:// 的 Markdown 链接文本）
 	 */
 	static parse(rawURL: string): IPFSLink | undefined {
-		if (!rawURL.startsWith("ipfs://")) return undefined;
+		const match = rawURL.match(/ipfs:\/\/[b[a-z2-7]{58}[^\s)]*/i);
+		if (!match) return undefined;
 		try {
-			const url = new URL(rawURL);
+			const url = new URL(match[0]);
 			if (url.hostname.length !== 59) return undefined;
 			const cid = CID.parse(url.hostname);
 			const filename = url.searchParams.get("filename") ?? "";

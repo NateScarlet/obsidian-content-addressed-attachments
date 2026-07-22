@@ -24,7 +24,8 @@ export default async function insertAttachment(
 	const notePath = view.file?.path ?? "";
 
 	for (const file of files) {
-		const fingerprint = await encryptionService?.resolveKeyForNotePath(notePath);
+		const fingerprint =
+			await encryptionService?.resolveKeyForNotePath(notePath);
 
 		if (fingerprint && encryptionService) {
 			const { encryptedFile } = await encryptionService.encryptFile(
@@ -45,7 +46,9 @@ export default async function insertAttachment(
 				filename: file.name,
 				format: file.type,
 			});
-			insertIPFSLinkAtCursor(editor, link, { embed: file.type.startsWith("image/") });
+			insertIPFSLinkAtCursor(editor, link, {
+				embed: file.type.startsWith("image/"),
+			});
 		}
 	}
 }

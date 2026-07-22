@@ -4,29 +4,29 @@ import type { KeyStorage, SecretEntry } from "./types";
 import { CryptoService } from "./CryptoService";
 
 function createMockStorage(): KeyStorage {
-		const store = new Map<string, string>();
-		return {
-			getSecret(key: string) {
-				return store.get(key);
-			},
-			setSecret(key: string, value: string) {
-				store.set(key, value);
-			},
-		};
-	}
+	const store = new Map<string, string>();
+	return {
+		getSecret(key: string) {
+			return store.get(key);
+		},
+		setSecret(key: string, value: string) {
+			store.set(key, value);
+		},
+	};
+}
 
-	function createMockSettings(): { encryptionKeysSecretId?: string } {
-		return {};
-	}
+function createMockSettings(): { encryptionKeysSecretId?: string } {
+	return {};
+}
 
-	describe("KeyManager", () => {
-		let storage: KeyStorage;
-		let km: KeyManager;
+describe("KeyManager", () => {
+	let storage: KeyStorage;
+	let km: KeyManager;
 
-		beforeEach(() => {
-			storage = createMockStorage();
-			km = new KeyManager(storage, createMockSettings, async () => {});
-		});
+	beforeEach(() => {
+		storage = createMockStorage();
+		km = new KeyManager(storage, createMockSettings, async () => {});
+	});
 
 	describe("isAvailable", () => {
 		it("returns true when storage is provided", () => {
@@ -35,10 +35,10 @@ function createMockStorage(): KeyStorage {
 
 		it("returns false when storage is null or undefined", () => {
 			const unavailable = new KeyManager(
-					undefined as unknown as KeyStorage,
-					createMockSettings,
-					async () => {},
-				);
+				undefined as unknown as KeyStorage,
+				createMockSettings,
+				async () => {},
+			);
 			expect(unavailable.isAvailable).toBe(false);
 		});
 	});
@@ -63,7 +63,9 @@ function createMockStorage(): KeyStorage {
 			const stored = await storage.getSecret("encryption-keys-w1kxt3qz");
 			expect(stored).toBeTruthy();
 
-			const data = JSON.parse(stored!) as { keys: Record<string, SecretEntry> };
+			const data = JSON.parse(stored!) as {
+				keys: Record<string, SecretEntry>;
+			};
 			expect(data.keys[info.fingerprint]).toBeTruthy();
 			expect(data.keys[info.fingerprint].name).toBe("persisted");
 			expect(data.keys[info.fingerprint].key).toBeTruthy();
@@ -224,7 +226,11 @@ function createMockStorage(): KeyStorage {
 			const info = await km.createKey("original");
 			const exported = (await km.exportKey(info.fingerprint))!;
 
-			const km2 = new KeyManager(createMockStorage(), createMockSettings, async () => {});
+			const km2 = new KeyManager(
+				createMockStorage(),
+				createMockSettings,
+				async () => {},
+			);
 			const imported = await km2.importKey("imported", exported);
 
 			expect(imported.fingerprint).toBe(info.fingerprint);
@@ -258,7 +264,11 @@ function createMockStorage(): KeyStorage {
 		});
 
 		it("imports keys from backup", async () => {
-			const origKm = new KeyManager(createMockStorage(), createMockSettings, async () => {});
+			const origKm = new KeyManager(
+				createMockStorage(),
+				createMockSettings,
+				async () => {},
+			);
 			await origKm.createKey("imported-key");
 			const encrypted = await origKm.exportAllKeys("pass");
 
@@ -274,7 +284,11 @@ function createMockStorage(): KeyStorage {
 		});
 
 		it("reuses existing keys on import (skips duplicates)", async () => {
-			const origKm = new KeyManager(createMockStorage(), createMockSettings, async () => {});
+			const origKm = new KeyManager(
+				createMockStorage(),
+				createMockSettings,
+				async () => {},
+			);
 			const k1 = await origKm.createKey("existing");
 			const exportedAll = await origKm.exportAllKeys("pass");
 

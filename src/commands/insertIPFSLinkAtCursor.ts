@@ -11,9 +11,10 @@ export default function insertIPFSLinkAtCursor(
 	const hasSelection = from.line !== to.line || from.ch !== to.ch;
 
 	const text = link.toMarkdown(options?.embed ?? false);
-	const finalText = !hasSelection && editor.getLine(from.line).trim() === ""
-		? text + "\n"
-		: text;
+	const finalText =
+		!hasSelection && editor.getLine(from.line).trim() === ""
+			? text + "\n"
+			: text;
 
 	editor.replaceSelection(finalText);
 
