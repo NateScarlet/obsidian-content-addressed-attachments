@@ -95,7 +95,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				return Promise.resolve(undefined);
 			},
 			setSecret() {
-				return Promise.resolve();
+				throw new Error(
+					"SecretStorage is not available in this Obsidian version. Encryption features require Obsidian 1.11.4+.",
+				);
 			},
 			listSecrets() {
 				return Promise.resolve([]);
@@ -104,8 +106,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.encryptionService = new EncryptionService(
 			new KeyManager(storage, hasSecretStorage),
 			() => this.settings,
-			undefined,
-			this.settings.maxBlobSize,
 		);
 		this.urlResolver = new URLResolver(
 			this.app,

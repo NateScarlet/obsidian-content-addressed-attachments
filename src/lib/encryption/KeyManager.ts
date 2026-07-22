@@ -60,7 +60,15 @@ export class KeyManager {
 	}
 
 	async deleteKey(fingerprint: string): Promise<void> {
-		await this.storage.setSecret(toStorageKey(fingerprint), "");
+		const storage = this.storage as {
+			deleteSecret?: (key: string) => void | Promise<void>;
+		};
+		if (storage.deleteSecret) {
+			await storage.deleteSecret(toStorageKey(fingerprint));
+		} else {
+			// Fallback for storage without deleteSecret
+			await this.storage.setSecret(toStorageKey(fingerprint), "");
+		}
 	}
 
 	async getKey(fingerprint: string): Promise<CryptoKey | undefined> {

@@ -18,6 +18,7 @@ export class IPFSLink {
 		this.format = options.format ?? "";
 	}
 
+	/** 通过 format 参数直接判断是否为加密格式 */
 	get isEncrypted(): boolean {
 		return this.format === ENCRYPTED_FORMAT;
 	}

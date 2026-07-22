@@ -265,7 +265,7 @@ export class CryptoService {
 		return buffer;
 	}
 
-	/** 用口令加密字符串，返回 JSON（salt/iv/data 均为 base64） */
+	/** 用口令加密字符串，返回 JSON（包含算法参数以便未来兼容） */
 	async encryptWithPassphrase(
 		plaintext: string,
 		passphrase: string,
@@ -301,6 +301,11 @@ export class CryptoService {
 		);
 
 		return JSON.stringify({
+			algorithm: KEY_ALGORITHM,
+			keyLength: KEY_LENGTH,
+			kdf: "PBKDF2",
+			kdfHash: "SHA-256",
+			iterations: PBKDF2_ITERATIONS,
 			salt: this.arrayBufferToBase64(salt.buffer),
 			iv: this.arrayBufferToBase64(iv.buffer),
 			data: this.arrayBufferToBase64(encrypted),
@@ -312,41 +317,53 @@ export class CryptoService {
 		encryptedJson: string,
 		passphrase: string,
 	): Promise<string> {
-		const { salt, iv, data } = JSON.parse(encryptedJson) as {
+		const parsed = JSON.parse(encryptedJson) as {
+			algorithm?: string;
+			keyLength?: number;
+			kdf?: string;
+			kdfHash?: string;
+			iterations?: number;
 			salt: string;
 			iv: string;
 			data: string;
 		};
 
+		// 使用写入的参数，缺失时回退到当前默认值以兼容旧数据
+		const algorithm = parsed.algorithm ?? KEY_ALGORITHM;
+		const keyLength = parsed.keyLength ?? KEY_LENGTH;
+		const kdf = parsed.kdf ?? "PBKDF2";
+		const kdfHash = parsed.kdfHash ?? "SHA-256";
+		const iterations = parsed.iterations ?? PBKDF2_ITERATIONS;
+
 		const keyMaterial = await crypto.subtle.importKey(
 			"raw",
 			new TextEncoder().encode(passphrase),
-			"PBKDF2",
+			kdf,
 			false,
 			["deriveKey"],
 		);
 
 		const key = await crypto.subtle.deriveKey(
 			{
-				name: "PBKDF2",
-				salt: this.base64ToArrayBuffer(salt),
-				iterations: PBKDF2_ITERATIONS,
-				hash: "SHA-256",
+				name: kdf,
+				salt: this.base64ToArrayBuffer(parsed.salt),
+				iterations,
+				hash: kdfHash,
 			},
 			keyMaterial,
-			{ name: KEY_ALGORITHM, length: KEY_LENGTH },
+			{ name: algorithm, length: keyLength },
 			false,
 			["decrypt"],
 		);
 
 		const decrypted = await crypto.subtle.decrypt(
 			{
-				name: KEY_ALGORITHM,
-				iv: this.base64ToArrayBuffer(iv),
+				name: algorithm,
+				iv: this.base64ToArrayBuffer(parsed.iv),
 				tagLength: AUTH_TAG_LENGTH * 8,
 			},
 			key,
-			this.base64ToArrayBuffer(data),
+			this.base64ToArrayBuffer(parsed.data),
 		);
 
 		return new TextDecoder().decode(decrypted);
