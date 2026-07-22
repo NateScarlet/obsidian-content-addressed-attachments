@@ -36,9 +36,11 @@ export interface EncryptedFileHeader {
 
 /** 密钥持久化存储接口，用于依赖注入 */
 export interface KeyStorage {
-	getSecret(key: string): Promise<string | undefined>;
-	setSecret(key: string, value: string): Promise<void>;
-	listSecrets(): Promise<string[]>;
+	getSecret(
+		key: string,
+	): string | null | undefined | Promise<string | null | undefined>;
+	setSecret(key: string, value: string): void | Promise<void>;
+	listSecrets(): string[] | Promise<string[]>;
 }
 
 /** SecretStorage 中单条 entry 的结构 */

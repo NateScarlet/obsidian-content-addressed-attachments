@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, type App } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -87,21 +87,20 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					.filter((i) => !!i),
 			]);
 		});
-		const hasSecretStorage = "secretStorage" in this.app;
-		const storage: KeyStorage = hasSecretStorage
-			? // eslint-disable-next-line obsidianmd/no-unsupported-api
-				(this.app as App & { secretStorage: KeyStorage }).secretStorage
-			: {
-					getSecret() {
-						return Promise.resolve(undefined);
-					},
-					setSecret() {
-						return Promise.resolve();
-					},
-					listSecrets() {
-						return Promise.resolve([]);
-					},
-				};
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		const secretStorage = this.app.secretStorage;
+		const hasSecretStorage = !!secretStorage;
+		const storage: KeyStorage = secretStorage ?? {
+			getSecret() {
+				return Promise.resolve(undefined);
+			},
+			setSecret() {
+				return Promise.resolve();
+			},
+			listSecrets() {
+				return Promise.resolve([]);
+			},
+		};
 		this.encryptionService = new EncryptionService(
 			new KeyManager(storage, hasSecretStorage),
 			() => this.settings,
