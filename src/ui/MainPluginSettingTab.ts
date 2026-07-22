@@ -228,7 +228,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				.setHeading();
 
 			// 密钥列表
-			this.plugin.encryptionService.listKeys().then((keys) => {
+			this.plugin.encryptionService.listKeys().then(async (keys) => {
 				for (const key of keys) {
 					const setting = new Setting(containerEl)
 						.setName(key.name)
@@ -318,6 +318,83 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								).open();
 							}),
 					);
+
+				// 自动加密路径规则
+				new Setting(containerEl)
+					.setName(t("encryptPathRules"))
+					.setDesc(t("encryptPathRulesDesc"))
+					.setHeading();
+
+				const allKeys = keys;
+				for (const rule of this.plugin.settings.encryptPathRules) {
+					const s = new Setting(containerEl)
+						.addText((text) =>
+							text
+								.setPlaceholder(t("encryptPathRulePatternPlaceholder"))
+								.setValue(rule.pattern)
+								.onChange(async (value) => {
+									rule.pattern = value;
+									await this.plugin.saveSettings();
+								}),
+						);
+
+					const keyNames = allKeys.map((k) => k.name);
+					const currentIndex = Math.max(
+						0,
+						allKeys.findIndex(
+							(k) => k.fingerprint === rule.keyFingerprint,
+						),
+					);
+					s.addDropdown((dd) => {
+						if (allKeys.length === 0) {
+							dd.addOption("", t("encryptPathRuleNoKeys"));
+						} else {
+							for (const k of allKeys) {
+								dd.addOption(k.fingerprint, k.name);
+							}
+						}
+						dd.setValue(
+							allKeys.length > 0
+								? rule.keyFingerprint
+								: "",
+						).onChange(async (value) => {
+							rule.keyFingerprint = value;
+							await this.plugin.saveSettings();
+						});
+					});
+
+					s.addExtraButton((btn) =>
+						btn
+							.setIcon("cross")
+							.setTooltip(t("delete"))
+							.onClick(async () => {
+								this.plugin.settings.encryptPathRules =
+									this.plugin.settings.encryptPathRules.filter(
+										(r) => r !== rule,
+									);
+								await this.plugin.saveSettings();
+								// eslint-disable-next-line @typescript-eslint/no-deprecated
+								this.display();
+							}),
+					);
+				}
+
+				new Setting(containerEl).addButton((btn) =>
+					btn
+						.setButtonText(t("addEncryptPathRule"))
+						.onClick(async () => {
+							this.plugin.settings.encryptPathRules.push({
+								pattern: "",
+								keyFingerprint:
+									allKeys.length > 0
+										? allKeys[0].fingerprint
+										: "",
+							});
+							await this.plugin.saveSettings();
+							// eslint-disable-next-line @typescript-eslint/no-deprecated
+							this.display();
+						}),
+				);
 			}).catch(showError);
 		} else {
 			new Setting(containerEl)
@@ -407,6 +484,14 @@ const { t } = defineLocales({
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `Imported ${count} key(s)` : "No new keys to import",
 		keyImportErrorInvalid: "Wrong passphrase or invalid backup data",
+		encryptPathRules: "Auto-encrypt path rules",
+		encryptPathRulesDesc:
+			"Attachments inserted in notes under matching paths will be automatically encrypted with the selected key.",
+		encryptPathRulePattern: "Path pattern",
+		encryptPathRulePatternPlaceholder: "e.g. Secret/ or Projects/Client",
+		encryptPathRuleKey: "Key",
+		addEncryptPathRule: "Add rule",
+		encryptPathRuleNoKeys: "Create a key first",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -472,6 +557,14 @@ const { t } = defineLocales({
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `已导入 ${count} 个密钥` : "没有需要导入的新密钥",
 		keyImportErrorInvalid: "口令错误或备份数据无效",
+		encryptPathRules: "自动加密路径规则",
+		encryptPathRulesDesc:
+			"在匹配路径的笔记中插入附件时将自动用所选密钥加密。",
+		encryptPathRulePattern: "路径匹配",
+		encryptPathRulePatternPlaceholder: "例如 Secret/ 或 Projects/Client",
+		encryptPathRuleKey: "密钥",
+		addEncryptPathRule: "添加规则",
+		encryptPathRuleNoKeys: "请先创建密钥",
 	},
 });
 //#endregion

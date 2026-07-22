@@ -1,10 +1,18 @@
 import { MarkdownView, type App } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { EncryptPathRule } from "#src/settings";
 import insertFileAtCursor from "./insertFileAtCursor";
 
 export interface InsertAttachmentOptions {
 	encryptKeyFingerprint?: string;
+}
+
+function findMatchingRule(
+	rules: EncryptPathRule[],
+	notePath: string,
+): EncryptPathRule | undefined {
+	return rules.find((r) => notePath.includes(r.pattern));
 }
 
 export default async function insertAttachment(
@@ -13,6 +21,7 @@ export default async function insertAttachment(
 	dir: string,
 	encryptionService?: EncryptionService,
 	options?: InsertAttachmentOptions,
+	encryptPathRules?: EncryptPathRule[],
 ) {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {
@@ -24,16 +33,16 @@ export default async function insertAttachment(
 	});
 	const files = await Promise.all(handles.map((h) => h.getFile()));
 	const editor = view.editor;
+	const notePath = view.file?.path ?? "";
+
 	for (const file of files) {
-		if (
-			options?.encryptKeyFingerprint &&
-			encryptionService?.isAvailable
-		) {
+		const fingerprint =
+			options?.encryptKeyFingerprint ??
+			findMatchingRule(encryptPathRules ?? [], notePath)?.keyFingerprint;
+
+		if (fingerprint && encryptionService?.isAvailable) {
 			const { encryptedFile } =
-				await encryptionService.encryptFile(
-					options.encryptKeyFingerprint,
-					file,
-				);
+				await encryptionService.encryptFile(fingerprint, file);
 			const { cid } = await cas.save(dir, encryptedFile);
 			insertFileAtCursor(file, cid, editor, true);
 		} else {

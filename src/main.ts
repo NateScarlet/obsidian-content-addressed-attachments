@@ -224,6 +224,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.app,
 					this.cas,
 					this.settings.primaryDir,
+					undefined,
+					undefined,
+					this.settings.encryptPathRules,
 				).catch(showError);
 			},
 		});
