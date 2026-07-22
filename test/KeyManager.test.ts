@@ -1,0 +1,153 @@
+import { describe, it, expect, beforeEach } from "vitest";
+import { KeyManager } from "#src/lib/encryption/KeyManager";
+import type { KeyStorage } from "#src/lib/encryption/types";
+
+function createMockStorage(): KeyStorage {
+	const store = new Map<string, string>();
+	return {
+		async getSecret(key: string) { return store.get(key); },
+		async setSecret(key: string, value: string) { store.set(key, value); },
+	};
+}
+
+describe("KeyManager", () => {
+	let storage: KeyStorage;
+	let km: KeyManager;
+
+	beforeEach(() => {
+		storage = createMockStorage();
+		km = new KeyManager(storage);
+	});
+
+	describe("isAvailable", () => {
+		it("returns true when storage is provided", () => {
+			expect(km.isAvailable).toBe(true);
+		});
+
+		it("returns false when created with unavailable flag", () => {
+			const km2 = new KeyManager(createMockStorage(), false);
+			expect(km2.isAvailable).toBe(false);
+		});
+	});
+
+	describe("createKey", () => {
+		it("creates a key with given name", async () => {
+			const info = await km.createKey("my-key");
+			expect(info.name).toBe("my-key");
+			expect(info.fingerprint).toBeTruthy();
+			expect(info.createdAt).toBeInstanceOf(Date);
+		});
+
+		it("persists key data to storage", async () => {
+			const info = await km.createKey("test-key");
+			const raw = await storage.getSecret(
+				`content-addressed-attachments/key/${info.fingerprint}`,
+			);
+			expect(raw).toBeTruthy();
+		});
+
+		it("returns different fingerprints for consecutive keys", async () => {
+			const k1 = await km.createKey("key1");
+			const k2 = await km.createKey("key2");
+			expect(k1.fingerprint).not.toBe(k2.fingerprint);
+		});
+	});
+
+	describe("listKeys", () => {
+		it("returns empty list when no keys exist", async () => {
+			const keys = await km.listKeys();
+			expect(keys).toEqual([]);
+		});
+
+		it("returns all created keys", async () => {
+			await km.createKey("alpha");
+			await km.createKey("beta");
+			const keys = await km.listKeys();
+			expect(keys).toHaveLength(2);
+			expect(keys.map((k) => k.name)).toEqual(
+				expect.arrayContaining(["alpha", "beta"]),
+			);
+		});
+	});
+
+	describe("hasKey", () => {
+		it("returns true for existing key", async () => {
+			const info = await km.createKey("exists");
+			expect(await km.hasKey(info.fingerprint)).toBe(true);
+		});
+
+		it("returns false for nonexistent key", async () => {
+			expect(await km.hasKey("nonexistent-fingerprint")).toBe(false);
+		});
+	});
+
+	describe("getKey / getKeyForEncrypt", () => {
+		it("returns CryptoKey for decrypt", async () => {
+			const info = await km.createKey("crypto-test");
+			const key = await km.getKey(info.fingerprint);
+			expect(key).toBeTruthy();
+			expect(key!.algorithm.name).toBe("AES-GCM");
+		});
+
+		it("returns CryptoKey for encrypt with encrypt+decrypt usages", async () => {
+			const info = await km.createKey("enc-test");
+			const key = await km.getKeyForEncrypt(info.fingerprint);
+			expect(key).toBeTruthy();
+			expect(key!.usages).toContain("encrypt");
+			expect(key!.usages).toContain("decrypt");
+		});
+
+		it("returns undefined for unknown fingerprint", async () => {
+			expect(await km.getKey("unknown")).toBeUndefined();
+		});
+	});
+
+	describe("deleteKey", () => {
+		it("removes key from storage", async () => {
+			const info = await km.createKey("to-delete");
+			expect(await km.hasKey(info.fingerprint)).toBe(true);
+
+			await km.deleteKey(info.fingerprint);
+			expect(await km.hasKey(info.fingerprint)).toBe(false);
+		});
+
+		it("removes key from key listing", async () => {
+			const info = await km.createKey("to-delete");
+			await km.deleteKey(info.fingerprint);
+
+			const keys = await km.listKeys();
+			expect(keys.find((k) => k.fingerprint === info.fingerprint)).toBeUndefined();
+		});
+	});
+
+	describe("exportKey / importKey", () => {
+		it("exports key material for an existing key", async () => {
+			const info = await km.createKey("exportable");
+			const exported = await km.exportKey(info.fingerprint);
+			expect(exported).toBeTruthy();
+			expect(typeof exported).toBe("string");
+		});
+
+		it("returns undefined for nonexistent key", async () => {
+			expect(await km.exportKey("ghost")).toBeUndefined();
+		});
+
+		it("imports exported key material", async () => {
+			const original = await km.createKey("original");
+			const exported = (await km.exportKey(original.fingerprint))!;
+
+			const importedKm = new KeyManager(createMockStorage());
+			const imported = await importedKm.importKey("imported", exported);
+
+			expect(imported.fingerprint).toBe(original.fingerprint);
+			expect(imported.name).toBe("imported");
+		});
+
+		it("rejects duplicate import", async () => {
+			const info = await km.createKey("unique");
+			const exported = (await km.exportKey(info.fingerprint))!;
+
+			await expect(km.importKey("duplicate", exported)).rejects.toThrow("already exists");
+		});
+	});
+});

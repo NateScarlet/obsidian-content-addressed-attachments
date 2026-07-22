@@ -38,3 +38,9 @@ export const SECRET_STORAGE_KEY_PREFIX =
 
 export const SECRET_STORAGE_META_KEY =
 	"content-addressed-attachments/key-meta";
+
+/** 密钥持久化存储接口，用于依赖注入 */
+export interface KeyStorage {
+	getSecret(key: string): Promise<string | undefined>;
+	setSecret(key: string, value: string): Promise<void>;
+}

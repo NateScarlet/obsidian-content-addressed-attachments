@@ -1,4 +1,3 @@
-import type { App } from "obsidian";
 import {
 	generateKey,
 	exportKeyRaw,
@@ -10,6 +9,7 @@ import {
 	SECRET_STORAGE_KEY_PREFIX,
 	SECRET_STORAGE_META_KEY,
 	type EncryptionKeyInfo,
+	type KeyStorage,
 } from "./types";
 
 function fingerprintToStorageKey(fingerprint: string): string {
@@ -36,11 +36,14 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 }
 
 export class KeyManager {
-	constructor(private app: App) {}
+	constructor(
+		private storage: KeyStorage,
+		private _isAvailable = true,
+	) {}
 
 	/** 检查 SecretStorage 是否可用 */
 	get isAvailable(): boolean {
-		return "secretStorage" in this.app;
+		return this._isAvailable;
 	}
 
 	/** 创建新密钥 */
@@ -50,7 +53,7 @@ export class KeyManager {
 		const fingerprint = await computeFingerprint(raw);
 
 		// 存储密钥材料到 SecretStorage
-		await this.app.secretStorage.setSecret(
+		await this.storage.setSecret(
 			fingerprintToStorageKey(fingerprint),
 			arrayBufferToBase64(raw.buffer as ArrayBuffer),
 		);
@@ -67,14 +70,14 @@ export class KeyManager {
 
 	/** 删除密钥 */
 	async deleteKey(fingerprint: string): Promise<void> {
-		await this.app.secretStorage.setSecret(
+		await this.storage.setSecret(
 			fingerprintToStorageKey(fingerprint),
 			"",
 		);
 		// 从元数据列表中移除
 		const allMeta = await this.loadAllKeyMeta();
 		const filtered = allMeta.filter((k) => k.fingerprint !== fingerprint);
-		await this.app.secretStorage.setSecret(
+		await this.storage.setSecret(
 			SECRET_STORAGE_META_KEY,
 			JSON.stringify(filtered),
 		);
@@ -82,7 +85,7 @@ export class KeyManager {
 
 	/** 获取密钥用于解密 */
 	async getKey(fingerprint: string): Promise<CryptoKey | undefined> {
-		const stored = await this.app.secretStorage.getSecret(
+		const stored = await this.storage.getSecret(
 			fingerprintToStorageKey(fingerprint),
 		);
 		if (!stored) return;
@@ -94,7 +97,7 @@ export class KeyManager {
 	async getKeyForEncrypt(
 		fingerprint: string,
 	): Promise<CryptoKey | undefined> {
-		const stored = await this.app.secretStorage.getSecret(
+		const stored = await this.storage.getSecret(
 			fingerprintToStorageKey(fingerprint),
 		);
 		if (!stored) return;
@@ -104,7 +107,7 @@ export class KeyManager {
 
 	/** 检查指定密钥是否存在 */
 	async hasKey(fingerprint: string): Promise<boolean> {
-		const stored = await this.app.secretStorage.getSecret(
+		const stored = await this.storage.getSecret(
 			fingerprintToStorageKey(fingerprint),
 		);
 		return !!stored;
@@ -117,7 +120,7 @@ export class KeyManager {
 
 	/** 导出密钥（base64 编码）供备份 */
 	async exportKey(fingerprint: string): Promise<string | undefined> {
-		const result = await this.app.secretStorage.getSecret(
+		const result = await this.storage.getSecret(
 			fingerprintToStorageKey(fingerprint),
 		);
 		return result ?? undefined;
@@ -132,7 +135,7 @@ export class KeyManager {
 		const fingerprint = await computeFingerprint(raw);
 
 		// 检查是否已存在
-		const existing = await this.app.secretStorage.getSecret(
+		const existing = await this.storage.getSecret(
 			fingerprintToStorageKey(fingerprint),
 		);
 		if (existing) {
@@ -142,7 +145,7 @@ export class KeyManager {
 		// 验证密钥材料有效
 		await importKeyRawEncrypt(raw);
 
-		await this.app.secretStorage.setSecret(
+		await this.storage.setSecret(
 			fingerprintToStorageKey(fingerprint),
 			keyMaterialBase64,
 		);
@@ -156,7 +159,7 @@ export class KeyManager {
 	}
 
 	private async loadAllKeyMeta(): Promise<EncryptionKeyInfo[]> {
-		const stored = await this.app.secretStorage.getSecret(
+		const stored = await this.storage.getSecret(
 			SECRET_STORAGE_META_KEY,
 		);
 		if (!stored) return [];
@@ -184,7 +187,7 @@ export class KeyManager {
 		} else {
 			allMeta.push(info);
 		}
-		await this.app.secretStorage.setSecret(
+		await this.storage.setSecret(
 			SECRET_STORAGE_META_KEY,
 			JSON.stringify(allMeta),
 		);

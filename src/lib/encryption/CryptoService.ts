@@ -47,11 +47,12 @@ export async function importKeyRaw(raw: Uint8Array): Promise<CryptoKey> {
 export async function importKeyRawEncrypt(
 	raw: Uint8Array,
 ): Promise<CryptoKey> {
+	// Must be extractable so encrypt() can export it to compute the fingerprint
 	return crypto.subtle.importKey(
 		"raw",
 		raw.buffer as ArrayBuffer,
 		{ name: KEY_ALGORITHM, length: KEY_LENGTH },
-		false,
+		true,
 		["encrypt", "decrypt"],
 	);
 }

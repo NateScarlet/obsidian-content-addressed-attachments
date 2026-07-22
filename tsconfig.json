@@ -19,5 +19,6 @@
 			"#src/*": ["./src/*"]
 		}
 	},
-	"include": ["**/*.ts", "**/*.svelte"]
+	"include": ["**/*.ts", "**/*.svelte"],
+	"exclude": ["test/**"]
 }

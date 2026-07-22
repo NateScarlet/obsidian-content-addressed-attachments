@@ -12,7 +12,7 @@
 		"build:svelte-check": "svelte-check --tsconfig tsconfig.json",
 		"build:esbuild": "node esbuild.config.mjs production",
 		"check": "pnpm test && pnpm lint --fix",
-		"test": "svelte-check",
+		"test": "vitest run && svelte-check",
 		"lint": "eslint src",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
@@ -43,7 +43,8 @@
 		"tailwindcss": "^4.1.17",
 		"tslib": "2.4.0",
 		"typescript": "6.0.3",
-		"typescript-eslint": "^8.60.0"
+		"typescript-eslint": "^8.60.0",
+		"vitest": "^4.1.10"
 	},
 	"dependencies": {
 		"@mdi/js": "^7.4.47",

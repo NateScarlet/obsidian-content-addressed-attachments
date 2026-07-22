@@ -1,4 +1,3 @@
-import type { App } from "obsidian";
 import { KeyManager } from "./KeyManager";
 import {
 	encrypt as cryptoEncrypt,
@@ -15,11 +14,7 @@ import {
 const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB
 
 export class EncryptionService {
-	public readonly keyManager: KeyManager;
-
-	constructor(private app: App) {
-		this.keyManager = new KeyManager(app);
-	}
+	constructor(public readonly keyManager: KeyManager) {}
 
 	get isAvailable(): boolean {
 		return this.keyManager.isAvailable;

@@ -28,7 +28,9 @@ import insertFileAtCursor from "./commands/insertFileAtCursor";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import { KeyManager } from "./lib/encryption/KeyManager";
 import { EncryptionService } from "./lib/encryption/EncryptionService";
+import type { KeyStorage } from "./lib/encryption/types";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -80,7 +82,16 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					.filter((i) => !!i),
 			]);
 		});
-		this.encryptionService = new EncryptionService(this.app);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const appAny = this.app as any;
+		// eslint-disable-next-line @typescript-eslint/no-deprecated
+		const hasSecretStorage = "secretStorage" in this.app;
+		const storage: KeyStorage = hasSecretStorage
+			? appAny.secretStorage
+			: { async getSecret() { return undefined; }, async setSecret() {} };
+		this.encryptionService = new EncryptionService(
+			new KeyManager(storage, hasSecretStorage),
+		);
 		this.urlResolver = new URLResolver(
 			this.app,
 			this.cas,
