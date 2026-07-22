@@ -1,10 +1,5 @@
 import { KeyManager } from "./KeyManager";
-import {
-	encrypt as cryptoEncrypt,
-	decrypt as cryptoDecrypt,
-	isEncryptedData,
-	parseHeader,
-} from "./CryptoService";
+import { CryptoService } from "./CryptoService";
 import {
 	ENCRYPTED_FORMAT,
 	type EncryptionKeyInfo,
@@ -23,6 +18,7 @@ export class EncryptionService {
 		> = () => ({
 			encryptPathRules: [],
 		}),
+		public readonly cryptoService: CryptoService = new CryptoService(),
 		public readonly maxBlobSize: number = 20 * 1024 * 1024,
 	) {}
 
@@ -52,7 +48,7 @@ export class EncryptionService {
 		if (!key) throw new Error(`Encryption key ${keyFingerprint} not found`);
 
 		const buffer = await file.arrayBuffer();
-		const { data, fingerprint } = await cryptoEncrypt(
+		const { data, fingerprint } = await this.cryptoService.encrypt(
 			key,
 			buffer,
 			file.type,
@@ -69,9 +65,9 @@ export class EncryptionService {
 	async decryptFile(
 		encryptedData: ArrayBuffer,
 	): Promise<DecryptedFile | undefined> {
-		if (!isEncryptedData(encryptedData)) return;
+		if (!this.cryptoService.isEncryptedData(encryptedData)) return;
 
-		const header = parseHeader(encryptedData);
+		const header = this.cryptoService.parseHeader(encryptedData);
 		const key = await this.keyManager.getKey(header.keyFingerprint);
 		if (!key) {
 			throw new Error(
@@ -79,7 +75,7 @@ export class EncryptionService {
 			);
 		}
 
-		const plaintext = await cryptoDecrypt(key, encryptedData);
+		const plaintext = await this.cryptoService.decrypt(key, encryptedData);
 
 		return {
 			data: plaintext,

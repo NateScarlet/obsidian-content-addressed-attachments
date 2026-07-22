@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { KeyManager } from "#src/lib/encryption/KeyManager";
 import type { KeyStorage } from "#src/lib/encryption/types";
-import { decryptWithPassphrase } from "#src/lib/encryption/CryptoService";
+import { CryptoService } from "#src/lib/encryption/CryptoService";
 
 function createMockStorage(): KeyStorage {
 	const store = new Map<string, string>();
@@ -232,7 +232,7 @@ describe("KeyManager", () => {
 			const encrypted = await km.exportAllKeys("backup-pass");
 			expect(encrypted).toBeTruthy();
 
-			const plaintext = await decryptWithPassphrase(encrypted, "backup-pass");
+			const plaintext = await new CryptoService().decryptWithPassphrase(encrypted, "backup-pass");
 			const parsed = JSON.parse(plaintext);
 			expect(parsed).toHaveLength(2);
 		});

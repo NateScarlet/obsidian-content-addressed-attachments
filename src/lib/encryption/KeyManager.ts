@@ -1,14 +1,4 @@
-import {
-	generateKey,
-	exportKeyRaw,
-	importKeyRawEncrypt,
-	importKeyRaw,
-	computeFingerprint,
-	arrayBufferToBase64,
-	base64ToArrayBuffer,
-	encryptWithPassphrase,
-	decryptWithPassphrase,
-} from "./CryptoService";
+import { CryptoService } from "./CryptoService";
 import {
 	type EncryptionKeyInfo,
 	type KeyStorage,
@@ -25,6 +15,7 @@ export class KeyManager {
 	constructor(
 		private storage: KeyStorage,
 		private _isAvailable = true,
+		private cryptoService = new CryptoService(),
 	) {}
 
 	get isAvailable(): boolean {
@@ -32,15 +23,17 @@ export class KeyManager {
 	}
 
 	async createKey(name: string): Promise<EncryptionKeyInfo> {
-		const key = await generateKey();
-		const raw = await exportKeyRaw(key);
-		const fingerprint = await computeFingerprint(raw);
+		const key = await this.cryptoService.generateKey();
+		const raw = await this.cryptoService.exportKeyRaw(key);
+		const fingerprint = await this.cryptoService.computeFingerprint(raw);
 		const priority = 0;
 
 		await this.storage.setSecret(
 			toStorageKey(fingerprint),
 			JSON.stringify({
-				key: arrayBufferToBase64(raw.buffer as ArrayBuffer),
+				key: this.cryptoService.arrayBufferToBase64(
+					raw.buffer as ArrayBuffer,
+				),
 				name,
 				createdAt: new Date().toISOString(),
 				priority,
@@ -74,8 +67,10 @@ export class KeyManager {
 		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
 		if (!stored) return;
 		const entry = JSON.parse(stored) as SecretEntry;
-		const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
-		return importKeyRaw(raw);
+		const raw = new Uint8Array(
+			this.cryptoService.base64ToArrayBuffer(entry.key),
+		);
+		return this.cryptoService.importKeyRaw(raw);
 	}
 
 	async getKeyForEncrypt(
@@ -84,8 +79,10 @@ export class KeyManager {
 		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
 		if (!stored) return;
 		const entry = JSON.parse(stored) as SecretEntry;
-		const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
-		return importKeyRawEncrypt(raw);
+		const raw = new Uint8Array(
+			this.cryptoService.base64ToArrayBuffer(entry.key),
+		);
+		return this.cryptoService.importKeyRawEncrypt(raw);
 	}
 
 	async hasKey(fingerprint: string): Promise<boolean> {
@@ -172,14 +169,14 @@ export class KeyManager {
 			}
 		}
 		const plaintext = JSON.stringify(entries, null, 2);
-		return encryptWithPassphrase(plaintext, passphrase);
+		return this.cryptoService.encryptWithPassphrase(plaintext, passphrase);
 	}
 
 	async importAllKeys(
 		encryptedJson: string,
 		passphrase: string,
 	): Promise<number> {
-		const plaintext = await decryptWithPassphrase(
+		const plaintext = await this.cryptoService.decryptWithPassphrase(
 			encryptedJson,
 			passphrase,
 		);
@@ -196,8 +193,10 @@ export class KeyManager {
 				toStorageKey(entry.fingerprint),
 			);
 			if (existing) continue;
-			const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
-			await importKeyRawEncrypt(raw);
+			const raw = new Uint8Array(
+				this.cryptoService.base64ToArrayBuffer(entry.key),
+			);
+			await this.cryptoService.importKeyRawEncrypt(raw);
 			await this.storage.setSecret(
 				toStorageKey(entry.fingerprint),
 				JSON.stringify({
@@ -216,8 +215,10 @@ export class KeyManager {
 		name: string,
 		keyMaterialBase64: string,
 	): Promise<EncryptionKeyInfo> {
-		const raw = new Uint8Array(base64ToArrayBuffer(keyMaterialBase64));
-		const fingerprint = await computeFingerprint(raw);
+		const raw = new Uint8Array(
+			this.cryptoService.base64ToArrayBuffer(keyMaterialBase64),
+		);
+		const fingerprint = await this.cryptoService.computeFingerprint(raw);
 
 		const existing = await this.storage.getSecret(
 			toStorageKey(fingerprint),
@@ -228,7 +229,7 @@ export class KeyManager {
 			);
 		}
 
-		await importKeyRawEncrypt(raw);
+		await this.cryptoService.importKeyRawEncrypt(raw);
 
 		await this.storage.setSecret(
 			toStorageKey(fingerprint),

@@ -10,11 +10,6 @@ import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type { EncryptionService } from "./lib/encryption/EncryptionService";
 import defineLocales from "./utils/defineLocales";
-import {
-	isEncryptedData,
-	parseHeader,
-	decrypt,
-} from "./lib/encryption/CryptoService";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -282,9 +277,15 @@ export class URLResolver {
 			const encryptedData =
 				await this.app.vault.adapter.readBinary(encryptedPath);
 
-			if (!isEncryptedData(encryptedData)) return;
+			if (
+				!this.encryptionService.cryptoService.isEncryptedData(
+					encryptedData,
+				)
+			)
+				return;
 
-			const header = parseHeader(encryptedData);
+			const header =
+				this.encryptionService.cryptoService.parseHeader(encryptedData);
 			const key = await this.encryptionService.keyManager.getKey(
 				header.keyFingerprint,
 			);
@@ -298,7 +299,11 @@ export class URLResolver {
 				return;
 			}
 
-			const plaintext = await decrypt(key, encryptedData);
+			const plaintext =
+				await this.encryptionService.cryptoService.decrypt(
+					key,
+					encryptedData,
+				);
 
 			const size = plaintext.byteLength;
 			const maxBlob = this.encryptionService.maxBlobSize;
