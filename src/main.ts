@@ -30,6 +30,7 @@ import {
 	encryptLink,
 	decryptLink,
 	isEncryptedLink,
+	findLinkAtPos,
 } from "./commands/convertAttachment";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
@@ -205,16 +206,62 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				const from = editor.getCursor("from");
 				const to = editor.getCursor("to");
 				const content = editor.getValue();
+				const fromOffset = editor.posToOffset(from);
+				const toOffset = editor.posToOffset(to);
+
+				const ipfsLink =
+					findLinkAtPos(content, fromOffset) ??
+					findLinkAtPos(content, toOffset);
+
+				if (ipfsLink) {
+					const isEncrypted = isEncryptedLink(ipfsLink.text);
+					if (isEncrypted) {
+						menu.addItem((item) => {
+							item.setTitle(t("decryptLink"))
+								.setIcon("lock-open")
+								.onClick(() => {
+									decryptLink(
+										this.app,
+										this.cas,
+										this.encryptionService,
+										this.urlResolver,
+										this.referenceManger,
+										this.settings.primaryDir,
+										editor,
+										ipfsLink.start,
+										ipfsLink.end,
+										ipfsLink.text,
+										view.file?.path,
+									).catch(showError);
+								});
+						});
+					} else {
+						menu.addItem((item) => {
+							item.setTitle(t("encryptLink"))
+								.setIcon("lock")
+								.onClick(() => {
+									encryptLink(
+										this.app,
+										this.cas,
+										this.encryptionService,
+										this.urlResolver,
+										this.referenceManger,
+										this.settings.primaryDir,
+										editor,
+										ipfsLink.start,
+										ipfsLink.end,
+										ipfsLink.text,
+										view.file?.path,
+									).catch(showError);
+								});
+						});
+					}
+					return;
+				}
 
 				const link =
-					this.lockManager.findLinkAtOffset(
-						content,
-						editor.posToOffset(from),
-					) ??
-					this.lockManager.findLinkAtOffset(
-						content,
-						editor.posToOffset(to),
-					);
+					this.lockManager.findLinkAtOffset(content, fromOffset) ??
+					this.lockManager.findLinkAtOffset(content, toOffset);
 
 				if (link) {
 					if (
@@ -240,49 +287,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										.catch(showError);
 								});
 						});
-					} else if (link.link.startsWith("ipfs://")) {
-						const isEncrypted = isEncryptedLink(link.link);
-						if (isEncrypted) {
-							menu.addItem((item) => {
-								item.setTitle(t("decryptLink"))
-									.setIcon("lock-open")
-									.onClick(() => {
-										decryptLink(
-											this.app,
-											this.cas,
-											this.encryptionService,
-											this.urlResolver,
-											this.referenceManger,
-											this.settings.primaryDir,
-											editor,
-											link.start,
-											link.end,
-											link.link,
-											view.file?.path,
-										).catch(showError);
-									});
-							});
-						} else {
-							menu.addItem((item) => {
-								item.setTitle(t("encryptLink"))
-									.setIcon("lock")
-									.onClick(() => {
-										encryptLink(
-											this.app,
-											this.cas,
-											this.encryptionService,
-											this.urlResolver,
-											this.referenceManger,
-											this.settings.primaryDir,
-											editor,
-											link.start,
-											link.end,
-											link.link,
-											view.file?.path,
-										).catch(showError);
-									});
-							});
-						}
 					}
 				}
 			}),
