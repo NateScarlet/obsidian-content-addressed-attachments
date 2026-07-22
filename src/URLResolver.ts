@@ -319,6 +319,17 @@ export class URLResolver {
 
 			// 大文件：解密到临时缓存目录
 			const cacheDir = this.settings().decryptedCacheDir;
+			if (!cacheDir) {
+				console.error(
+					`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
+				);
+				new Notice(t("decryptedCacheDirNotSet")(encryptedPath));
+				const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200"><rect width="100%" height="100%" fill="%232d3748"/><text x="50%" y="45%" dominant-baseline="middle" text-anchor="middle" fill="%23e2e8f0" font-family="sans-serif" font-size="14">Decryption cache directory not set</text><text x="50%" y="65%" dominant-baseline="middle" text-anchor="middle" fill="%23a0aec0" font-family="sans-serif" font-size="12">Please set Decrypted Cache Dir or increase Max Blob Size</text></svg>`;
+				return {
+					url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+				};
+			}
+
 			const cacheFilename = `dec-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 			const cachePath = `${cacheDir}/${cacheFilename}`;
 
@@ -344,9 +355,13 @@ const { t } = defineLocales({
 	en: {
 		keyNotFound: (fp: string, path: string) =>
 			`Encryption key ${fp} not found. Cannot decrypt ${path}`,
+		decryptedCacheDirNotSet: (path: string) =>
+			`Decrypted cache directory not configured. Please set Decrypted Cache Dir or increase Max Blob Size for ${path}`,
 	},
 	zh: {
 		keyNotFound: (fp: string, path: string) =>
 			`加密密钥 ${fp} 未找到，无法解密 ${path}`,
+		decryptedCacheDirNotSet: (path: string) =>
+			`未设置解密缓存目录。请在设置中配置文件解密缓存目录或提高内存解密上限：${path}`,
 	},
 });

@@ -20,7 +20,7 @@ export interface Settings {
 }
 
 export const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB
-export const DEFAULT_DECRYPTED_CACHE_DIR = ".attachments/cas/decrypted-cache";
+export const DEFAULT_DECRYPTED_CACHE_DIR = "";
 
 interface SettingsV0 {
 	version: undefined;

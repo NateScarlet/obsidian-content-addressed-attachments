@@ -1,7 +1,10 @@
-import { PluginSettingTab, Setting, Notice, Modal, type App } from "obsidian";
+import { PluginSettingTab, Setting, Notice } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
+import { ConfirmDeleteKeyModal } from "./modals/ConfirmDeleteKeyModal";
+import { ExportKeysModal } from "./modals/ExportKeysModal";
+import { ImportKeysModal } from "./modals/ImportKeysModal";
 import clsx from "clsx";
 import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
@@ -9,7 +12,6 @@ import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import ignore from "ignore";
-import type { KeyManager } from "#src/lib/encryption/KeyManager";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
 
@@ -426,157 +428,3 @@ const { t } = defineLocales({
 	},
 });
 //#endregion
-
-export class ExportKeysModal extends Modal {
-	private passphraseInput!: HTMLInputElement;
-
-	constructor(
-		app: App,
-		private keyManager: KeyManager,
-	) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("keyExportTitle") });
-		contentEl.createEl("p", { text: t("keyExportDesc") });
-
-		new Setting(contentEl)
-			.setName(t("keyPassphraseLabel"))
-			.addText((text) => {
-				text.inputEl.type = "password";
-				text.setPlaceholder(t("keyPassphrasePlaceholder"));
-				this.passphraseInput = text.inputEl;
-			});
-
-		new Setting(contentEl)
-			.addButton((btn) =>
-				btn.setButtonText(t("cancel")).onClick(() => this.close()),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("exportAllKeys"))
-					.setCta()
-					.onClick(async () => {
-						const passphrase = this.passphraseInput.value;
-						if (!passphrase) return;
-						try {
-							const encrypted =
-								await this.keyManager.exportAllKeys(passphrase);
-							await navigator.clipboard.writeText(encrypted);
-							new Notice(t("exportAllKeysSuccess"));
-							this.close();
-						} catch (err) {
-							showError(err);
-						}
-					}),
-			);
-	}
-}
-
-export class ImportKeysModal extends Modal {
-	private passphraseInput!: HTMLInputElement;
-	private statusEl!: HTMLElement;
-	private encryptedData = "";
-
-	constructor(
-		app: App,
-		private keyManager: KeyManager,
-	) {
-		super(app);
-	}
-
-	async onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("keyImportTitle") });
-		contentEl.createEl("p", { text: t("keyImportDesc") });
-
-		this.statusEl = contentEl.createEl("p", {
-			text: t("keyImportReadingClipboard"),
-		});
-
-		try {
-			const text = await navigator.clipboard.readText();
-			const parsed = JSON.parse(text) as {
-				salt?: unknown;
-				iv?: unknown;
-				data?: unknown;
-			};
-			if (parsed?.salt && parsed?.iv && parsed?.data) {
-				this.encryptedData = text;
-				this.statusEl.textContent = t("keyImportClipboardOk");
-			} else {
-				this.statusEl.textContent = t("keyImportClipboardInvalid");
-			}
-		} catch {
-			this.statusEl.textContent = t("keyImportClipboardUnavailable");
-		}
-
-		new Setting(contentEl)
-			.setName(t("keyPassphraseLabel"))
-			.addText((text) => {
-				text.inputEl.type = "password";
-				text.setPlaceholder(t("keyPassphrasePlaceholder"));
-				this.passphraseInput = text.inputEl;
-			});
-
-		new Setting(contentEl)
-			.addButton((btn) =>
-				btn.setButtonText(t("cancel")).onClick(() => this.close()),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("importKeys"))
-					.setCta()
-					.onClick(async () => {
-						const passphrase = this.passphraseInput.value;
-						if (!this.encryptedData || !passphrase) return;
-						try {
-							const count = await this.keyManager.importAllKeys(
-								this.encryptedData,
-								passphrase,
-							);
-							new Notice(t("keyImportSuccess")(count));
-							this.close();
-						} catch {
-							new Notice(t("keyImportErrorInvalid"));
-						}
-					}),
-			);
-	}
-}
-
-export class ConfirmDeleteKeyModal extends Modal {
-	constructor(
-		app: App,
-		private keyName: string,
-		private keyFingerprint: string,
-		private onDelete: () => void,
-	) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("confirmDeleteKeyTitle") });
-		contentEl.createEl("p", {
-			text: t("confirmDeleteKeyDesc")(this.keyName, this.keyFingerprint),
-		});
-
-		new Setting(contentEl)
-			.addButton((btn) =>
-				btn.setButtonText(t("cancel")).onClick(() => this.close()),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("delete"))
-					// eslint-disable-next-line @typescript-eslint/no-deprecated
-					.setWarning()
-					.onClick(() => {
-						this.onDelete();
-						this.close();
-					}),
-			);
-	}
-}
