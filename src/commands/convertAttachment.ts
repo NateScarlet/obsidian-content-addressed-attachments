@@ -9,6 +9,8 @@ import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 
+import type ReferenceManager from "#src/ReferenceManager";
+
 const { t } = defineLocales({
 	en: {
 		encryptLink: "Encrypt this link",
@@ -17,6 +19,8 @@ const { t } = defineLocales({
 		decryptLinkSuccess: "Link decrypted",
 		noKeyAvailable:
 			"No encryption key available. Create one in settings first.",
+		fileStillReferenced: (paths: string) =>
+			`Source file is still referenced in other notes (${paths}), skipping trash.`,
 	},
 	zh: {
 		encryptLink: "加密此链接",
@@ -24,6 +28,8 @@ const { t } = defineLocales({
 		encryptLinkSuccess: "链接已加密",
 		decryptLinkSuccess: "链接已解密",
 		noKeyAvailable: "没有可用加密密钥。请在设置中先创建密钥。",
+		fileStillReferenced: (paths: string) =>
+			`原文件仍被其他笔记引用（${paths}），跳过清理。`,
 	},
 });
 
@@ -32,6 +38,25 @@ interface LinkPos {
 	end: number;
 	text: string;
 	isEmbed: boolean;
+}
+
+async function trashIfUnreferenced(
+	cas: CAS,
+	referenceManager: ReferenceManager,
+	cid: CID,
+	currentNotePath?: string,
+): Promise<void> {
+	const referencingFiles: string[] = [];
+	for await (const path of referenceManager.findFilePath(cid, undefined)) {
+		if (currentNotePath && path === currentNotePath) continue;
+		referencingFiles.push(path);
+	}
+
+	if (referencingFiles.length > 0) {
+		new Notice(t("fileStillReferenced")(referencingFiles.join(", ")));
+	} else {
+		await cas.trash(cid);
+	}
 }
 
 function findLinkAtOffset(
@@ -85,6 +110,7 @@ export async function encryptLink(
 	cas: CAS,
 	encryptionService: EncryptionService,
 	urlResolver: URLResolver,
+	referenceManager: ReferenceManager,
 	dir: string,
 	editor: Editor,
 	linkStart: number,
@@ -124,6 +150,9 @@ export async function encryptLink(
 		file,
 	);
 	const { cid: newCid } = await cas.save(dir, encryptedFile);
+	if (!newCid.equals(parsed.cid)) {
+		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
+	}
 	const newURL = new IPFSLink({
 		cid: newCid,
 		filename: encryptedFile.name,
@@ -143,11 +172,13 @@ export async function decryptLink(
 	cas: CAS,
 	encryptionService: EncryptionService,
 	urlResolver: URLResolver,
+	referenceManager: ReferenceManager,
 	dir: string,
 	editor: Editor,
 	linkStart: number,
 	linkEnd: number,
 	linkText: string,
+	notePath?: string,
 ): Promise<void> {
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
@@ -176,6 +207,9 @@ export async function decryptLink(
 		{ type: decrypted.mimeType },
 	);
 	const { cid: newCid } = await cas.save(dir, file);
+	if (!newCid.equals(parsed.cid)) {
+		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
+	}
 	const newURL = new IPFSLink({
 		cid: newCid,
 		filename: file.name,
@@ -207,6 +241,7 @@ export async function encryptNote(
 	cas: CAS,
 	encryptionService: EncryptionService,
 	urlResolver: URLResolver,
+	referenceManager: ReferenceManager,
 	file: TFile,
 	keyFingerprint: string,
 	dir: string,
@@ -240,6 +275,14 @@ export async function encryptNote(
 			origFile,
 		);
 		const { cid: newCid } = await cas.save(dir, encryptedFile);
+		if (!newCid.equals(parsed.cid)) {
+			await trashIfUnreferenced(
+				cas,
+				referenceManager,
+				parsed.cid,
+				file.path,
+			);
+		}
 
 		return new IPFSLink({
 			cid: newCid,

@@ -234,6 +234,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 										this.plugin.cas,
 										this.plugin.encryptionService,
 										this.plugin.urlResolver,
+										this.plugin.referenceManger,
 										file,
 										keyFingerprint,
 										this.plugin.settings.primaryDir,

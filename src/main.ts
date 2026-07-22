@@ -258,11 +258,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 											this.cas,
 											this.encryptionService,
 											this.urlResolver,
+											this.referenceManger,
 											this.settings.primaryDir,
 											editor,
 											link.start,
 											link.end,
 											link.link,
+											view.file?.path,
 										).catch(showError);
 									});
 							});
@@ -276,6 +278,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 											this.cas,
 											this.encryptionService,
 											this.urlResolver,
+											this.referenceManger,
 											this.settings.primaryDir,
 											editor,
 											link.start,
