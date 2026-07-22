@@ -25,18 +25,16 @@ describe("CryptoService", () => {
 		it("encrypts and decrypts a known plaintext", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("Hello, World!").buffer;
-			const { data, fingerprint } = await cs.encrypt(
+			const data = await cs.encrypt(
 				key,
 				"1234567812345678",
 				plaintext,
 				"text/plain",
 			);
 
-			expect(fingerprint).toBe("1234567812345678");
-			expect(fingerprint.length).toBe(16); // 8 bytes as hex
 			expect(data.byteLength).toBeGreaterThan(plaintext.byteLength);
 
-			const decrypted = await cs.decrypt(key, data);
+			const { plaintext: decrypted } = await cs.decrypt(key, data);
 			const decryptedText = new TextDecoder().decode(decrypted);
 			expect(decryptedText).toBe("Hello, World!");
 		});
@@ -46,18 +44,36 @@ describe("CryptoService", () => {
 			const binaryData = new Uint8Array([
 				0, 1, 255, 128, 64, 32, 16, 8, 4, 2,
 			]).buffer;
-			const { data } = await cs.encrypt(
+			const data = await cs.encrypt(
 				key,
 				"1234567812345678",
 				binaryData,
 				"application/octet-stream",
 			);
 
-			const decrypted = await cs.decrypt(key, data);
+			const { plaintext: decrypted } = await cs.decrypt(key, data);
 			const decryptedBytes = new Uint8Array(decrypted);
 			expect(Array.from(decryptedBytes)).toEqual([
 				0, 1, 255, 128, 64, 32, 16, 8, 4, 2,
 			]);
+		});
+
+		it("decrypts using keyResolver callback", async () => {
+			const key = await cs.generateKey();
+			const plaintext = new TextEncoder().encode("test callback").buffer;
+			const data = await cs.encrypt(
+				key,
+				"my-key-fp-123456",
+				plaintext,
+				"text/plain",
+			);
+
+			const { plaintext: decrypted, header } = await cs.decrypt(
+				(fp) => (fp === "my-key-fp-123456" ? key : undefined),
+				data,
+			);
+			expect(header.keyFingerprint).toBe("my-key-fp-123456");
+			expect(new TextDecoder().decode(decrypted)).toBe("test callback");
 		});
 
 		it("produces different ciphertext for same plaintext with different keys", async () => {
@@ -65,27 +81,26 @@ describe("CryptoService", () => {
 			const key2 = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("same data").buffer;
 
-			const { data: data1, fingerprint: fp1 } = await cs.encrypt(
+			const data1 = await cs.encrypt(
 				key1,
 				"fp11111111111111",
 				plaintext,
 				"text/plain",
 			);
-			const { data: data2, fingerprint: fp2 } = await cs.encrypt(
+			const data2 = await cs.encrypt(
 				key2,
 				"fp22222222222222",
 				plaintext,
 				"text/plain",
 			);
 
-			expect(fp1).not.toBe(fp2);
 			expect(Buffer.from(data1).equals(Buffer.from(data2))).toBe(false);
 		});
 
 		it("preserves original format through header", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("test").buffer;
-			const { data } = await cs.encrypt(
+			const data = await cs.encrypt(
 				key,
 				"1234567812345678",
 				plaintext,
@@ -101,7 +116,7 @@ describe("CryptoService", () => {
 		it("extracts key fingerprint, IV, authTag, and format", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("test").buffer;
-			const { data, fingerprint } = await cs.encrypt(
+			const data = await cs.encrypt(
 				key,
 				"1234567812345678",
 				plaintext,
@@ -109,7 +124,7 @@ describe("CryptoService", () => {
 			);
 
 			const header = cs.parseHeader(data);
-			expect(header.keyFingerprint).toBe(fingerprint);
+			expect(header.keyFingerprint).toBe("1234567812345678");
 			expect(header.iv.length).toBe(12);
 			expect(header.authTag.length).toBe(16);
 			expect(header.originalFormat).toBe("application/pdf");
@@ -129,7 +144,7 @@ describe("CryptoService", () => {
 	describe("isEncryptedData", () => {
 		it("returns true for valid encrypted data", async () => {
 			const key = await cs.generateKey();
-			const { data } = await cs.encrypt(
+			const data = await cs.encrypt(
 				key,
 				"1234567812345678",
 				new ArrayBuffer(0),
@@ -160,7 +175,7 @@ describe("CryptoService", () => {
 			const key1 = await cs.generateKey();
 			const key2 = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("secret").buffer;
-			const { data } = await cs.encrypt(
+			const data = await cs.encrypt(
 				key1,
 				"1234567812345678",
 				plaintext,

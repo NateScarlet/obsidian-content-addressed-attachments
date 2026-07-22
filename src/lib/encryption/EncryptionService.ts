@@ -48,7 +48,7 @@ export class EncryptionService {
 		if (!key) throw new Error(`Encryption key ${keyFingerprint} not found`);
 
 		const buffer = await file.arrayBuffer();
-		const { data } = await this.cryptoService.encrypt(
+		const data = await this.cryptoService.encrypt(
 			key,
 			keyFingerprint,
 			buffer,
@@ -68,15 +68,10 @@ export class EncryptionService {
 	): Promise<DecryptedFile | undefined> {
 		if (!this.cryptoService.isEncryptedData(encryptedData)) return;
 
-		const header = this.cryptoService.parseHeader(encryptedData);
-		const key = await this.keyManager.getKey(header.keyFingerprint);
-		if (!key) {
-			throw new Error(
-				`Decryption key ${header.keyFingerprint} not found. The key may have been deleted.`,
-			);
-		}
-
-		const plaintext = await this.cryptoService.decrypt(key, encryptedData);
+		const { plaintext, header } = await this.cryptoService.decrypt(
+			(fp) => this.keyManager.getKey(fp),
+			encryptedData,
+		);
 
 		return {
 			data: plaintext,

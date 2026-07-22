@@ -72,7 +72,7 @@ export class CryptoService {
 		fingerprint: string,
 		plaintext: ArrayBuffer,
 		originalFormat: string,
-	): Promise<{ data: ArrayBuffer; fingerprint: string }> {
+	): Promise<ArrayBuffer> {
 		const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
 		const encrypted = await crypto.subtle.encrypt(
@@ -142,7 +142,7 @@ export class CryptoService {
 
 		result.set(ciphertext, offset);
 
-		return { data: result.buffer, fingerprint };
+		return result.buffer;
 	}
 
 	/** 从加密文件内容中解析头部 */
@@ -187,10 +187,25 @@ export class CryptoService {
 
 	/** 解密加密文件内容 */
 	async decrypt(
-		key: CryptoKey,
+		keyOrResolver:
+			| CryptoKey
+			| ((
+					fingerprint: string,
+			  ) => Promise<CryptoKey | undefined> | CryptoKey | undefined),
 		encryptedData: ArrayBuffer,
-	): Promise<ArrayBuffer> {
+	): Promise<{ plaintext: ArrayBuffer; header: EncryptedFileHeader }> {
 		const header = this.parseHeader(encryptedData);
+
+		const key =
+			typeof keyOrResolver === "function"
+				? await keyOrResolver(header.keyFingerprint)
+				: keyOrResolver;
+
+		if (!key) {
+			throw new Error(
+				`Decryption key ${header.keyFingerprint} not found. The key may have been deleted.`,
+			);
+		}
 
 		const data = new Uint8Array(encryptedData);
 		const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -228,7 +243,7 @@ export class CryptoService {
 			),
 		);
 
-		return plaintext;
+		return { plaintext, header };
 	}
 
 	arrayBufferToBase64(buf: ArrayBuffer): string {
