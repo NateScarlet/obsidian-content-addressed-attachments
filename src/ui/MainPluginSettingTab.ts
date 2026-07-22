@@ -238,7 +238,6 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						// eslint-disable-next-line @typescript-eslint/no-deprecated
 						display: () => this.display(),
 						app: this.app,
-						RenameKeyModal,
 						ConfirmDeleteKeyModal,
 						ExportKeysModal,
 						ImportKeysModal,
@@ -427,48 +426,6 @@ const { t } = defineLocales({
 	},
 });
 //#endregion
-
-export class RenameKeyModal extends Modal {
-	constructor(
-		app: App,
-		private fingerprint: string,
-		private currentName: string,
-		private keyManager: KeyManager,
-	) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("keyEditTitle") });
-
-		let input: HTMLInputElement;
-		new Setting(contentEl).setName(t("keyNameLabel")).addText((text) => {
-			text.setPlaceholder(t("keyRenamePlaceholder"));
-			text.setValue(this.currentName);
-			input = text.inputEl;
-		});
-
-		new Setting(contentEl)
-			.addButton((btn) =>
-				btn.setButtonText(t("cancel")).onClick(() => this.close()),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("rename"))
-					.setCta()
-					.onClick(async () => {
-						const newName = input.value?.trim() || this.currentName;
-						await this.keyManager.renameKey(
-							this.fingerprint,
-							newName,
-						);
-						new Notice(t("keyRenameSuccess")(newName));
-						this.close();
-					}),
-			);
-	}
-}
 
 export class ExportKeysModal extends Modal {
 	private passphraseInput!: HTMLInputElement;

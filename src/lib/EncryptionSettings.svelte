@@ -65,7 +65,6 @@
 		saveSettings,
 		display,
 		app,
-		RenameKeyModal,
 		ConfirmDeleteKeyModal,
 		ExportKeysModal,
 		ImportKeysModal,
@@ -76,12 +75,6 @@
 		saveSettings: () => Promise<void>;
 		display: () => void;
 		app: App;
-		RenameKeyModal: new (
-			app: App,
-			fingerprint: string,
-			currentName: string,
-			keyManager: KeyManager,
-		) => { open(): void };
 		ConfirmDeleteKeyModal: new (
 			app: App,
 			name: string,
@@ -130,8 +123,14 @@
 		}
 	}
 
-	function renameKey(key: EncryptionKeyInfo) {
-		new RenameKeyModal(app, key.fingerprint, key.name, encryptionService.keyManager).open();
+	async function updateKeyName(key: EncryptionKeyInfo, newName: string) {
+		const trimmed = newName.trim();
+		try {
+			await encryptionService.keyManager.renameKey(key.fingerprint, trimmed);
+			await loadKeys();
+		} catch (err) {
+			showError(err);
+		}
 	}
 
 	function deleteKey(key: EncryptionKeyInfo) {
@@ -184,13 +183,19 @@
 
 {#each keys as key (key.fingerprint)}
 	<div class="flex items-center justify-between gap-2 py-2 border-b border-base-300">
-		<div class="flex flex-col min-w-0">
-			<span class="font-medium truncate">
-				{key.name || t("unnamedKey")}
+		<div class="flex flex-col min-w-0 flex-1">
+			<div class="flex items-center gap-1.5 min-w-0">
+				<input
+					type="text"
+					class="font-medium bg-transparent border-b border-transparent focus:border-base-400 focus:bg-base-100 px-1 py-0.5 min-w-32 max-w-full text-sm"
+					placeholder={t("unnamedKey")}
+					value={key.name}
+					onchange={(e) => void updateKeyName(key, (e.target as HTMLInputElement).value)}
+				/>
 				{#if key === keys[0]}
-					<span class="ml-1 text-xs bg-accent text-accent-inverse px-1 py-0.5 rounded">{t("primary")}</span>
+					<span class="text-xs bg-accent text-accent-inverse px-1 py-0.5 rounded shrink-0">{t("primary")}</span>
 				{/if}
-			</span>
+			</div>
 			<span class="text-xs text-base-400 truncate">{t("fingerprint")}: {key.fingerprint}</span>
 		</div>
 		<div class="flex gap-1 shrink-0">
@@ -203,13 +208,6 @@
 					{t("setAsPrimary")}
 				</button>
 			{/if}
-			<button
-				type="button"
-				class="px-2 py-1 text-sm hover:bg-base-200 rounded"
-				onclick={() => renameKey(key)}
-			>
-				{t("rename")}
-			</button>
 			<button
 				type="button"
 				class="px-2 py-1 text-sm hover:bg-error/10 text-error rounded"
