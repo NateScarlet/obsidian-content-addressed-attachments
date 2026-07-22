@@ -167,4 +167,11 @@ export class EncryptionService {
 	async getPrimaryKey(): Promise<EncryptionKeyInfo | undefined> {
 		return this.keyManager.getPrimaryKey();
 	}
+
+	/** 获取加密密钥（跳过已软删除的密钥） */
+	async getKeyForEncrypt(
+		fingerprint: string,
+	): Promise<CryptoKey | undefined> {
+		return this.keyManager.getKeyForEncrypt(fingerprint);
+	}
 }

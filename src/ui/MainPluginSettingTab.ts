@@ -222,13 +222,29 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							keyFingerprint: string,
 							pattern: string,
 						) => {
+							const trimmedPattern = pattern.trim();
+							if (!trimmedPattern) {
+								new Notice(t("noMatchingFiles"));
+								return;
+							}
+							const patterns = trimmedPattern
+								.split("\n")
+								.map((s) => s.trim())
+								.filter((s) => s && !s.startsWith("#"));
+
+							if (patterns.length === 0) {
+								new Notice(t("noMatchingFiles"));
+								return;
+							}
+
 							const { encryptNote } = await import(
 								"#src/commands/convertAttachment"
 							);
 							const files = this.app.vault.getMarkdownFiles();
 							let total = 0;
+							const ig = ignore().add(patterns);
 							for (const file of files) {
-								if (ignore().add(pattern).ignores(file.path)) {
+								if (ig.ignores(file.path)) {
 									const count = await encryptNote(
 										this.app,
 										this.plugin.cas,
@@ -242,7 +258,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 									total += count;
 								}
 							}
-							new Notice(`Encrypted ${total} link(s)`);
+							new Notice(t("encryptMatchingNotesSuccess")(total));
 						},
 					},
 				}),
@@ -273,11 +289,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("lockAllNotes"))
 			.setDesc(t("lockAllNotesDesc"))
-			.addButton((button) =>
-				button.setButtonText(t("execute")).onClick(() => {
+			.addButton((btn) => {
+				btn.setButtonText(t("execute")).onClick(() => {
 					this.plugin.lockManager.execute("all").catch(showError);
-				}),
-			);
+				});
+			});
 	}
 
 	onClose(): void {
@@ -289,14 +305,12 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 const { t } = defineLocales({
 	en: {
 		primaryStorageDirectory: "Primary storage directory",
-		primaryStorageDirectoryDesc:
-			"Newly added attachments will be stored in this directory",
+		primaryStorageDirectoryDesc: "Directory for new attachments",
 		downloadDirectory: "Download directory",
-		downloadDirectoryDesc:
-			"Downloaded file will be stored in this directory",
+		downloadDirectoryDesc: "Directory for files downloaded from the web",
 		gateways: "Gateways",
 		gatewaysDesc:
-			"Used to fetch files not available locally, defined using Mustache template syntax. If the URL is empty, only read existing files from the download directory (set in options)",
+			"Used to fetch missing local files, using Mustache template syntax. If empty, only existing files from the download directory will be read.",
 		addGateway: "Add gateway",
 		gatewayOptions: "Gateway options",
 		willDeleteGateway: (name: string) => `Will delete gateway '${name}'`,
@@ -317,6 +331,9 @@ const { t } = defineLocales({
 		encryptionUnavailable: "Encryption unavailable",
 		encryptionUnavailableDesc:
 			"Encryption requires Obsidian v1.11.4+. Please upgrade Obsidian to use this feature.",
+		encryptMatchingNotesSuccess: (count: number) =>
+			`Encrypted ${count} link(s)`,
+		noMatchingFiles: "No matching notes found for rule",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -344,6 +361,9 @@ const { t } = defineLocales({
 		encryptionUnavailable: "加密不可用",
 		encryptionUnavailableDesc:
 			"加密功能需要 Obsidian v1.11.4+。请升级 Obsidian 以使用此功能。",
+		encryptMatchingNotesSuccess: (count: number) =>
+			`已加密 ${count} 个链接`,
+		noMatchingFiles: "未找到符合路径规则的笔记",
 	},
 });
 //#endregion

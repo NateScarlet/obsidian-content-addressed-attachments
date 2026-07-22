@@ -41,6 +41,7 @@
 			permanentlyDeleteDesc: "Permanently delete keys deleted more than X days ago",
 			days: "days",
 			permanentlyDeleteConfirm: "Permanently delete keys older than the specified days? This cannot be undone.",
+			permanentlyDeletedKeysSuccess: (n: number) => `Permanently deleted ${n} key(s)`,
 		},
 		zh: {
 			fingerprint: "指纹",
@@ -75,6 +76,7 @@
 			permanentlyDeleteDesc: "永久删除超过 X 天前删除的密钥",
 			days: "天",
 			permanentlyDeleteConfirm: "确定要永久删除超过指定天数的密钥吗？此操作不可撤销。",
+			permanentlyDeletedKeysSuccess: (n: number) => `已永久删除 ${n} 个密钥`,
 		},
 	});
 
@@ -192,7 +194,7 @@
 			const count = await encryptionService.permanentlyDeleteKeys(
 				permanentDeleteDays,
 			);
-			new Notice(`Permanently deleted ${count} key(s)`);
+			new Notice(t("permanentlyDeletedKeysSuccess")(count));
 			await loadKeys();
 			display();
 		} catch (err) {

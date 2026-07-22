@@ -246,6 +246,17 @@ export async function encryptNote(
 	keyFingerprint: string,
 	dir: string,
 ): Promise<number> {
+	const fp =
+		(keyFingerprint
+			? await encryptionService
+					.getKeyForEncrypt(keyFingerprint)
+					.then((k) => (k ? keyFingerprint : undefined))
+			: undefined) ??
+		(await encryptionService.resolveKeyForNotePath(file.path)) ??
+		(await encryptionService.getPrimaryKey())?.fingerprint;
+
+	if (!fp) return 0;
+
 	const transformer = new VaultLinkTransformer(app);
 	return transformer.transformFile(file, async (_match, linkText) => {
 		const parsed = IPFSLink.parse(linkText);
@@ -271,7 +282,7 @@ export async function encryptNote(
 			},
 		);
 		const { encryptedFile } = await encryptionService.encryptFile(
-			keyFingerprint,
+			fp,
 			origFile,
 		);
 		const { cid: newCid } = await cas.save(dir, encryptedFile);
