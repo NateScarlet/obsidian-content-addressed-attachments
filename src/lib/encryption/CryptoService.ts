@@ -69,12 +69,10 @@ export class CryptoService {
 	/** 加密原始数据，返回完整的加密文件内容（含头） */
 	async encrypt(
 		key: CryptoKey,
+		fingerprint: string,
 		plaintext: ArrayBuffer,
 		originalFormat: string,
 	): Promise<{ data: ArrayBuffer; fingerprint: string }> {
-		const keyData = await this.exportKeyRaw(key);
-		const fingerprint = await this.computeFingerprint(keyData);
-
 		const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
 		const encrypted = await crypto.subtle.encrypt(

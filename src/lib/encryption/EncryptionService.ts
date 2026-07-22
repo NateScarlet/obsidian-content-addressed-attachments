@@ -48,8 +48,9 @@ export class EncryptionService {
 		if (!key) throw new Error(`Encryption key ${keyFingerprint} not found`);
 
 		const buffer = await file.arrayBuffer();
-		const { data, fingerprint } = await this.cryptoService.encrypt(
+		const { data } = await this.cryptoService.encrypt(
 			key,
+			keyFingerprint,
 			buffer,
 			file.type,
 		);
@@ -58,7 +59,7 @@ export class EncryptionService {
 			type: ENCRYPTED_FORMAT,
 		});
 
-		return { encryptedFile, fingerprint };
+		return { encryptedFile, fingerprint: keyFingerprint };
 	}
 
 	/** 解密加密文件内容 */

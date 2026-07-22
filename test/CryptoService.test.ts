@@ -25,9 +25,9 @@ describe("CryptoService", () => {
 		it("encrypts and decrypts a known plaintext", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("Hello, World!").buffer;
-			const { data, fingerprint } = await cs.encrypt(key, plaintext, "text/plain");
+			const { data, fingerprint } = await cs.encrypt(key, "1234567812345678", plaintext, "text/plain");
 
-			expect(fingerprint).toBeTruthy();
+			expect(fingerprint).toBe("1234567812345678");
 			expect(fingerprint.length).toBe(16); // 8 bytes as hex
 			expect(data.byteLength).toBeGreaterThan(plaintext.byteLength);
 
@@ -39,7 +39,7 @@ describe("CryptoService", () => {
 		it("survives roundtrip with binary data", async () => {
 			const key = await cs.generateKey();
 			const binaryData = new Uint8Array([0, 1, 255, 128, 64, 32, 16, 8, 4, 2]).buffer;
-			const { data } = await cs.encrypt(key, binaryData, "application/octet-stream");
+			const { data } = await cs.encrypt(key, "1234567812345678", binaryData, "application/octet-stream");
 
 			const decrypted = await cs.decrypt(key, data);
 			const decryptedBytes = new Uint8Array(decrypted);
@@ -51,8 +51,8 @@ describe("CryptoService", () => {
 			const key2 = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("same data").buffer;
 
-			const { data: data1, fingerprint: fp1 } = await cs.encrypt(key1, plaintext, "text/plain");
-			const { data: data2, fingerprint: fp2 } = await cs.encrypt(key2, plaintext, "text/plain");
+			const { data: data1, fingerprint: fp1 } = await cs.encrypt(key1, "fp11111111111111", plaintext, "text/plain");
+			const { data: data2, fingerprint: fp2 } = await cs.encrypt(key2, "fp22222222222222", plaintext, "text/plain");
 
 			expect(fp1).not.toBe(fp2);
 			expect(Buffer.from(data1).equals(Buffer.from(data2))).toBe(false);
@@ -61,7 +61,7 @@ describe("CryptoService", () => {
 		it("preserves original format through header", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("test").buffer;
-			const { data } = await cs.encrypt(key, plaintext, "image/png");
+			const { data } = await cs.encrypt(key, "1234567812345678", plaintext, "image/png");
 
 			const header = cs.parseHeader(data);
 			expect(header.originalFormat).toBe("image/png");
@@ -72,7 +72,7 @@ describe("CryptoService", () => {
 		it("extracts key fingerprint, IV, authTag, and format", async () => {
 			const key = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("test").buffer;
-			const { data, fingerprint } = await cs.encrypt(key, plaintext, "application/pdf");
+			const { data, fingerprint } = await cs.encrypt(key, "1234567812345678", plaintext, "application/pdf");
 
 			const header = cs.parseHeader(data);
 			expect(header.keyFingerprint).toBe(fingerprint);
@@ -95,7 +95,7 @@ describe("CryptoService", () => {
 	describe("isEncryptedData", () => {
 		it("returns true for valid encrypted data", async () => {
 			const key = await cs.generateKey();
-			const { data } = await cs.encrypt(key, new ArrayBuffer(0), "text/plain");
+			const { data } = await cs.encrypt(key, "1234567812345678", new ArrayBuffer(0), "text/plain");
 			expect(cs.isEncryptedData(data)).toBe(true);
 		});
 
@@ -119,7 +119,7 @@ describe("CryptoService", () => {
 			const key1 = await cs.generateKey();
 			const key2 = await cs.generateKey();
 			const plaintext = new TextEncoder().encode("secret").buffer;
-			const { data } = await cs.encrypt(key1, plaintext, "text/plain");
+			const { data } = await cs.encrypt(key1, "1234567812345678", plaintext, "text/plain");
 
 			await expect(cs.decrypt(key2, data)).rejects.toThrow();
 		});
