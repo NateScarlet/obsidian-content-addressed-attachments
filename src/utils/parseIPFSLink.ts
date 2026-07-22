@@ -5,7 +5,7 @@ export type IPFSStandardURL = NonNullable<ReturnType<typeof parseIPFSLink>>;
 
 /**
  * @deprecated Use `IPFSLink.parse` instead.
- * TODO: Pending Migration 2 refactoring.
+ * TODO: Pending migration refactoring.
  */
 export default function parseIPFSLink(rawURL: string) {
 	if (rawURL.startsWith("ipfs://")) {

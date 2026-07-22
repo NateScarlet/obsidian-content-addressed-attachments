@@ -2,7 +2,7 @@ import type { CID } from "multiformats";
 
 /**
  * @deprecated Use `IPFSLink` methods instead (`link.toMarkdown()`).
- * TODO: Pending Migration 2 refactoring.
+ * TODO: Pending migration refactoring.
  */
 export default function formatMarkdownLink(file: File, cid: CID): string {
 	const url = new URL(`ipfs://${cid.toString()}`);
