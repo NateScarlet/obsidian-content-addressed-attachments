@@ -19,6 +19,7 @@
 			create: "Create",
 			keyNamePlaceholder: "Key name",
 			unnamedKey: "Unnamed key",
+			defaultKeyName: (ym: string, suffix: string) => `key_${ym}_${suffix}`,
 			exportAllKeys: "Export all keys",
 			importKeys: "Import keys from backup",
 			encryptPathRules: "Auto-encrypt path rules",
@@ -44,6 +45,7 @@
 			create: "创建",
 			keyNamePlaceholder: "密钥名称",
 			unnamedKey: "未命名密钥",
+			defaultKeyName: (ym: string, suffix: string) => `密钥_${ym}_${suffix}`,
 			exportAllKeys: "导出全部密钥",
 			importKeys: "从备份导入密钥",
 			encryptPathRules: "自动加密路径规则",
@@ -90,6 +92,23 @@
 	let keys = $state<EncryptionKeyInfo[]>([]);
 	let newKeyName = $state("");
 
+	function formatYearMonth(date: Date | string): string {
+		const d = date instanceof Date ? date : new Date(date);
+		const year = d.getFullYear();
+		const month = String(d.getMonth() + 1).padStart(2, "0");
+		return `${year}-${month}`;
+	}
+
+	function keyDefaultName(key: EncryptionKeyInfo): string {
+		const ym = formatYearMonth(key.createdAt);
+		const suffix = key.fingerprint.slice(-4);
+		return t("defaultKeyName")(ym, suffix);
+	}
+
+	function keyDisplayName(key: EncryptionKeyInfo): string {
+		return key.name.trim() || keyDefaultName(key);
+	}
+
 	async function loadKeys() {
 		try {
 			keys = await encryptionService.listKeys();
@@ -105,8 +124,8 @@
 	async function createKey() {
 		const name = newKeyName.trim();
 		try {
-			await encryptionService.createKey(name);
-			new Notice(t("keyCreateSuccess")(name || t("unnamedKey")));
+			const info = await encryptionService.createKey(name);
+			new Notice(t("keyCreateSuccess")(keyDisplayName(info)));
 			newKeyName = "";
 			await loadKeys();
 		} catch (err) {
@@ -117,7 +136,7 @@
 	async function setAsPrimary(key: EncryptionKeyInfo) {
 		try {
 			await encryptionService.setPrimaryKey(key.fingerprint);
-			new Notice(t("primarySetSuccess")(key.name || t("unnamedKey")));
+			new Notice(t("primarySetSuccess")(keyDisplayName(key)));
 			await loadKeys();
 		} catch (err) {
 			showError(err);
@@ -135,7 +154,7 @@
 	}
 
 	function deleteKey(key: EncryptionKeyInfo) {
-		new ConfirmDeleteKeyModal(app, key.name || t("unnamedKey"), key.fingerprint, async () => {
+		new ConfirmDeleteKeyModal(app, keyDisplayName(key), key.fingerprint, async () => {
 			await encryptionService.deleteKey(key.fingerprint);
 			await loadKeys();
 			display();
@@ -189,7 +208,7 @@
 				<input
 					type="text"
 					class="font-medium bg-transparent border-b border-transparent focus:border-base-400 focus:bg-base-100 px-1 py-0.5 min-w-32 max-w-full text-sm"
-					placeholder={t("unnamedKey")}
+					placeholder={keyDefaultName(key)}
 					value={key.name}
 					onchange={(e) => void updateKeyName(key, (e.target as HTMLInputElement).value)}
 				/>
@@ -277,7 +296,7 @@
 		>
 			<option value="">({t("primary")})</option>
 			{#each keys as k (k.fingerprint)}
-				<option value={k.fingerprint}>{k.name || t("unnamedKey")}</option>
+				<option value={k.fingerprint}>{keyDisplayName(k)}</option>
 			{/each}
 		</select>
 		<button
