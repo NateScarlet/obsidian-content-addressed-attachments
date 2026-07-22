@@ -23,9 +23,9 @@ import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 import showError from "./utils/showError";
 import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
-import insertAttachment from "./commands/insertAttachment";
-import insertIPFSLinkAtCursor from "./commands/insertIPFSLinkAtCursor";
-import { IPFSLink } from "./utils/IPFSLink";
+import insertAttachment, {
+	processFileAndInsertLink,
+} from "./commands/insertAttachment";
 import {
 	encryptLink,
 	decryptLink,
@@ -133,54 +133,48 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		//#region 事件注册
 		this.registerEvent(
-			this.app.workspace.on("editor-paste", async (e, editor) => {
+			this.app.workspace.on("editor-paste", async (e, editor, info) => {
 				const files = e.clipboardData?.files;
 				if (e.defaultPrevented || !files?.length) {
 					return;
 				}
+				const notePath = info.file?.path ?? "";
 				for (let i = 0; i < files.length; i++) {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const { cid } = await this.cas.save(
+						await processFileAndInsertLink(
+							this.cas,
 							this.settings.primaryDir,
+							editor,
 							file,
+							notePath,
+							this.encryptionService,
 						);
-						const link = new IPFSLink({
-							cid,
-							filename: file.name,
-							format: file.type,
-						});
-						insertIPFSLinkAtCursor(editor, link, {
-							embed: file.type.startsWith("image/"),
-						});
 					}
 				}
 			}),
 		);
 
 		this.registerEvent(
-			this.app.workspace.on("editor-drop", async (e, editor) => {
+			this.app.workspace.on("editor-drop", async (e, editor, info) => {
 				const files = e.dataTransfer?.files;
 				if (e.defaultPrevented || !files?.length) {
 					return;
 				}
+				const notePath = info.file?.path ?? "";
 				for (let i = 0; i < files.length; i++) {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const { cid } = await this.cas.save(
+						await processFileAndInsertLink(
+							this.cas,
 							this.settings.primaryDir,
+							editor,
 							file,
+							notePath,
+							this.encryptionService,
 						);
-						const link = new IPFSLink({
-							cid,
-							filename: file.name,
-							format: file.type,
-						});
-						insertIPFSLinkAtCursor(editor, link, {
-							embed: file.type.startsWith("image/"),
-						});
 					}
 				}
 			}),
