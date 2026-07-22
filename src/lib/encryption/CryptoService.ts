@@ -6,6 +6,8 @@ import {
 	KEY_FINGERPRINT_BYTES,
 	KEY_ALGORITHM,
 	KEY_LENGTH,
+	PBKDF2_ITERATIONS,
+	SALT_LENGTH,
 	type EncryptedFileHeader,
 } from "./types";
 
@@ -227,6 +229,104 @@ export async function decrypt(
 	);
 
 	return plaintext;
+}
+
+export function arrayBufferToBase64(buf: ArrayBuffer): string {
+	const bytes = new Uint8Array(buf);
+	let binary = "";
+	for (let i = 0; i < bytes.byteLength; i++) {
+		binary += String.fromCharCode(bytes[i]);
+	}
+	return btoa(binary);
+}
+
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+	const binary = atob(base64);
+	const buffer = new ArrayBuffer(binary.length);
+	const bytes = new Uint8Array(buffer);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return buffer;
+}
+
+/** 用口令加密字符串，返回 JSON（salt/iv/data 均为 base64） */
+export async function encryptWithPassphrase(
+	plaintext: string,
+	passphrase: string,
+): Promise<string> {
+	const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+	const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+
+	const keyMaterial = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(passphrase),
+		"PBKDF2",
+		false,
+		["deriveKey"],
+	);
+
+	const key = await crypto.subtle.deriveKey(
+		{
+			name: "PBKDF2",
+			salt,
+			iterations: PBKDF2_ITERATIONS,
+			hash: "SHA-256",
+		},
+		keyMaterial,
+		{ name: KEY_ALGORITHM, length: KEY_LENGTH },
+		false,
+		["encrypt"],
+	);
+
+	const encrypted = await crypto.subtle.encrypt(
+		{ name: KEY_ALGORITHM, iv, tagLength: AUTH_TAG_LENGTH * 8 },
+		key,
+		new TextEncoder().encode(plaintext),
+	);
+
+	return JSON.stringify({
+		salt: arrayBufferToBase64(salt.buffer as ArrayBuffer),
+		iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+		data: arrayBufferToBase64(encrypted),
+	});
+}
+
+/** 用口令解密由 encryptWithPassphrase 生成的 JSON */
+export async function decryptWithPassphrase(
+	encryptedJson: string,
+	passphrase: string,
+): Promise<string> {
+	const { salt, iv, data } = JSON.parse(encryptedJson);
+
+	const keyMaterial = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(passphrase),
+		"PBKDF2",
+		false,
+		["deriveKey"],
+	);
+
+	const key = await crypto.subtle.deriveKey(
+		{
+			name: "PBKDF2",
+			salt: base64ToArrayBuffer(salt),
+			iterations: PBKDF2_ITERATIONS,
+			hash: "SHA-256",
+		},
+		keyMaterial,
+		{ name: KEY_ALGORITHM, length: KEY_LENGTH },
+		false,
+		["decrypt"],
+	);
+
+	const decrypted = await crypto.subtle.decrypt(
+		{ name: KEY_ALGORITHM, iv: base64ToArrayBuffer(iv), tagLength: AUTH_TAG_LENGTH * 8 },
+		key,
+		base64ToArrayBuffer(data),
+	);
+
+	return new TextDecoder().decode(decrypted);
 }
 
 /** 检查数据是否为加密文件格式 */

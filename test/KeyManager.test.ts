@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { KeyManager } from "#src/lib/encryption/KeyManager";
 import type { KeyStorage } from "#src/lib/encryption/types";
+import { decryptWithPassphrase } from "#src/lib/encryption/CryptoService";
 
 function createMockStorage(): KeyStorage {
 	const store = new Map<string, string>();
@@ -167,6 +168,46 @@ describe("KeyManager", () => {
 			const exported = (await km.exportKey(info.fingerprint))!;
 
 			await expect(km.importKey("duplicate", exported)).rejects.toThrow("already exists");
+		});
+	});
+
+	describe("exportAllKeys / importAllKeys", () => {
+		it("exports all keys encrypted with passphrase", async () => {
+			await km.createKey("key1");
+			await km.createKey("key2");
+			const encrypted = await km.exportAllKeys("backup-pass");
+			expect(encrypted).toBeTruthy();
+
+			const plaintext = await decryptWithPassphrase(encrypted, "backup-pass");
+			const parsed = JSON.parse(plaintext);
+			expect(parsed).toHaveLength(2);
+		});
+
+		it("imports keys from backup", async () => {
+			const origKm = new KeyManager(createMockStorage());
+			await origKm.createKey("imported-key");
+			const encrypted = await origKm.exportAllKeys("pass");
+
+			// start fresh — no keys
+			expect((await km.listKeys())).toHaveLength(0);
+
+			const count = await km.importAllKeys(encrypted, "pass");
+			expect(count).toBe(1);
+
+			const keys = await km.listKeys();
+			expect(keys).toHaveLength(1);
+			expect(keys[0].name).toBe("imported-key");
+		});
+
+		it("reuses existing keys on import (skips duplicates)", async () => {
+			const origKm = new KeyManager(createMockStorage());
+			await origKm.createKey("dup-key");
+			const encrypted = await origKm.exportAllKeys("pass");
+
+			// import same keys twice
+			await km.importAllKeys(encrypted, "pass");
+			const count = await km.importAllKeys(encrypted, "pass");
+			expect(count).toBe(0);
 		});
 	});
 });

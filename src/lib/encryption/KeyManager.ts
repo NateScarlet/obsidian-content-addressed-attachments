@@ -4,6 +4,10 @@ import {
 	importKeyRawEncrypt,
 	importKeyRaw,
 	computeFingerprint,
+	arrayBufferToBase64,
+	base64ToArrayBuffer,
+	encryptWithPassphrase,
+	decryptWithPassphrase,
 } from "./CryptoService";
 import {
 	STORAGE_KEY_PREFIX,
@@ -13,25 +17,6 @@ import {
 
 function toStorageKey(fingerprint: string): string {
 	return `${STORAGE_KEY_PREFIX}${fingerprint}`;
-}
-
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-	const bytes = new Uint8Array(buf);
-	let binary = "";
-	for (let i = 0; i < bytes.byteLength; i++) {
-		binary += String.fromCharCode(bytes[i]);
-	}
-	return btoa(binary);
-}
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-	const binary = atob(base64);
-	const buffer = new ArrayBuffer(binary.length);
-	const bytes = new Uint8Array(buffer);
-	for (let i = 0; i < binary.length; i++) {
-		bytes[i] = binary.charCodeAt(i);
-	}
-	return buffer;
 }
 
 export class KeyManager {
@@ -127,6 +112,43 @@ export class KeyManager {
 		const entry = JSON.parse(stored);
 		entry.name = newName;
 		await this.storage.setSecret(toStorageKey(fingerprint), JSON.stringify(entry));
+	}
+
+	async exportAllKeys(passphrase: string): Promise<string> {
+		const all = await this.storage.listSecrets();
+		const entries: Array<{ fingerprint: string; key: string; name: string; createdAt: string }> = [];
+		for (const id of all) {
+			if (!id.startsWith(STORAGE_KEY_PREFIX)) continue;
+			const stored = await this.storage.getSecret(id);
+			if (!stored) continue;
+			try {
+				const entry = JSON.parse(stored);
+				const fingerprint = id.slice(STORAGE_KEY_PREFIX.length);
+				entries.push({ fingerprint, key: entry.key, name: entry.name, createdAt: entry.createdAt });
+			} catch {
+				// skip corrupted entries
+			}
+		}
+		const plaintext = JSON.stringify(entries, null, 2);
+		return encryptWithPassphrase(plaintext, passphrase);
+	}
+
+	async importAllKeys(encryptedJson: string, passphrase: string): Promise<number> {
+		const plaintext = await decryptWithPassphrase(encryptedJson, passphrase);
+		const entries: Array<{ fingerprint: string; key: string; name: string; createdAt: string }> = JSON.parse(plaintext);
+		let imported = 0;
+		for (const entry of entries) {
+			const existing = await this.storage.getSecret(toStorageKey(entry.fingerprint));
+			if (existing) continue;
+			const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
+			await importKeyRawEncrypt(raw);
+			await this.storage.setSecret(
+				toStorageKey(entry.fingerprint),
+				JSON.stringify({ key: entry.key, name: entry.name, createdAt: entry.createdAt }),
+			);
+			imported++;
+		}
+		return imported;
 	}
 
 	async importKey(

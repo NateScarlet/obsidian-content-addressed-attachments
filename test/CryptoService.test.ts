@@ -5,6 +5,8 @@ import {
 	decrypt,
 	parseHeader,
 	isEncryptedData,
+	encryptWithPassphrase,
+	decryptWithPassphrase,
 } from "#src/lib/encryption/CryptoService";
 
 describe("CryptoService", () => {
@@ -122,6 +124,36 @@ describe("CryptoService", () => {
 			const { data } = await encrypt(key1, plaintext, "text/plain");
 
 			await expect(decrypt(key2, data)).rejects.toThrow();
+		});
+	});
+
+	describe("encryptWithPassphrase / decryptWithPassphrase", () => {
+		it("roundtrips data with passphrase", async () => {
+			const original = JSON.stringify({ foo: "bar" });
+			const encrypted = await encryptWithPassphrase(original, "my-passphrase");
+			expect(encrypted).toBeTruthy();
+
+			const parsed = JSON.parse(encrypted);
+			expect(parsed.salt).toBeTruthy();
+			expect(parsed.iv).toBeTruthy();
+			expect(parsed.data).toBeTruthy();
+
+			const decrypted = await decryptWithPassphrase(encrypted, "my-passphrase");
+			expect(decrypted).toBe(original);
+		});
+
+		it("rejects wrong passphrase", async () => {
+			const original = "secret data";
+			const encrypted = await encryptWithPassphrase(original, "correct");
+			await expect(decryptWithPassphrase(encrypted, "wrong")).rejects.toThrow();
+		});
+
+		it("produces different ciphertext for same data with same passphrase", async () => {
+			const data = "same data";
+			const e1 = await encryptWithPassphrase(data, "pass");
+			const e2 = await encryptWithPassphrase(data, "pass");
+			// Different salt/IV ensures different output
+			expect(e1).not.toBe(e2);
 		});
 	});
 });

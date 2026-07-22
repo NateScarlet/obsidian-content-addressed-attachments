@@ -235,24 +235,6 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setDesc(`${t("fingerprint")}: ${key.fingerprint}`)
 						.addButton((btn) =>
 							btn
-								.setIcon("clipboard-list")
-								.setTooltip(t("exportKey"))
-								.onClick(async () => {
-									const exported =
-										await this.plugin.encryptionService.keyManager.exportKey(
-											key.fingerprint,
-										);
-									if (exported) {
-										new BackupKeyModal(
-											this.app,
-											key.name,
-											exported,
-										).open();
-									}
-								}),
-						)
-						.addButton((btn) =>
-							btn
 								.setIcon("pencil")
 								.setTooltip(t("rename"))
 								.onClick(() => {
@@ -318,9 +300,19 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				new Setting(containerEl)
 					.addButton((btn) =>
 						btn
-							.setButtonText(t("importKey"))
+							.setButtonText(t("exportAllKeys"))
 							.onClick(() => {
-								new ImportKeyModal(
+								new ExportKeysModal(
+									this.app,
+									this.plugin.encryptionService.keyManager,
+								).open();
+							}),
+					)
+					.addButton((btn) =>
+						btn
+							.setButtonText(t("importKeys"))
+							.onClick(() => {
+								new ImportKeysModal(
 									this.app,
 									this.plugin.encryptionService.keyManager,
 								).open();
@@ -393,12 +385,15 @@ const { t } = defineLocales({
 		delete: "Delete",
 		exportKey: "Backup key",
 		rename: "Rename",
-		importKey: "Import key",
+		importKeys: "Import keys from backup",
+		exportAllKeys: "Export all keys",
+		exportAllKeysSuccess: "All keys copied to clipboard",
+		keyExportTitle: "Export keys",
+		keyExportDesc:
+			"Enter a passphrase to encrypt the exported keys. You will need this passphrase to import them on another device.",
+		keyPassphraseLabel: "Passphrase",
+		keyPassphrasePlaceholder: "Enter passphrase",
 		fingerprint: "Fingerprint",
-		keyBackupTitle: "Backup key",
-		keyBackupDesc:
-			"Copy the key below and store it securely. You can import it on another device to access encrypted files.",
-		keyBackupLabel: "Key material (base64)",
 		keyRenameTitle: "Rename key",
 		keyRenamePlaceholder: "New name",
 		keyRenameSuccess: (name: string) => `Key renamed to "${name}"`,
@@ -406,8 +401,9 @@ const { t } = defineLocales({
 		keyImportDesc:
 			"Paste a key from another device to access encrypted files synced to this vault.",
 		keyImportPlaceholder: "Paste key material here",
-		keyImportSuccess: (name: string) => `Key "${name}" imported`,
-		keyImportErrorInvalid: "Invalid key material",
+		keyImportSuccess: (count: number) =>
+			count > 0 ? `Imported ${count} key(s)` : "No new keys to import",
+		keyImportErrorInvalid: "Wrong passphrase or invalid backup data",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -451,12 +447,15 @@ const { t } = defineLocales({
 		delete: "删除",
 		exportKey: "备份密钥",
 		rename: "重命名",
-		importKey: "导入密钥",
+		importKeys: "从备份导入密钥",
+		exportAllKeys: "导出全部密钥",
+		exportAllKeysSuccess: "全部密钥已复制到剪贴板",
+		keyExportTitle: "导出密钥",
+		keyExportDesc:
+			"输入口令加密导出的密钥数据。导入到另一台设备时需要同一口令。",
+		keyPassphraseLabel: "口令",
+		keyPassphrasePlaceholder: "输入口令",
 		fingerprint: "指纹",
-		keyBackupTitle: "备份密钥",
-		keyBackupDesc:
-			"复制下面的密钥数据并安全保存。在新设备上导入它可以解密已加密的文件。",
-		keyBackupLabel: "密钥材料（base64）",
 		keyRenameTitle: "重命名密钥",
 		keyRenamePlaceholder: "新名称",
 		keyRenameSuccess: (name: string) => `密钥已重命名为 "${name}"`,
@@ -464,52 +463,12 @@ const { t } = defineLocales({
 		keyImportDesc:
 			"从另一台设备粘贴密钥，以访问该库中已加密的文件。",
 		keyImportPlaceholder: "在此粘贴密钥数据",
-		keyImportSuccess: (name: string) => `密钥 "${name}" 已导入`,
-		keyImportErrorInvalid: "密钥数据无效",
+		keyImportSuccess: (count: number) =>
+			count > 0 ? `已导入 ${count} 个密钥` : "没有需要导入的新密钥",
+		keyImportErrorInvalid: "口令错误或备份数据无效",
 	},
 });
 //#endregion
-
-class BackupKeyModal extends Modal {
-	constructor(
-		app: App,
-		private keyName: string,
-		private keyMaterial: string,
-	) {
-		super(app);
-	}
-
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.createEl("h2", { text: t("keyBackupTitle") });
-		contentEl.createEl("p", { text: t("keyBackupDesc") });
-
-		new Setting(contentEl)
-			.setName(t("keyBackupLabel"))
-			.setDesc(this.keyName)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => this.close()),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("exportKey"))
-					.onClick(async () => {
-						await navigator.clipboard.writeText(this.keyMaterial);
-						new Notice(t("keyExportSuccess"));
-					}),
-			);
-
-		contentEl.createEl("textarea", {
-			text: this.keyMaterial,
-			attr: {
-				readonly: "true",
-				style: "width: 100%; min-height: 60px; font-family: monospace;",
-			},
-		});
-	}
-}
 
 class RenameKeyModal extends Modal {
 	constructor(
@@ -554,7 +513,58 @@ class RenameKeyModal extends Modal {
 	}
 }
 
-class ImportKeyModal extends Modal {
+class ExportKeysModal extends Modal {
+	private passphraseInput!: HTMLInputElement;
+
+	constructor(
+		app: App,
+		private keyManager: KeyManager,
+	) {
+		super(app);
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.createEl("h2", { text: t("keyExportTitle") });
+		contentEl.createEl("p", { text: t("keyExportDesc") });
+
+		new Setting(contentEl)
+			.setName(t("keyPassphraseLabel"))
+			.addText((text) => {
+				text.inputEl.type = "password";
+				text.setPlaceholder(t("keyPassphrasePlaceholder"));
+				this.passphraseInput = text.inputEl;
+			});
+
+		new Setting(contentEl)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("cancel"))
+					.onClick(() => this.close()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("exportAllKeys"))
+					.setCta()
+					.onClick(async () => {
+						const passphrase = this.passphraseInput.value;
+						if (!passphrase) return;
+						try {
+							const encrypted = await this.keyManager.exportAllKeys(passphrase);
+							await navigator.clipboard.writeText(encrypted);
+							new Notice(t("exportAllKeysSuccess"));
+							this.close();
+						} catch (err) {
+							showError(err);
+						}
+					}),
+			);
+	}
+}
+
+class ImportKeysModal extends Modal {
+	private passphraseInput!: HTMLInputElement;
+
 	constructor(
 		app: App,
 		private keyManager: KeyManager,
@@ -567,22 +577,20 @@ class ImportKeyModal extends Modal {
 		contentEl.createEl("h2", { text: t("keyImportTitle") });
 		contentEl.createEl("p", { text: t("keyImportDesc") });
 
-		let nameInput: HTMLInputElement;
-		let keyInput: HTMLTextAreaElement;
-
-		new Setting(contentEl)
-			.setName(t("keyNamePlaceholder"))
-			.addText((text) => {
-				text.setPlaceholder(t("keyNamePlaceholder"));
-				nameInput = text.inputEl;
-			});
-
-		keyInput = contentEl.createEl("textarea", {
+		contentEl.createEl("textarea", {
 			attr: {
 				placeholder: t("keyImportPlaceholder"),
-				style: "width: 100%; min-height: 80px; font-family: monospace;",
+				style: "width: 100%; min-height: 120px; font-family: monospace;",
 			},
 		});
+
+		new Setting(contentEl)
+			.setName(t("keyPassphraseLabel"))
+			.addText((text) => {
+				text.inputEl.type = "password";
+				text.setPlaceholder(t("keyPassphrasePlaceholder"));
+				this.passphraseInput = text.inputEl;
+			});
 
 		new Setting(contentEl)
 			.addButton((btn) =>
@@ -592,24 +600,20 @@ class ImportKeyModal extends Modal {
 			)
 			.addButton((btn) =>
 				btn
-					.setButtonText(t("importKey"))
+					.setButtonText(t("importKeys"))
 					.setCta()
 					.onClick(async () => {
-						const keyMaterial = keyInput.value?.trim();
-						if (!keyMaterial) {
-							new Notice(t("keyImportErrorInvalid"));
-							return;
-						}
-						const name = nameInput.value?.trim() || t("unnamedKey");
+						const textEl = contentEl.querySelector("textarea");
+						if (!textEl) return;
+						const encrypted = textEl.value?.trim();
+						const passphrase = this.passphraseInput.value;
+						if (!encrypted || !passphrase) return;
 						try {
-							const info = await this.keyManager.importKey(
-								name,
-								keyMaterial,
-							);
-							new Notice(t("keyImportSuccess")(info.name));
+							const count = await this.keyManager.importAllKeys(encrypted, passphrase);
+							new Notice(t("keyImportSuccess")(count));
 							this.close();
 						} catch (err) {
-							showError(err);
+							new Notice(t("keyImportErrorInvalid"));
 						}
 					}),
 			);

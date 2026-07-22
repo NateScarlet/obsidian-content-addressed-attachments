@@ -12,6 +12,10 @@ export const KEY_FINGERPRINT_BYTES = 8; // 64 bits
 export const KEY_ALGORITHM = "AES-GCM";
 export const KEY_LENGTH = 256;
 
+/** 口令加密导出参数 */
+export const PBKDF2_ITERATIONS = 600000;
+export const SALT_LENGTH = 32;
+
 /** 加密密钥信息 */
 export interface EncryptionKeyInfo {
 	fingerprint: string;
