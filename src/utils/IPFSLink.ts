@@ -7,8 +7,6 @@ export interface IPFSLinkOptions {
 	format?: string;
 }
 
-const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i;
-
 export class IPFSLink {
 	readonly cid: CID;
 	readonly filename: string;
@@ -25,10 +23,7 @@ export class IPFSLink {
 	}
 
 	get isImage(): boolean {
-		if (this.format) {
-			return this.format.startsWith("image/");
-		}
-		return IMAGE_EXTENSIONS.test(this.filename);
+		return this.format.startsWith("image/");
 	}
 
 	get url(): URL {

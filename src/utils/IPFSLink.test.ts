@@ -53,13 +53,20 @@ describe("IPFSLink", () => {
 		);
 	});
 
-	it("prioritizes explicit format over filename extension for isImage", () => {
+	it("determines isImage strictly by format starting with image/", () => {
 		const cid = CID.parse(validCIDString);
-		const link = new IPFSLink({
+		const nonImgLink = new IPFSLink({
 			cid,
 			filename: "fake.png",
 			format: "application/octet-stream",
 		});
-		expect(link.isImage).toBe(false);
+		expect(nonImgLink.isImage).toBe(false);
+
+		const imgLink = new IPFSLink({
+			cid,
+			filename: "photo",
+			format: "image/png",
+		});
+		expect(imgLink.isImage).toBe(true);
 	});
 });
