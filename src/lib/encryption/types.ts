@@ -33,14 +33,18 @@ export interface EncryptedFileHeader {
 	originalFormat: string;
 }
 
-export const SECRET_STORAGE_KEY_PREFIX =
-	"content-addressed-attachments/key/";
-
-export const SECRET_STORAGE_META_KEY =
-	"content-addressed-attachments/key-meta";
+export const STORAGE_KEY_PREFIX = "content-addressed-attachments-";
 
 /** 密钥持久化存储接口，用于依赖注入 */
 export interface KeyStorage {
 	getSecret(key: string): Promise<string | undefined>;
 	setSecret(key: string, value: string): Promise<void>;
+	listSecrets(): Promise<string[]>;
+}
+
+/** SecretStorage 中单条 entry 的结构 */
+interface SecretEntry {
+	key: string; // base64 编码的密钥材料
+	name: string;
+	createdAt: string; // ISO date
 }

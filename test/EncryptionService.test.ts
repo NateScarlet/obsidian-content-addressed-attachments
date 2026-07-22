@@ -8,6 +8,7 @@ function createMockStorage(): KeyStorage {
 	return {
 		async getSecret(key: string) { return store.get(key); },
 		async setSecret(key: string, value: string) { store.set(key, value); },
+		async listSecrets() { return Array.from(store.keys()); },
 	};
 }
 

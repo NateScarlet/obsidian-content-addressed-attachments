@@ -88,7 +88,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		const hasSecretStorage = "secretStorage" in this.app;
 		const storage: KeyStorage = hasSecretStorage
 			? appAny.secretStorage
-			: { async getSecret() { return undefined; }, async setSecret() {} };
+			: { async getSecret() { return undefined; }, async setSecret() {}, async listSecrets() { return []; } };
 		this.encryptionService = new EncryptionService(
 			new KeyManager(storage, hasSecretStorage),
 		);

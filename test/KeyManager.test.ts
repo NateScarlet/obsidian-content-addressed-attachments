@@ -7,6 +7,7 @@ function createMockStorage(): KeyStorage {
 	return {
 		async getSecret(key: string) { return store.get(key); },
 		async setSecret(key: string, value: string) { store.set(key, value); },
+		async listSecrets() { return Array.from(store.keys()); },
 	};
 }
 
@@ -41,9 +42,12 @@ describe("KeyManager", () => {
 		it("persists key data to storage", async () => {
 			const info = await km.createKey("test-key");
 			const raw = await storage.getSecret(
-				`content-addressed-attachments/key/${info.fingerprint}`,
+				`content-addressed-attachments-${info.fingerprint}`,
 			);
 			expect(raw).toBeTruthy();
+			const entry = JSON.parse(raw!);
+			expect(entry.key).toBeTruthy();
+			expect(entry.name).toBe("test-key");
 		});
 
 		it("returns different fingerprints for consecutive keys", async () => {
