@@ -39,10 +39,15 @@ export class EncryptionService {
 			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
 		);
 		if (!rule) return undefined;
-		return (
-			rule.keyFingerprint ||
-			(await this.keyManager.getPrimaryKey())?.fingerprint
-		);
+
+		if (rule.keyFingerprint) {
+			const key = await this.keyManager.getKeyForEncrypt(
+				rule.keyFingerprint,
+			);
+			if (key) return rule.keyFingerprint;
+		}
+
+		return (await this.keyManager.getPrimaryKey())?.fingerprint;
 	}
 
 	/** 加密文件内容，返回可直接用于 CAS.save 的 File 对象 */

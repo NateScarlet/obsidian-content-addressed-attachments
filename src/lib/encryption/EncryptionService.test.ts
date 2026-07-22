@@ -77,6 +77,25 @@ describe("EncryptionService", () => {
 				key.fingerprint,
 			);
 		});
+
+		it("falls back to primary key if specified rule key has been deleted", async () => {
+			const deletedKey = await km.createKey("deleted");
+			const primaryKey = await km.createKey("primary");
+			await km.deleteKey(deletedKey.fingerprint);
+
+			const service = new EncryptionService(km, () => ({
+				encryptPathRules: [
+					{
+						pattern: "Secret/**",
+						keyFingerprint: deletedKey.fingerprint,
+					},
+				],
+				maxBlobSize: 20 * 1024 * 1024,
+			}));
+			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
+				primaryKey.fingerprint,
+			);
+		});
 	});
 
 	describe("encryptFile", () => {
