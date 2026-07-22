@@ -41,6 +41,12 @@ describe("KeyManager", () => {
 			expect(info.priority).toBe(0);
 		});
 
+		it("creates a key with empty name", async () => {
+			const info = await km.createKey("");
+			expect(info.name).toBe("");
+			expect(info.fingerprint).toBeTruthy();
+		});
+
 		it("persists key data to storage", async () => {
 			const info = await km.createKey("test-key");
 			const raw = await storage.getSecret(

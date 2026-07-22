@@ -109,10 +109,10 @@
 	});
 
 	async function createKey() {
-		const name = newKeyName.trim() || t("unnamedKey");
+		const name = newKeyName.trim();
 		try {
 			await encryptionService.keyManager.createKey(name);
-			new Notice(t("keyCreateSuccess")(name));
+			new Notice(t("keyCreateSuccess")(name || t("unnamedKey")));
 			newKeyName = "";
 			await loadKeys();
 		} catch (err) {
@@ -123,7 +123,7 @@
 	async function setAsPrimary(key: EncryptionKeyInfo) {
 		try {
 			await encryptionService.keyManager.setPrimaryKey(key.fingerprint);
-			new Notice(t("primarySetSuccess")(key.name));
+			new Notice(t("primarySetSuccess")(key.name || t("unnamedKey")));
 			await loadKeys();
 		} catch (err) {
 			showError(err);
@@ -135,7 +135,7 @@
 	}
 
 	function deleteKey(key: EncryptionKeyInfo) {
-		new ConfirmDeleteKeyModal(app, key.name, key.fingerprint, async () => {
+		new ConfirmDeleteKeyModal(app, key.name || t("unnamedKey"), key.fingerprint, async () => {
 			await encryptionService.keyManager.deleteKey(key.fingerprint);
 			await loadKeys();
 			display();
@@ -186,7 +186,7 @@
 	<div class="flex items-center justify-between gap-2 py-2 border-b border-base-300">
 		<div class="flex flex-col min-w-0">
 			<span class="font-medium truncate">
-				{key.name}
+				{key.name || t("unnamedKey")}
 				{#if key === keys[0]}
 					<span class="ml-1 text-xs bg-accent text-accent-inverse px-1 py-0.5 rounded">{t("primary")}</span>
 				{/if}
@@ -275,7 +275,7 @@
 		>
 			<option value="">({t("primary")})</option>
 			{#each keys as k (k.fingerprint)}
-				<option value={k.fingerprint}>{k.name}</option>
+				<option value={k.fingerprint}>{k.name || t("unnamedKey")}</option>
 			{/each}
 		</select>
 		<button
