@@ -1,5 +1,5 @@
 import { Modal, Setting, Notice, type App } from "obsidian";
-import type { KeyManager } from "#src/lib/encryption/KeyManager";
+import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
 import showError from "#src/utils/showError";
 import defineLocales from "#src/utils/defineLocales";
 
@@ -31,7 +31,7 @@ export class ExportKeysModal extends Modal {
 
 	constructor(
 		app: App,
-		private keyManager: KeyManager,
+		private encryptionService: EncryptionService,
 	) {
 		super(app);
 	}
@@ -62,7 +62,9 @@ export class ExportKeysModal extends Modal {
 						if (!passphrase) return;
 						try {
 							const encrypted =
-								await this.keyManager.exportAllKeys(passphrase);
+								await this.encryptionService.exportAllKeys(
+									passphrase,
+								);
 							await navigator.clipboard.writeText(encrypted);
 							new Notice(t("exportAllKeysSuccess"));
 							this.close();

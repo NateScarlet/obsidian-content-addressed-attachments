@@ -2,7 +2,6 @@
 	import type { EncryptionKeyInfo } from "./encryption/types";
 	import type { EncryptPathRule, Settings } from "#src/settings";
 	import type { EncryptionService } from "./encryption/EncryptionService";
-	import type { KeyManager } from "./encryption/KeyManager";
 	import type { App } from "obsidian";
 	import showError from "#src/utils/showError";
 	import { Notice } from "obsidian";
@@ -83,8 +82,8 @@
 			fingerprint: string,
 			onDelete: () => Promise<void>,
 		) => { open(): void };
-		ExportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
-		ImportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
+		ExportKeysModal: new (app: App, encryptionService: EncryptionService) => { open(): void };
+		ImportKeysModal: new (app: App, encryptionService: EncryptionService) => { open(): void };
 		onEncryptMatchingNotes: (keyFingerprint: string, pattern: string) => Promise<void>;
 	} = $props();
 
@@ -106,7 +105,7 @@
 	async function createKey() {
 		const name = newKeyName.trim();
 		try {
-			await encryptionService.keyManager.createKey(name);
+			await encryptionService.createKey(name);
 			new Notice(t("keyCreateSuccess")(name || t("unnamedKey")));
 			newKeyName = "";
 			await loadKeys();
@@ -117,7 +116,7 @@
 
 	async function setAsPrimary(key: EncryptionKeyInfo) {
 		try {
-			await encryptionService.keyManager.setPrimaryKey(key.fingerprint);
+			await encryptionService.setPrimaryKey(key.fingerprint);
 			new Notice(t("primarySetSuccess")(key.name || t("unnamedKey")));
 			await loadKeys();
 		} catch (err) {
@@ -128,7 +127,7 @@
 	async function updateKeyName(key: EncryptionKeyInfo, newName: string) {
 		const trimmed = newName.trim();
 		try {
-			await encryptionService.keyManager.renameKey(key.fingerprint, trimmed);
+			await encryptionService.renameKey(key.fingerprint, trimmed);
 			await loadKeys();
 		} catch (err) {
 			showError(err);
@@ -137,18 +136,18 @@
 
 	function deleteKey(key: EncryptionKeyInfo) {
 		new ConfirmDeleteKeyModal(app, key.name || t("unnamedKey"), key.fingerprint, async () => {
-			await encryptionService.keyManager.deleteKey(key.fingerprint);
+			await encryptionService.deleteKey(key.fingerprint);
 			await loadKeys();
 			display();
 		}).open();
 	}
 
 	function openExportModal() {
-		new ExportKeysModal(app, encryptionService.keyManager).open();
+		new ExportKeysModal(app, encryptionService).open();
 	}
 
 	function openImportModal() {
-		new ImportKeysModal(app, encryptionService.keyManager).open();
+		new ImportKeysModal(app, encryptionService).open();
 	}
 
 	async function addRule() {

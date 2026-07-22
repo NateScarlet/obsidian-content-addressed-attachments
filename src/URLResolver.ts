@@ -277,40 +277,16 @@ export class URLResolver {
 			const encryptedData =
 				await this.app.vault.adapter.readBinary(encryptedPath);
 
-			if (
-				!this.encryptionService.cryptoService.isEncryptedData(
-					encryptedData,
-				)
-			)
-				return;
+			const decrypted =
+				await this.encryptionService.decryptFile(encryptedData);
+			if (!decrypted) return;
 
-			const header =
-				this.encryptionService.cryptoService.parseHeader(encryptedData);
-			const key = await this.encryptionService.keyManager.getKey(
-				header.keyFingerprint,
-			);
-			if (!key) {
-				console.warn(
-					`Encryption key ${header.keyFingerprint} not found for ${encryptedPath}`,
-				);
-				new Notice(
-					t("keyNotFound")(header.keyFingerprint, encryptedPath),
-				);
-				return;
-			}
-
-			const plaintext =
-				await this.encryptionService.cryptoService.decrypt(
-					key,
-					encryptedData,
-				);
-
-			const size = plaintext.byteLength;
+			const size = decrypted.data.byteLength;
 			const maxBlob = this.encryptionService.maxBlobSize;
 
 			if (size <= maxBlob) {
-				const blob = new Blob([plaintext], {
-					type: header.originalFormat || "application/octet-stream",
+				const blob = new Blob([decrypted.data], {
+					type: decrypted.mimeType,
 				});
 				const url = URL.createObjectURL(blob);
 				this.decryptedBlobStore.set(encryptedPath, url);
@@ -339,7 +315,7 @@ export class URLResolver {
 				await this.app.vault.adapter.mkdir(cacheDir);
 			}
 
-			await this.app.vault.adapter.writeBinary(cachePath, plaintext);
+			await this.app.vault.adapter.writeBinary(cachePath, decrypted.data);
 
 			return {
 				path: cachePath,

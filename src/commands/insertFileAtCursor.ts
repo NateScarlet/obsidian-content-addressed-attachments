@@ -1,6 +1,7 @@
 import type { CID } from "multiformats";
 import type { Editor } from "obsidian";
-import formatMarkdownLink from "#src/utils/formatMarkdownLink";
+import { IPFSLink } from "#src/utils/IPFSLink";
+import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 
 export default function insertFileAtCursor(
 	file: File,
@@ -12,7 +13,13 @@ export default function insertFileAtCursor(
 	const to = editor.getCursor("to");
 	const hasSelection = from.line !== to.line || from.ch !== to.ch;
 
-	let text = formatMarkdownLink(file, cid, encrypted);
+	const link = new IPFSLink({
+		cid,
+		filename: file.name,
+		format: encrypted ? ENCRYPTED_FORMAT : file.type,
+	});
+
+	let text = link.toMarkdown();
 	if (!hasSelection && editor.getLine(from.line).trim() === "") {
 		text += "\n";
 	}

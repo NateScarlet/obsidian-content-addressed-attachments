@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-deprecated */
 import {
 	Notice,
 	requestUrl,
@@ -11,7 +12,8 @@ import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import parseIPFSLink from "#src/utils/parseIPFSLink";
 import findIPFSLinks from "#src/utils/findIPFSLinks";
-import formatMarkdownLink from "#src/utils/formatMarkdownLink";
+import { IPFSLink } from "#src/utils/IPFSLink";
+import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 
 const { t } = defineLocales({
@@ -99,7 +101,7 @@ export async function encryptLink(
 		(notePath
 			? await encryptionService.resolveKeyForNotePath(notePath)
 			: undefined) ??
-		(await encryptionService.keyManager.getPrimaryKey())?.fingerprint;
+		(await encryptionService.getPrimaryKey())?.fingerprint;
 	if (!fingerprint) {
 		new Notice(t("noKeyAvailable"));
 		return;
@@ -125,7 +127,11 @@ export async function encryptLink(
 		file,
 	);
 	const { cid: newCid } = await cas.save(dir, encryptedFile);
-	const newLink = formatMarkdownLink(encryptedFile, newCid, true);
+	const newLink = new IPFSLink({
+		cid: newCid,
+		filename: encryptedFile.name,
+		format: ENCRYPTED_FORMAT,
+	}).toMarkdown();
 
 	editor.replaceRange(
 		newLink,
@@ -166,7 +172,11 @@ export async function decryptLink(
 		{ type: decrypted.mimeType },
 	);
 	const { cid: newCid } = await cas.save(dir, file);
-	const newLink = formatMarkdownLink(file, newCid, false);
+	const newLink = new IPFSLink({
+		cid: newCid,
+		filename: file.name,
+		format: file.type,
+	}).toMarkdown();
 
 	editor.replaceRange(
 		newLink,
@@ -196,52 +206,35 @@ export async function encryptNote(
 	keyFingerprint: string,
 	dir: string,
 ): Promise<number> {
-	let content = await app.vault.read(file);
-	const links = Array.from(findIPFSLinks(content));
-	let count = 0;
+	const transformer = new VaultLinkTransformer(app);
+	return transformer.transformFile(file, async (_match, linkText) => {
+		const parsed = IPFSLink.parse(linkText);
+		if (!parsed || parsed.isEncrypted) return undefined;
 
-	for (const link of links) {
-		try {
-			const linkText = content.slice(link.pos[0], link.pos[1]);
-			const parsed = parseIPFSLink(linkText);
-			if (!parsed || parsed.format === ENCRYPTED_FORMAT) continue;
+		const result = await loadFileContent(app, cas, parsed.cid.toString());
+		if (!result) return undefined;
 
-			const result = await loadFileContent(
-				app,
-				cas,
-				parsed.cid.toString(),
-			);
-			if (!result) continue;
+		const origFile = new File(
+			[new Blob([result.buffer])],
+			parsed.filename || result.filename,
+			{
+				type:
+					parsed.format ||
+					result.format ||
+					"application/octet-stream",
+			},
+		);
+		const { encryptedFile } = await encryptionService.encryptFile(
+			keyFingerprint,
+			origFile,
+		);
+		const { cid: newCid } = await cas.save(dir, encryptedFile);
 
-			const origFile = new File(
-				[new Blob([result.buffer])],
-				parsed.filename || result.filename,
-				{
-					type:
-						parsed.format ||
-						result.format ||
-						"application/octet-stream",
-				},
-			);
-			const { encryptedFile } = await encryptionService.encryptFile(
-				keyFingerprint,
-				origFile,
-			);
-			const { cid: newCid } = await cas.save(dir, encryptedFile);
-			const newLink = formatMarkdownLink(encryptedFile, newCid, true);
-
-			content =
-				content.slice(0, link.pos[0]) +
-				newLink +
-				content.slice(link.pos[1]);
-			count++;
-		} catch (err) {
-			console.error("Failed to encrypt link:", link, err);
-		}
-	}
-
-	if (count > 0) {
-		await app.vault.modify(file, content);
-	}
-	return count;
+		const encryptedLink = new IPFSLink({
+			cid: newCid,
+			filename: encryptedFile.name,
+			format: ENCRYPTED_FORMAT,
+		});
+		return encryptedLink.toMarkdown();
+	});
 }

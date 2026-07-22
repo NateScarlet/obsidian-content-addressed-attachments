@@ -1,7 +1,12 @@
+/* eslint-disable @typescript-eslint/no-deprecated */
 import { CID } from "multiformats";
 
 export type IPFSStandardURL = NonNullable<ReturnType<typeof parseIPFSLink>>;
 
+/**
+ * @deprecated Use `IPFSLink.parse` instead.
+ * TODO: Pending Migration 2 refactoring.
+ */
 export default function parseIPFSLink(rawURL: string) {
 	if (rawURL.startsWith("ipfs://")) {
 		const url = new URL(rawURL);

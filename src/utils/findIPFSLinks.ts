@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-deprecated */
 import parseIPFSLink, { type IPFSStandardURL } from "./parseIPFSLink";
 import parseIPFSLockedURL, { type IPFSLockedURL } from "./parseIPFSLockedURL";
 
-export default function* findIPFSLinks(markdown: string): IterableIterator<{
+export type IPFSLinkMatch = {
 	pos: [startIndex: number, endIndex: number];
 	url: NonNullable<
 		(IPFSStandardURL | IPFSLockedURL) &
@@ -9,7 +10,11 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 			Partial<IPFSLockedURL>
 	>;
 	title?: string;
-}> {
+};
+
+export default function* findIPFSLinks(
+	markdown: string,
+): IterableIterator<IPFSLinkMatch> {
 	// 匹配任何 IPFS base32 链接，包含新增的 internal.ipfs-locked 链接
 	const pattern = new RegExp(
 		"\\s*(" +

@@ -11,14 +11,14 @@ import ignore from "ignore";
 
 export class EncryptionService {
 	constructor(
-		public readonly keyManager: KeyManager,
+		private readonly keyManager: KeyManager,
 		private readonly getSettings: () => Pick<
 			Settings,
 			"encryptPathRules"
 		> = () => ({
 			encryptPathRules: [],
 		}),
-		public readonly cryptoService: CryptoService = new CryptoService(),
+		private readonly cryptoService: CryptoService = new CryptoService(),
 		public readonly maxBlobSize: number = 20 * 1024 * 1024,
 	) {}
 
@@ -102,5 +102,48 @@ export class EncryptionService {
 	/** 列出可用密钥 */
 	async listKeys(): Promise<EncryptionKeyInfo[]> {
 		return this.keyManager.listKeys();
+	}
+
+	/** 创建新密钥 */
+	async createKey(name: string): Promise<EncryptionKeyInfo> {
+		return this.keyManager.createKey(name);
+	}
+
+	/** 删除密钥 */
+	async deleteKey(fingerprint: string): Promise<void> {
+		return this.keyManager.deleteKey(fingerprint);
+	}
+
+	/** 导出单条密钥 */
+	async exportKey(fingerprint: string): Promise<string | undefined> {
+		return this.keyManager.exportKey(fingerprint);
+	}
+
+	/** 重命名密钥 */
+	async renameKey(fingerprint: string, newName: string): Promise<void> {
+		return this.keyManager.renameKey(fingerprint, newName);
+	}
+
+	/** 导出所有加密密钥 */
+	async exportAllKeys(passphrase: string): Promise<string> {
+		return this.keyManager.exportAllKeys(passphrase);
+	}
+
+	/** 导入密钥备份 */
+	async importAllKeys(
+		encryptedJson: string,
+		passphrase: string,
+	): Promise<number> {
+		return this.keyManager.importAllKeys(encryptedJson, passphrase);
+	}
+
+	/** 设置主密钥 */
+	async setPrimaryKey(fingerprint: string): Promise<void> {
+		return this.keyManager.setPrimaryKey(fingerprint);
+	}
+
+	/** 获取主密钥 */
+	async getPrimaryKey(): Promise<EncryptionKeyInfo | undefined> {
+		return this.keyManager.getPrimaryKey();
 	}
 }
