@@ -25,10 +25,10 @@ export class IPFSLink {
 	}
 
 	get isImage(): boolean {
-		return (
-			this.format.startsWith("image/") ||
-			IMAGE_EXTENSIONS.test(this.filename)
-		);
+		if (this.format) {
+			return this.format.startsWith("image/");
+		}
+		return IMAGE_EXTENSIONS.test(this.filename);
 	}
 
 	get url(): URL {

@@ -52,4 +52,14 @@ describe("IPFSLink", () => {
 			`[doc.pdf](ipfs://${validCIDString}?filename=doc.pdf&format=application%2Fpdf)`,
 		);
 	});
+
+	it("prioritizes explicit format over filename extension for isImage", () => {
+		const cid = CID.parse(validCIDString);
+		const link = new IPFSLink({
+			cid,
+			filename: "fake.png",
+			format: "application/octet-stream",
+		});
+		expect(link.isImage).toBe(false);
+	});
 });
