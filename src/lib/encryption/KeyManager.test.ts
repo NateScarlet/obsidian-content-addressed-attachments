@@ -32,8 +32,10 @@ describe("KeyManager", () => {
 			expect(km.isAvailable).toBe(true);
 		});
 
-		it("returns false when created with unavailable flag", () => {
-			const unavailable = new KeyManager(storage, false);
+		it("returns false when storage is null or undefined", () => {
+			const unavailable = new KeyManager(
+				undefined as unknown as KeyStorage,
+			);
 			expect(unavailable.isAvailable).toBe(false);
 		});
 	});

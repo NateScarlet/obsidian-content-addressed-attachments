@@ -46,7 +46,7 @@ export interface KeyStorage {
 /** SecretStorage 中单条 entry 的结构 */
 export interface SecretEntry {
 	key: string; // base64 编码的密钥材料
-	name: string;
+	name?: string;
 	createdAt: string; // ISO date
 	priority?: number;
 }

@@ -14,12 +14,12 @@ function toStorageKey(fingerprint: string): string {
 export class KeyManager {
 	constructor(
 		private storage: KeyStorage,
-		private _isAvailable = true,
+		private available = true,
 		private cryptoService = new CryptoService(),
 	) {}
 
 	get isAvailable(): boolean {
-		return this._isAvailable;
+		return this.available && Boolean(this.storage);
 	}
 
 	async createKey(name: string): Promise<EncryptionKeyInfo> {
@@ -102,7 +102,7 @@ export class KeyManager {
 				const fingerprint = id.slice(STORAGE_KEY_PREFIX.length);
 				results.push({
 					fingerprint,
-					name: entry.name,
+					name: entry.name ?? "",
 					createdAt: new Date(entry.createdAt),
 					priority: entry.priority ?? 0,
 				});
@@ -160,7 +160,7 @@ export class KeyManager {
 				entries.push({
 					fingerprint,
 					key: entry.key,
-					name: entry.name,
+					name: entry.name ?? "",
 					createdAt: entry.createdAt,
 					priority: entry.priority ?? 0,
 				});
