@@ -262,7 +262,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 											editor,
 											link.start,
 											link.end,
-											link.original,
+											link.link,
 										).catch(showError);
 									});
 							});
@@ -280,7 +280,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 											editor,
 											link.start,
 											link.end,
-											link.original,
+											link.link,
 											view.file?.path,
 										).catch(showError);
 									});

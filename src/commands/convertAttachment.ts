@@ -40,7 +40,7 @@ function findLinkAtOffset(
 ): LinkPos | undefined {
 	const links = Array.from(findIPFSLinks(content));
 	for (const link of links) {
-		const [start, end] = link.fullPos;
+		const [start, end] = link.pos;
 		if (start <= offset && offset <= end) {
 			return {
 				start,
@@ -124,15 +124,14 @@ export async function encryptLink(
 		file,
 	);
 	const { cid: newCid } = await cas.save(dir, encryptedFile);
-	const isEmbed = linkText.trimStart().startsWith("!");
-	const newLink = new IPFSLink({
+	const newURL = new IPFSLink({
 		cid: newCid,
 		filename: encryptedFile.name,
 		format: ENCRYPTED_FORMAT,
-	}).toMarkdown(isEmbed);
+	}).toURL();
 
 	editor.replaceRange(
-		newLink,
+		newURL,
 		editor.offsetToPos(linkStart),
 		editor.offsetToPos(linkEnd),
 	);
@@ -177,15 +176,14 @@ export async function decryptLink(
 		{ type: decrypted.mimeType },
 	);
 	const { cid: newCid } = await cas.save(dir, file);
-	const isEmbed = linkText.trimStart().startsWith("!");
-	const newLink = new IPFSLink({
+	const newURL = new IPFSLink({
 		cid: newCid,
 		filename: file.name,
 		format: file.type,
-	}).toMarkdown(isEmbed);
+	}).toURL();
 
 	editor.replaceRange(
-		newLink,
+		newURL,
 		editor.offsetToPos(linkStart),
 		editor.offsetToPos(linkEnd),
 	);
@@ -243,12 +241,10 @@ export async function encryptNote(
 		);
 		const { cid: newCid } = await cas.save(dir, encryptedFile);
 
-		const isEmbed = linkText.trimStart().startsWith("!");
-		const encryptedLink = new IPFSLink({
+		return new IPFSLink({
 			cid: newCid,
 			filename: encryptedFile.name,
 			format: ENCRYPTED_FORMAT,
-		});
-		return encryptedLink.toMarkdown(isEmbed);
+		}).toURL();
 	});
 }
