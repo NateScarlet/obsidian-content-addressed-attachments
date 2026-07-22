@@ -38,6 +38,7 @@ describe("KeyManager", () => {
 			expect(info.name).toBe("my-key");
 			expect(info.fingerprint).toBeTruthy();
 			expect(info.createdAt).toBeInstanceOf(Date);
+			expect(info.priority).toBe(0);
 		});
 
 		it("persists key data to storage", async () => {
@@ -49,6 +50,7 @@ describe("KeyManager", () => {
 			const entry = JSON.parse(raw!);
 			expect(entry.key).toBeTruthy();
 			expect(entry.name).toBe("test-key");
+			expect(entry.priority).toBe(0);
 		});
 
 		it("returns different fingerprints for consecutive keys", async () => {
@@ -72,6 +74,52 @@ describe("KeyManager", () => {
 			expect(keys.map((k) => k.name)).toEqual(
 				expect.arrayContaining(["alpha", "beta"]),
 			);
+		});
+	});
+
+	describe("getPrimaryKey / setPrimaryKey", () => {
+		it("returns undefined when no keys exist", async () => {
+			expect(await km.getPrimaryKey()).toBeUndefined();
+		});
+
+		it("returns the key with highest priority", async () => {
+			await km.createKey("a");
+			await km.createKey("b");
+			const primary = await km.getPrimaryKey();
+			expect(primary).toBeDefined();
+			// both have priority 0, so the first one (highest priority) is primary
+			expect(primary!.priority).toBe(0);
+		});
+
+		it("setPrimaryKey promotes a key to highest priority", async () => {
+			await km.createKey("a");
+			const b = await km.createKey("b");
+			await km.setPrimaryKey(b.fingerprint);
+			const primary = await km.getPrimaryKey();
+			expect(primary!.fingerprint).toBe(b.fingerprint);
+			expect(primary!.priority).toBeGreaterThan(0);
+			const keys = await km.listKeys();
+			expect(keys[0].fingerprint).toBe(b.fingerprint);
+		});
+
+		it("setPrimaryKey throws for nonexistent key", async () => {
+			await expect(km.setPrimaryKey("ghost")).rejects.toThrow("not found");
+		});
+
+		it("listKeys returns keys sorted by priority descending", async () => {
+			const a = await km.createKey("a");
+			const b = await km.createKey("b");
+			const c = await km.createKey("c");
+
+			// all priority 0, order stable
+			let keys = await km.listKeys();
+			expect(keys[0].fingerprint).toBe(a.fingerprint);
+
+			// promote c
+			await km.setPrimaryKey(c.fingerprint);
+			keys = await km.listKeys();
+			expect(keys[0].fingerprint).toBe(c.fingerprint);
+			expect(keys[0].priority).toBeGreaterThan(0);
 		});
 	});
 

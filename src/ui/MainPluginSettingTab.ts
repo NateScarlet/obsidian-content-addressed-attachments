@@ -8,6 +8,7 @@ import TemplatePreview from "#src/lib/TemplatePreview.svelte";
 import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
+import ignore from "ignore";
 import type { KeyManager } from "#src/lib/encryption/KeyManager";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
@@ -224,9 +225,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 
 		//#region 加密设置
 		if (this.plugin.encryptionService?.isAvailable) {
-			new Setting(containerEl)
-				.setName(t("encryption"))
-				.setHeading();
+			new Setting(containerEl).setName(t("encryption")).setHeading();
 
 			const target = containerEl.createDiv();
 			this.stack.adopt(
@@ -236,20 +235,43 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						encryptionService: this.plugin.encryptionService,
 						settings: this.plugin.settings,
 						saveSettings: () => this.plugin.saveSettings(),
+						// eslint-disable-next-line @typescript-eslint/no-deprecated
 						display: () => this.display(),
 						app: this.app,
 						RenameKeyModal,
 						ConfirmDeleteKeyModal,
 						ExportKeysModal,
 						ImportKeysModal,
+						onEncryptMatchingNotes: async (
+							keyFingerprint: string,
+							pattern: string,
+						) => {
+							const { encryptNote } = await import(
+								"#src/commands/convertAttachment"
+							);
+							const files = this.app.vault.getMarkdownFiles();
+							let total = 0;
+							for (const file of files) {
+								if (ignore().add(pattern).ignores(file.path)) {
+									const count = await encryptNote(
+										this.app,
+										this.plugin.cas,
+										this.plugin.encryptionService,
+										file,
+										keyFingerprint,
+										this.plugin.settings.primaryDir,
+									);
+									total += count;
+								}
+							}
+							new Notice(`Encrypted ${total} link(s)`);
+						},
 					},
 				}),
-				(i) => void unmount(i),
+				(instance) => void unmount(instance),
 			);
 		} else {
-			new Setting(containerEl)
-				.setName(t("encryption"))
-				.setHeading();
+			new Setting(containerEl).setName(t("encryption")).setHeading();
 			new Setting(containerEl)
 				.setName(t("encryptionUnavailable"))
 				.setDesc(t("encryptionUnavailableDesc"));
@@ -330,8 +352,10 @@ const { t } = defineLocales({
 			"Paste a key from another device to access encrypted files synced to this vault.",
 		keyImportReadingClipboard: "Reading clipboard…",
 		keyImportClipboardOk: "Encrypted key data found in clipboard.",
-		keyImportClipboardInvalid: "Clipboard does not contain valid key backup data.",
-		keyImportClipboardUnavailable: "Cannot read clipboard. Copy the backup data first.",
+		keyImportClipboardInvalid:
+			"Clipboard does not contain valid key backup data.",
+		keyImportClipboardUnavailable:
+			"Cannot read clipboard. Copy the backup data first.",
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `Imported ${count} key(s)` : "No new keys to import",
 		keyImportErrorInvalid: "Wrong passphrase or invalid backup data",
@@ -392,8 +416,7 @@ const { t } = defineLocales({
 		keyRenamePlaceholder: "新名称",
 		keyRenameSuccess: (name: string) => `密钥已重命名为 "${name}"`,
 		keyImportTitle: "导入密钥",
-		keyImportDesc:
-			"从另一台设备粘贴密钥，以访问该库中已加密的文件。",
+		keyImportDesc: "从另一台设备粘贴密钥，以访问该库中已加密的文件。",
 		keyImportReadingClipboard: "正在读取剪贴板…",
 		keyImportClipboardOk: "剪贴板中已检测到加密的密钥备份数据。",
 		keyImportClipboardInvalid: "剪贴板中未找到有效的密钥备份数据。",
@@ -420,19 +443,15 @@ export class RenameKeyModal extends Modal {
 		contentEl.createEl("h2", { text: t("keyEditTitle") });
 
 		let input: HTMLInputElement;
-		new Setting(contentEl)
-			.setName(t("keyNameLabel"))
-			.addText((text) => {
-				text.setPlaceholder(t("keyRenamePlaceholder"));
-				text.setValue(this.currentName);
-				input = text.inputEl;
-			});
+		new Setting(contentEl).setName(t("keyNameLabel")).addText((text) => {
+			text.setPlaceholder(t("keyRenamePlaceholder"));
+			text.setValue(this.currentName);
+			input = text.inputEl;
+		});
 
 		new Setting(contentEl)
 			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => this.close()),
+				btn.setButtonText(t("cancel")).onClick(() => this.close()),
 			)
 			.addButton((btn) =>
 				btn
@@ -440,7 +459,10 @@ export class RenameKeyModal extends Modal {
 					.setCta()
 					.onClick(async () => {
 						const newName = input.value?.trim() || this.currentName;
-						await this.keyManager.renameKey(this.fingerprint, newName);
+						await this.keyManager.renameKey(
+							this.fingerprint,
+							newName,
+						);
 						new Notice(t("keyRenameSuccess")(newName));
 						this.close();
 					}),
@@ -473,9 +495,7 @@ export class ExportKeysModal extends Modal {
 
 		new Setting(contentEl)
 			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => this.close()),
+				btn.setButtonText(t("cancel")).onClick(() => this.close()),
 			)
 			.addButton((btn) =>
 				btn
@@ -485,7 +505,8 @@ export class ExportKeysModal extends Modal {
 						const passphrase = this.passphraseInput.value;
 						if (!passphrase) return;
 						try {
-							const encrypted = await this.keyManager.exportAllKeys(passphrase);
+							const encrypted =
+								await this.keyManager.exportAllKeys(passphrase);
 							await navigator.clipboard.writeText(encrypted);
 							new Notice(t("exportAllKeysSuccess"));
 							this.close();
@@ -520,7 +541,11 @@ export class ImportKeysModal extends Modal {
 
 		try {
 			const text = await navigator.clipboard.readText();
-			const parsed = JSON.parse(text);
+			const parsed = JSON.parse(text) as {
+				salt?: unknown;
+				iv?: unknown;
+				data?: unknown;
+			};
 			if (parsed?.salt && parsed?.iv && parsed?.data) {
 				this.encryptedData = text;
 				this.statusEl.textContent = t("keyImportClipboardOk");
@@ -541,9 +566,7 @@ export class ImportKeysModal extends Modal {
 
 		new Setting(contentEl)
 			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => this.close()),
+				btn.setButtonText(t("cancel")).onClick(() => this.close()),
 			)
 			.addButton((btn) =>
 				btn
@@ -553,7 +576,10 @@ export class ImportKeysModal extends Modal {
 						const passphrase = this.passphraseInput.value;
 						if (!this.encryptedData || !passphrase) return;
 						try {
-							const count = await this.keyManager.importAllKeys(this.encryptedData, passphrase);
+							const count = await this.keyManager.importAllKeys(
+								this.encryptedData,
+								passphrase,
+							);
 							new Notice(t("keyImportSuccess")(count));
 							this.close();
 						} catch {
@@ -578,21 +604,17 @@ export class ConfirmDeleteKeyModal extends Modal {
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: t("confirmDeleteKeyTitle") });
 		contentEl.createEl("p", {
-			text: t("confirmDeleteKeyDesc")(
-				this.keyName,
-				this.keyFingerprint,
-			),
+			text: t("confirmDeleteKeyDesc")(this.keyName, this.keyFingerprint),
 		});
 
 		new Setting(contentEl)
 			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => this.close()),
+				btn.setButtonText(t("cancel")).onClick(() => this.close()),
 			)
 			.addButton((btn) =>
 				btn
 					.setButtonText(t("delete"))
+					// eslint-disable-next-line @typescript-eslint/no-deprecated
 					.setWarning()
 					.onClick(() => {
 						this.onDelete();

@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile, type App } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -25,6 +25,11 @@ import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 import insertAttachment from "./commands/insertAttachment";
 import insertFileAtCursor from "./commands/insertFileAtCursor";
+import {
+	encryptLink,
+	decryptLink,
+	isEncryptedLink,
+} from "./commands/convertAttachment";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
@@ -82,13 +87,21 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					.filter((i) => !!i),
 			]);
 		});
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const appAny = this.app as any;
-		// eslint-disable-next-line @typescript-eslint/no-deprecated
 		const hasSecretStorage = "secretStorage" in this.app;
 		const storage: KeyStorage = hasSecretStorage
-			? appAny.secretStorage
-			: { async getSecret() { return undefined; }, async setSecret() {}, async listSecrets() { return []; } };
+			? // eslint-disable-next-line obsidianmd/no-unsupported-api
+				(this.app as App & { secretStorage: KeyStorage }).secretStorage
+			: {
+					getSecret() {
+						return Promise.resolve(undefined);
+					},
+					setSecret() {
+						return Promise.resolve();
+					},
+					listSecrets() {
+						return Promise.resolve([]);
+					},
+				};
 		this.encryptionService = new EncryptionService(
 			new KeyManager(storage, hasSecretStorage),
 			this.settings.maxBlobSize,
@@ -211,6 +224,45 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										.catch(showError);
 								});
 						});
+					} else if (link.link.startsWith("ipfs://")) {
+						const isEncrypted = isEncryptedLink(link.link);
+						if (isEncrypted) {
+							menu.addItem((item) => {
+								item.setTitle(t("decryptLink"))
+									.setIcon("lock-open")
+									.onClick(() => {
+										decryptLink(
+											this.app,
+											this.cas,
+											this.encryptionService,
+											this.settings.primaryDir,
+											editor,
+											link.start,
+											link.end,
+											link.link,
+										).catch(showError);
+									});
+							});
+						} else {
+							menu.addItem((item) => {
+								item.setTitle(t("encryptLink"))
+									.setIcon("lock")
+									.onClick(() => {
+										encryptLink(
+											this.app,
+											this.cas,
+											this.encryptionService,
+											this.settings.primaryDir,
+											editor,
+											link.start,
+											link.end,
+											link.link,
+											view.file?.path,
+											this.settings.encryptPathRules,
+										).catch(showError);
+									});
+							});
+						}
 					}
 				}
 			}),
@@ -228,26 +280,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					undefined,
 					undefined,
 					this.settings.encryptPathRules,
-				).catch(showError);
-			},
-		});
-
-		this.addCommand({
-			id: "insert-encrypted-attachment",
-			name: t("insertEncryptedAttachment"),
-			callback: async () => {
-				const keys = await this.encryptionService.listKeys();
-				if (keys.length === 0) {
-					new Notice(t("noEncryptionKeys"));
-					return;
-				}
-				// 使用第一个可用密钥
-				insertAttachment(
-					this.app,
-					this.cas,
-					this.settings.primaryDir,
-					this.encryptionService,
-					{ encryptKeyFingerprint: keys[0].fingerprint },
 				).catch(showError);
 			},
 		});
@@ -404,12 +436,12 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 const { t } = defineLocales({
 	en: {
 		insertAttachment: "Insert attachment",
-		insertEncryptedAttachment: "Insert encrypted attachment",
-		noEncryptionKeys: "No encryption keys available. Create one in settings first.",
 		migrateCurrentNote: "Migrate local files (current note)",
 		lockCurrentNote: "Lock web files (current note)",
 		lockLink: "Lock this link",
 		unlockLink: "Unlock this link",
+		encryptLink: "Encrypt this link",
+		decryptLink: "Decrypt this link",
 		loading: "Loading",
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS file explorer",
@@ -419,12 +451,12 @@ const { t } = defineLocales({
 	},
 	zh: {
 		insertAttachment: "插入附件",
-		insertEncryptedAttachment: "插入加密附件",
-		noEncryptionKeys: "没有可用加密密钥。请在设置中先创建密钥。",
 		migrateCurrentNote: "迁移本地文件（当前笔记）",
 		lockCurrentNote: "锁定网络文件（当前笔记）",
 		lockLink: "锁定此链接",
 		unlockLink: "解锁此链接",
+		encryptLink: "加密此链接",
+		decryptLink: "解密此链接",
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",

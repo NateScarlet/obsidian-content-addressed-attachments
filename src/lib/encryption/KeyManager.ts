@@ -12,6 +12,7 @@ import {
 import {
 	type EncryptionKeyInfo,
 	type KeyStorage,
+	type SecretEntry,
 } from "./types";
 
 const STORAGE_KEY_PREFIX = "content-addressed-attachments-";
@@ -34,6 +35,7 @@ export class KeyManager {
 		const key = await generateKey();
 		const raw = await exportKeyRaw(key);
 		const fingerprint = await computeFingerprint(raw);
+		const priority = 0;
 
 		await this.storage.setSecret(
 			toStorageKey(fingerprint),
@@ -41,10 +43,27 @@ export class KeyManager {
 				key: arrayBufferToBase64(raw.buffer as ArrayBuffer),
 				name,
 				createdAt: new Date().toISOString(),
+				priority,
 			}),
 		);
 
-		return { fingerprint, name, createdAt: new Date() };
+		return { fingerprint, name, createdAt: new Date(), priority };
+	}
+
+	async setPrimaryKey(fingerprint: string): Promise<void> {
+		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
+		if (!stored) throw new Error(`Key ${fingerprint} not found`);
+		const entry = JSON.parse(stored) as SecretEntry;
+		const all = await this.listKeys();
+		const maxPriority = all.reduce(
+			(max, k) => Math.max(max, k.priority),
+			0,
+		);
+		entry.priority = maxPriority + 1;
+		await this.storage.setSecret(
+			toStorageKey(fingerprint),
+			JSON.stringify(entry),
+		);
 	}
 
 	async deleteKey(fingerprint: string): Promise<void> {
@@ -54,7 +73,7 @@ export class KeyManager {
 	async getKey(fingerprint: string): Promise<CryptoKey | undefined> {
 		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
 		if (!stored) return;
-		const entry = JSON.parse(stored);
+		const entry = JSON.parse(stored) as SecretEntry;
 		const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
 		return importKeyRaw(raw);
 	}
@@ -64,7 +83,7 @@ export class KeyManager {
 	): Promise<CryptoKey | undefined> {
 		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
 		if (!stored) return;
-		const entry = JSON.parse(stored);
+		const entry = JSON.parse(stored) as SecretEntry;
 		const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
 		return importKeyRawEncrypt(raw);
 	}
@@ -82,25 +101,32 @@ export class KeyManager {
 			const stored = await this.storage.getSecret(id);
 			if (!stored) continue;
 			try {
-				const entry = JSON.parse(stored);
+				const entry = JSON.parse(stored) as SecretEntry;
 				const fingerprint = id.slice(STORAGE_KEY_PREFIX.length);
 				results.push({
 					fingerprint,
 					name: entry.name,
 					createdAt: new Date(entry.createdAt),
+					priority: entry.priority ?? 0,
 				});
 			} catch {
 				// skip corrupted entries
 			}
 		}
+		results.sort((a, b) => b.priority - a.priority);
 		return results;
+	}
+
+	async getPrimaryKey(): Promise<EncryptionKeyInfo | undefined> {
+		const all = await this.listKeys();
+		return all[0];
 	}
 
 	async exportKey(fingerprint: string): Promise<string | undefined> {
 		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
 		if (!stored) return;
 		try {
-			const entry = JSON.parse(stored);
+			const entry = JSON.parse(stored) as SecretEntry;
 			return entry.key;
 		} catch {
 			return stored ?? undefined;
@@ -110,22 +136,37 @@ export class KeyManager {
 	async renameKey(fingerprint: string, newName: string): Promise<void> {
 		const stored = await this.storage.getSecret(toStorageKey(fingerprint));
 		if (!stored) throw new Error(`Key ${fingerprint} not found`);
-		const entry = JSON.parse(stored);
+		const entry = JSON.parse(stored) as SecretEntry;
 		entry.name = newName;
-		await this.storage.setSecret(toStorageKey(fingerprint), JSON.stringify(entry));
+		await this.storage.setSecret(
+			toStorageKey(fingerprint),
+			JSON.stringify(entry),
+		);
 	}
 
 	async exportAllKeys(passphrase: string): Promise<string> {
 		const all = await this.storage.listSecrets();
-		const entries: Array<{ fingerprint: string; key: string; name: string; createdAt: string }> = [];
+		const entries: Array<{
+			fingerprint: string;
+			key: string;
+			name: string;
+			createdAt: string;
+			priority: number;
+		}> = [];
 		for (const id of all) {
 			if (!id.startsWith(STORAGE_KEY_PREFIX)) continue;
 			const stored = await this.storage.getSecret(id);
 			if (!stored) continue;
 			try {
-				const entry = JSON.parse(stored);
+				const entry = JSON.parse(stored) as SecretEntry;
 				const fingerprint = id.slice(STORAGE_KEY_PREFIX.length);
-				entries.push({ fingerprint, key: entry.key, name: entry.name, createdAt: entry.createdAt });
+				entries.push({
+					fingerprint,
+					key: entry.key,
+					name: entry.name,
+					createdAt: entry.createdAt,
+					priority: entry.priority ?? 0,
+				});
 			} catch {
 				// skip corrupted entries
 			}
@@ -134,18 +175,37 @@ export class KeyManager {
 		return encryptWithPassphrase(plaintext, passphrase);
 	}
 
-	async importAllKeys(encryptedJson: string, passphrase: string): Promise<number> {
-		const plaintext = await decryptWithPassphrase(encryptedJson, passphrase);
-		const entries: Array<{ fingerprint: string; key: string; name: string; createdAt: string }> = JSON.parse(plaintext);
+	async importAllKeys(
+		encryptedJson: string,
+		passphrase: string,
+	): Promise<number> {
+		const plaintext = await decryptWithPassphrase(
+			encryptedJson,
+			passphrase,
+		);
+		const entries = JSON.parse(plaintext) as Array<{
+			fingerprint: string;
+			key: string;
+			name: string;
+			createdAt: string;
+			priority: number;
+		}>;
 		let imported = 0;
 		for (const entry of entries) {
-			const existing = await this.storage.getSecret(toStorageKey(entry.fingerprint));
+			const existing = await this.storage.getSecret(
+				toStorageKey(entry.fingerprint),
+			);
 			if (existing) continue;
 			const raw = new Uint8Array(base64ToArrayBuffer(entry.key));
 			await importKeyRawEncrypt(raw);
 			await this.storage.setSecret(
 				toStorageKey(entry.fingerprint),
-				JSON.stringify({ key: entry.key, name: entry.name, createdAt: entry.createdAt }),
+				JSON.stringify({
+					key: entry.key,
+					name: entry.name,
+					createdAt: entry.createdAt,
+					priority: entry.priority ?? 0,
+				}),
 			);
 			imported++;
 		}
@@ -159,9 +219,13 @@ export class KeyManager {
 		const raw = new Uint8Array(base64ToArrayBuffer(keyMaterialBase64));
 		const fingerprint = await computeFingerprint(raw);
 
-		const existing = await this.storage.getSecret(toStorageKey(fingerprint));
+		const existing = await this.storage.getSecret(
+			toStorageKey(fingerprint),
+		);
 		if (existing) {
-			throw new Error(`Key with fingerprint ${fingerprint} already exists`);
+			throw new Error(
+				`Key with fingerprint ${fingerprint} already exists`,
+			);
 		}
 
 		await importKeyRawEncrypt(raw);
@@ -172,9 +236,10 @@ export class KeyManager {
 				key: keyMaterialBase64,
 				name,
 				createdAt: new Date().toISOString(),
+				priority: 0,
 			}),
 		);
 
-		return { fingerprint, name, createdAt: new Date() };
+		return { fingerprint, name, createdAt: new Date(), priority: 0 };
 	}
 }

@@ -17,6 +17,7 @@ export interface EncryptionKeyInfo {
 	fingerprint: string;
 	name: string;
 	createdAt: Date;
+	priority: number;
 }
 
 /** 解密后的文件信息 */
@@ -41,8 +42,9 @@ export interface KeyStorage {
 }
 
 /** SecretStorage 中单条 entry 的结构 */
-interface SecretEntry {
+export interface SecretEntry {
 	key: string; // base64 编码的密钥材料
 	name: string;
 	createdAt: string; // ISO date
+	priority?: number;
 }

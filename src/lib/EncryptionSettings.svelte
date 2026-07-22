@@ -1,10 +1,20 @@
-<script module lang="ts">
-	//#region 国际化字符串
+<script lang="ts">
+	import type { EncryptionKeyInfo } from "./encryption/types";
+	import type { EncryptPathRule, Settings } from "#src/settings";
+	import type { EncryptionService } from "./encryption/EncryptionService";
+	import type { KeyManager } from "./encryption/KeyManager";
+	import type { App } from "obsidian";
+	import showError from "#src/utils/showError";
+	import { Notice } from "obsidian";
+	import defineLocales from "#src/utils/defineLocales";
+
 	const { t } = defineLocales({
 		en: {
 			fingerprint: "Fingerprint",
 			rename: "Rename",
 			delete: "Delete",
+			setAsPrimary: "Set as primary",
+			primary: "Primary",
 			createNewKey: "Create new key",
 			create: "Create",
 			keyNamePlaceholder: "Key name",
@@ -17,13 +27,18 @@
 			encryptPathRulePatternPlaceholder: "# Example:\nSecret/**\nProjects/*\n*.docx",
 			addEncryptPathRule: "Add rule",
 			encryptPathRuleNoKeys: "Create a key first",
+			encryptMatchingNotes: "Encrypt existing links",
+			encryptMatchingNotesHint: "Encrypt all unencrypted attachment links in notes matching this rule",
 			noKeys: "No encryption keys yet.",
 			keyCreateSuccess: (name: string) => `Key "${name}" created`,
+			primarySetSuccess: (name: string) => `"${name}" set as primary key`,
 		},
 		zh: {
 			fingerprint: "指纹",
 			rename: "重命名",
 			delete: "删除",
+			setAsPrimary: "设为主密钥",
+			primary: "主密钥",
 			createNewKey: "创建新密钥",
 			create: "创建",
 			keyNamePlaceholder: "密钥名称",
@@ -36,20 +51,13 @@
 			encryptPathRulePatternPlaceholder: "# 示例:\nSecret/**\nProjects/*\n*.docx",
 			addEncryptPathRule: "添加规则",
 			encryptPathRuleNoKeys: "请先创建密钥",
+			encryptMatchingNotes: "加密已有链接",
+			encryptMatchingNotesHint: "加密此规则匹配笔记中的所有未加密附件链接",
 			noKeys: "暂无加密密钥。",
 			keyCreateSuccess: (name: string) => `密钥 "${name}" 已创建`,
+			primarySetSuccess: (name: string) => `"${name}" 已设为主密钥`,
 		},
 	});
-	//#endregion
-</script>
-
-<script lang="ts">
-	import type { EncryptionKeyInfo } from "./encryption/types";
-	import type { EncryptPathRule, Settings } from "#src/settings";
-	import type { EncryptionService } from "./encryption/EncryptionService";
-	import showError from "#src/utils/showError";
-	import { Notice } from "obsidian";
-	import defineLocales from "#src/utils/defineLocales";
 
 	const {
 		encryptionService,
@@ -61,26 +69,28 @@
 		ConfirmDeleteKeyModal,
 		ExportKeysModal,
 		ImportKeysModal,
+		onEncryptMatchingNotes,
 	}: {
 		encryptionService: EncryptionService;
 		settings: Settings;
 		saveSettings: () => Promise<void>;
 		display: () => void;
-		app: any;
+		app: App;
 		RenameKeyModal: new (
-			app: any,
+			app: App,
 			fingerprint: string,
 			currentName: string,
-			keyManager: any,
+			keyManager: KeyManager,
 		) => { open(): void };
 		ConfirmDeleteKeyModal: new (
-			app: any,
+			app: App,
 			name: string,
 			fingerprint: string,
 			onDelete: () => Promise<void>,
 		) => { open(): void };
-		ExportKeysModal: new (app: any, keyManager: any) => { open(): void };
-		ImportKeysModal: new (app: any, keyManager: any) => { open(): void };
+		ExportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
+		ImportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
+		onEncryptMatchingNotes: (keyFingerprint: string, pattern: string) => Promise<void>;
 	} = $props();
 
 	let keys = $state<EncryptionKeyInfo[]>([]);
@@ -95,7 +105,7 @@
 	}
 
 	$effect(() => {
-		loadKeys();
+		void loadKeys();
 	});
 
 	async function createKey() {
@@ -104,6 +114,16 @@
 			await encryptionService.keyManager.createKey(name);
 			new Notice(t("keyCreateSuccess")(name));
 			newKeyName = "";
+			await loadKeys();
+		} catch (err) {
+			showError(err);
+		}
+	}
+
+	async function setAsPrimary(key: EncryptionKeyInfo) {
+		try {
+			await encryptionService.keyManager.setPrimaryKey(key.fingerprint);
+			new Notice(t("primarySetSuccess")(key.name));
 			await loadKeys();
 		} catch (err) {
 			showError(err);
@@ -133,7 +153,7 @@
 	async function addRule() {
 		settings.encryptPathRules.push({
 			pattern: "",
-			keyFingerprint: keys.length > 0 ? keys[0].fingerprint : "",
+			keyFingerprint: "",
 		});
 		await saveSettings();
 		display();
@@ -165,10 +185,24 @@
 {#each keys as key (key.fingerprint)}
 	<div class="flex items-center justify-between gap-2 py-2 border-b border-base-300">
 		<div class="flex flex-col min-w-0">
-			<span class="font-medium truncate">{key.name}</span>
+			<span class="font-medium truncate">
+				{key.name}
+				{#if key === keys[0]}
+					<span class="ml-1 text-xs bg-accent text-accent-inverse px-1 py-0.5 rounded">{t("primary")}</span>
+				{/if}
+			</span>
 			<span class="text-xs text-base-400 truncate">{t("fingerprint")}: {key.fingerprint}</span>
 		</div>
 		<div class="flex gap-1 shrink-0">
+			{#if key !== keys[0]}
+				<button
+					type="button"
+					class="px-2 py-1 text-sm hover:bg-accent/10 rounded"
+					onclick={() => setAsPrimary(key)}
+				>
+					{t("setAsPrimary")}
+				</button>
+			{/if}
 			<button
 				type="button"
 				class="px-2 py-1 text-sm hover:bg-base-200 rounded"
@@ -193,7 +227,7 @@
 		class="flex-1"
 		placeholder={t("keyNamePlaceholder")}
 		bind:value={newKeyName}
-		onkeydown={(e) => { if (e.key === "Enter") createKey(); }}
+		onkeydown={(e) => { if (e.key === "Enter") void createKey(); }}
 	/>
 	<button
 		type="button"
@@ -226,7 +260,7 @@
 <h3 class="text-sm font-medium mb-2">{t("encryptPathRules")}</h3>
 <p class="text-xs text-base-400 mb-3">{t("encryptPathRulesDesc")}</p>
 
-{#each settings.encryptPathRules as rule, i (rule)}
+{#each settings.encryptPathRules as rule (rule)}
 	<div class="flex items-start gap-2 py-1">
 		<textarea
 			class="flex-1 min-h-20 resize-y font-mono text-xs"
@@ -239,7 +273,8 @@
 			value={rule.keyFingerprint}
 			onchange={(e) => updateRuleKey(rule, (e.target as HTMLSelectElement).value)}
 		>
-			{#each keys as k}
+			<option value="">({t("primary")})</option>
+			{#each keys as k (k.fingerprint)}
 				<option value={k.fingerprint}>{k.name}</option>
 			{/each}
 		</select>
@@ -251,6 +286,16 @@
 			{t("delete")}
 		</button>
 	</div>
+	{#if keys.length > 0}
+		<button
+			type="button"
+			class="px-2 py-1 text-xs border border-base-400 rounded hover:bg-accent/10 mt-1"
+			title={t("encryptMatchingNotesHint")}
+			onclick={() => onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
+		>
+			{t("encryptMatchingNotes")}
+		</button>
+	{/if}
 {/each}
 
 <button

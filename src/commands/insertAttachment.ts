@@ -13,7 +13,22 @@ function findMatchingRule(
 	rules: EncryptPathRule[],
 	notePath: string,
 ): EncryptPathRule | undefined {
-	return rules.find((r) => ignore().add(r.pattern).ignores(notePath));
+	return rules.find(
+		(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
+	);
+}
+
+async function resolveKeyFingerprint(
+	encryptionService: EncryptionService,
+	rules: EncryptPathRule[],
+	notePath: string,
+): Promise<string | undefined> {
+	const rule = findMatchingRule(rules, notePath);
+	if (!rule) return;
+	return (
+		rule.keyFingerprint ||
+		(await encryptionService.keyManager.getPrimaryKey())?.fingerprint
+	);
 }
 
 export default async function insertAttachment(
@@ -39,11 +54,19 @@ export default async function insertAttachment(
 	for (const file of files) {
 		const fingerprint =
 			options?.encryptKeyFingerprint ??
-			findMatchingRule(encryptPathRules ?? [], notePath)?.keyFingerprint;
+			(encryptionService && encryptPathRules
+				? await resolveKeyFingerprint(
+						encryptionService,
+						encryptPathRules,
+						notePath,
+					)
+				: undefined);
 
 		if (fingerprint && encryptionService?.isAvailable) {
-			const { encryptedFile } =
-				await encryptionService.encryptFile(fingerprint, file);
+			const { encryptedFile } = await encryptionService.encryptFile(
+				fingerprint,
+				file,
+			);
 			const { cid } = await cas.save(dir, encryptedFile);
 			insertFileAtCursor(file, cid, editor, true);
 		} else {

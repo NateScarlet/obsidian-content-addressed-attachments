@@ -30,13 +30,15 @@ export class EncryptionService {
 		if (!key) throw new Error(`Encryption key ${keyFingerprint} not found`);
 
 		const buffer = await file.arrayBuffer();
-		const { data, fingerprint } = await cryptoEncrypt(key, buffer, file.type);
-
-		const encryptedFile = new File(
-			[new Blob([data])],
-			file.name,
-			{ type: ENCRYPTED_FORMAT },
+		const { data, fingerprint } = await cryptoEncrypt(
+			key,
+			buffer,
+			file.type,
 		);
+
+		const encryptedFile = new File([new Blob([data])], file.name, {
+			type: ENCRYPTED_FORMAT,
+		});
 
 		return { encryptedFile, fingerprint };
 	}

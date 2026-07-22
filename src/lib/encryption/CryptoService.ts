@@ -17,7 +17,10 @@ const SALT_LENGTH = 32;
 async function computeFingerprint(keyData: Uint8Array): Promise<string> {
 	const digestResult = await crypto.subtle.digest(
 		"SHA-256",
-		keyData.buffer.slice(keyData.byteOffset, keyData.byteOffset + keyData.byteLength) as ArrayBuffer,
+		keyData.buffer.slice(
+			keyData.byteOffset,
+			keyData.byteOffset + keyData.byteLength,
+		) as ArrayBuffer,
 	);
 	const sha256Bytes = new Uint8Array(digestResult);
 	const fpBytes = sha256Bytes.slice(0, KEY_FINGERPRINT_BYTES);
@@ -52,9 +55,7 @@ export async function importKeyRaw(raw: Uint8Array): Promise<CryptoKey> {
 	);
 }
 
-export async function importKeyRawEncrypt(
-	raw: Uint8Array,
-): Promise<CryptoKey> {
+export async function importKeyRawEncrypt(raw: Uint8Array): Promise<CryptoKey> {
 	// Must be extractable so encrypt() can export it to compute the fingerprint
 	return crypto.subtle.importKey(
 		"raw",
@@ -81,7 +82,7 @@ export async function encrypt(
 	const encrypted = await crypto.subtle.encrypt(
 		{
 			name: KEY_ALGORITHM,
-			iv: iv.buffer.slice(iv.byteOffset, iv.byteOffset + iv.byteLength) as ArrayBuffer,
+			iv: iv.buffer.slice(iv.byteOffset, iv.byteOffset + iv.byteLength),
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,
@@ -108,7 +109,11 @@ export async function encrypt(
 		2 +
 		fmtBytes.byteLength;
 	const result = new Uint8Array(headerSize + ciphertext.byteLength);
-	const dv = new DataView(result.buffer, result.byteOffset, result.byteLength);
+	const dv = new DataView(
+		result.buffer,
+		result.byteOffset,
+		result.byteLength,
+	);
 	let offset = 0;
 
 	result.set(HEADER_MAGIC, offset);
@@ -214,20 +219,24 @@ export async function decrypt(
 	const ciphertext = data.slice(offset);
 
 	// Reconstruct GCM input: ciphertext || authTag
-	const combined = new Uint8Array(
-		ciphertext.byteLength + AUTH_TAG_LENGTH,
-	);
+	const combined = new Uint8Array(ciphertext.byteLength + AUTH_TAG_LENGTH);
 	combined.set(ciphertext, 0);
 	combined.set(header.authTag, ciphertext.byteLength);
 
 	const plaintext = await crypto.subtle.decrypt(
 		{
 			name: KEY_ALGORITHM,
-			iv: header.iv.buffer.slice(header.iv.byteOffset, header.iv.byteOffset + header.iv.byteLength) as ArrayBuffer,
+			iv: header.iv.buffer.slice(
+				header.iv.byteOffset,
+				header.iv.byteOffset + header.iv.byteLength,
+			) as ArrayBuffer,
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,
-		combined.buffer.slice(combined.byteOffset, combined.byteOffset + combined.byteLength) as ArrayBuffer,
+		combined.buffer.slice(
+			combined.byteOffset,
+			combined.byteOffset + combined.byteLength,
+		),
 	);
 
 	return plaintext;
@@ -288,8 +297,8 @@ export async function encryptWithPassphrase(
 	);
 
 	return JSON.stringify({
-		salt: arrayBufferToBase64(salt.buffer as ArrayBuffer),
-		iv: arrayBufferToBase64(iv.buffer as ArrayBuffer),
+		salt: arrayBufferToBase64(salt.buffer),
+		iv: arrayBufferToBase64(iv.buffer),
 		data: arrayBufferToBase64(encrypted),
 	});
 }
@@ -299,7 +308,11 @@ export async function decryptWithPassphrase(
 	encryptedJson: string,
 	passphrase: string,
 ): Promise<string> {
-	const { salt, iv, data } = JSON.parse(encryptedJson);
+	const { salt, iv, data } = JSON.parse(encryptedJson) as {
+		salt: string;
+		iv: string;
+		data: string;
+	};
 
 	const keyMaterial = await crypto.subtle.importKey(
 		"raw",
@@ -323,7 +336,11 @@ export async function decryptWithPassphrase(
 	);
 
 	const decrypted = await crypto.subtle.decrypt(
-		{ name: KEY_ALGORITHM, iv: base64ToArrayBuffer(iv), tagLength: AUTH_TAG_LENGTH * 8 },
+		{
+			name: KEY_ALGORITHM,
+			iv: base64ToArrayBuffer(iv),
+			tagLength: AUTH_TAG_LENGTH * 8,
+		},
 		key,
 		base64ToArrayBuffer(data),
 	);

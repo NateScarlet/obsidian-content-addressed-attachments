@@ -279,9 +279,8 @@ export class URLResolver {
 		if (!this.encryptionService) return;
 
 		try {
-			const encryptedData = await this.app.vault.adapter.readBinary(
-				encryptedPath,
-			);
+			const encryptedData =
+				await this.app.vault.adapter.readBinary(encryptedPath);
 
 			if (!isEncryptedData(encryptedData)) return;
 

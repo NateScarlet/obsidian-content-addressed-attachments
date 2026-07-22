@@ -33,13 +33,29 @@ interface SettingsV0 {
 	}[];
 }
 
-export type SettingsInput = SettingsV0 | { version: 1; primaryDir: string; downloadDir: string; gateways: GatewayConfig[]; encryptPathRules?: EncryptPathRule[]; maxBlobSize?: number; decryptedCacheDir?: string; };
+export type SettingsInput =
+	| SettingsV0
+	| {
+			version: 1;
+			primaryDir: string;
+			downloadDir: string;
+			gateways: GatewayConfig[];
+			encryptPathRules?: EncryptPathRule[];
+			maxBlobSize?: number;
+			decryptedCacheDir?: string;
+	  };
 
 export function settingsFromInput(input: SettingsInput): Settings {
 	if (input.version === 1) {
-		return { ...input, encryptPathRules: input.encryptPathRules ?? [], maxBlobSize: input.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE, decryptedCacheDir: input.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR };
+		return {
+			...input,
+			encryptPathRules: input.encryptPathRules ?? [],
+			maxBlobSize: input.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
+			decryptedCacheDir:
+				input.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR,
+		};
 	}
-	const v0 = input as SettingsV0;
+	const v0 = input;
 	return {
 		version: 1,
 		primaryDir: v0.casDir,
