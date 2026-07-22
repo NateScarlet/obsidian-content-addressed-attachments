@@ -400,7 +400,10 @@ const { t } = defineLocales({
 		keyImportTitle: "Import key",
 		keyImportDesc:
 			"Paste a key from another device to access encrypted files synced to this vault.",
-		keyImportPlaceholder: "Paste key material here",
+		keyImportReadingClipboard: "Reading clipboard…",
+		keyImportClipboardOk: "Encrypted key data found in clipboard.",
+		keyImportClipboardInvalid: "Clipboard does not contain valid key backup data.",
+		keyImportClipboardUnavailable: "Cannot read clipboard. Copy the backup data first.",
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `Imported ${count} key(s)` : "No new keys to import",
 		keyImportErrorInvalid: "Wrong passphrase or invalid backup data",
@@ -462,7 +465,10 @@ const { t } = defineLocales({
 		keyImportTitle: "导入密钥",
 		keyImportDesc:
 			"从另一台设备粘贴密钥，以访问该库中已加密的文件。",
-		keyImportPlaceholder: "在此粘贴密钥数据",
+		keyImportReadingClipboard: "正在读取剪贴板…",
+		keyImportClipboardOk: "剪贴板中已检测到加密的密钥备份数据。",
+		keyImportClipboardInvalid: "剪贴板中未找到有效的密钥备份数据。",
+		keyImportClipboardUnavailable: "无法读取剪贴板。请先复制备份数据。",
 		keyImportSuccess: (count: number) =>
 			count > 0 ? `已导入 ${count} 个密钥` : "没有需要导入的新密钥",
 		keyImportErrorInvalid: "口令错误或备份数据无效",
@@ -564,6 +570,8 @@ class ExportKeysModal extends Modal {
 
 class ImportKeysModal extends Modal {
 	private passphraseInput!: HTMLInputElement;
+	private statusEl!: HTMLElement;
+	private encryptedData = "";
 
 	constructor(
 		app: App,
@@ -572,17 +580,27 @@ class ImportKeysModal extends Modal {
 		super(app);
 	}
 
-	onOpen() {
+	async onOpen() {
 		const { contentEl } = this;
 		contentEl.createEl("h2", { text: t("keyImportTitle") });
 		contentEl.createEl("p", { text: t("keyImportDesc") });
 
-		contentEl.createEl("textarea", {
-			attr: {
-				placeholder: t("keyImportPlaceholder"),
-				style: "width: 100%; min-height: 120px; font-family: monospace;",
-			},
+		this.statusEl = contentEl.createEl("p", {
+			text: t("keyImportReadingClipboard"),
 		});
+
+		try {
+			const text = await navigator.clipboard.readText();
+			const parsed = JSON.parse(text);
+			if (parsed?.salt && parsed?.iv && parsed?.data) {
+				this.encryptedData = text;
+				this.statusEl.textContent = t("keyImportClipboardOk");
+			} else {
+				this.statusEl.textContent = t("keyImportClipboardInvalid");
+			}
+		} catch {
+			this.statusEl.textContent = t("keyImportClipboardUnavailable");
+		}
 
 		new Setting(contentEl)
 			.setName(t("keyPassphraseLabel"))
@@ -603,16 +621,13 @@ class ImportKeysModal extends Modal {
 					.setButtonText(t("importKeys"))
 					.setCta()
 					.onClick(async () => {
-						const textEl = contentEl.querySelector("textarea");
-						if (!textEl) return;
-						const encrypted = textEl.value?.trim();
 						const passphrase = this.passphraseInput.value;
-						if (!encrypted || !passphrase) return;
+						if (!this.encryptedData || !passphrase) return;
 						try {
-							const count = await this.keyManager.importAllKeys(encrypted, passphrase);
+							const count = await this.keyManager.importAllKeys(this.encryptedData, passphrase);
 							new Notice(t("keyImportSuccess")(count));
 							this.close();
-						} catch (err) {
+						} catch {
 							new Notice(t("keyImportErrorInvalid"));
 						}
 					}),
