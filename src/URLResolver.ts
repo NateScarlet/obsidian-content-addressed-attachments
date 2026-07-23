@@ -283,7 +283,7 @@ export class URLResolver {
 			if (!decrypted) return;
 
 			const size = decrypted.data.byteLength;
-			const maxBlob = this.encryptionService.maxBlobSize;
+			const maxBlob = this.settings().maxBlobSize ?? 20 * 1024 * 1024;
 
 			if (size <= maxBlob) {
 				const blob = new Blob([decrypted.data], {

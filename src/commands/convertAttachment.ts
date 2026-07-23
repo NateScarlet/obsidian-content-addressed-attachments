@@ -105,6 +105,10 @@ async function loadFileContent(
 	}
 }
 
+import { resolveKeyForNotePath } from "#src/lib/encryption/resolveKeyForNotePath";
+import type { KeyManager } from "#src/lib/encryption/KeyManager";
+import type { EncryptPathRule } from "#src/settings";
+
 export async function encryptLink(
 	app: App,
 	cas: CAS,
@@ -117,12 +121,14 @@ export async function encryptLink(
 	linkEnd: number,
 	linkText: string,
 	notePath?: string,
+	keyManager?: KeyManager,
+	rules?: EncryptPathRule[],
 ): Promise<void> {
+	const km = keyManager ?? encryptionService.keyManager;
 	const fingerprint =
-		(notePath
-			? await encryptionService.resolveKeyForNotePath(notePath)
-			: undefined) ??
-		(await encryptionService.getPrimaryKey())?.fingerprint;
+		(notePath && rules
+			? await resolveKeyForNotePath(notePath, rules, km)
+			: undefined) ?? (await km.getPrimaryKey())?.fingerprint;
 	if (!fingerprint) {
 		new Notice(t("noKeyAvailable"));
 		return;
@@ -245,15 +251,20 @@ export async function encryptNote(
 	file: TFile,
 	keyFingerprint: string,
 	dir: string,
+	keyManager?: KeyManager,
+	rules?: EncryptPathRule[],
 ): Promise<number> {
+	const km = keyManager ?? encryptionService.keyManager;
 	const fp =
 		(keyFingerprint
-			? await encryptionService
+			? await km
 					.getKeyForEncrypt(keyFingerprint)
 					.then((k) => (k ? keyFingerprint : undefined))
 			: undefined) ??
-		(await encryptionService.resolveKeyForNotePath(file.path)) ??
-		(await encryptionService.getPrimaryKey())?.fingerprint;
+		(rules
+			? await resolveKeyForNotePath(file.path, rules, km)
+			: undefined) ??
+		(await km.getPrimaryKey())?.fingerprint;
 
 	if (!fp) return 0;
 

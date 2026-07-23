@@ -38,66 +38,6 @@ describe("EncryptionService", () => {
 		});
 	});
 
-	describe("resolveKeyForNotePath", () => {
-		it("returns undefined if no rules match", async () => {
-			const key = await km.createKey("primary");
-			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [
-					{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
-				],
-				maxBlobSize: 20 * 1024 * 1024,
-			}));
-			expect(
-				await service.resolveKeyForNotePath("Public/note.md"),
-			).toBeUndefined();
-		});
-
-		it("returns matching key fingerprint if rule matches", async () => {
-			const key = await km.createKey("primary");
-			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [
-					{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
-				],
-				maxBlobSize: 20 * 1024 * 1024,
-			}));
-			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
-				key.fingerprint,
-			);
-		});
-
-		it("falls back to primary key if rule keyFingerprint is empty", async () => {
-			const key = await km.createKey("primary");
-			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [
-					{ pattern: "Secret/**", keyFingerprint: "" },
-				],
-				maxBlobSize: 20 * 1024 * 1024,
-			}));
-			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
-				key.fingerprint,
-			);
-		});
-
-		it("falls back to primary key if specified rule key has been deleted", async () => {
-			const deletedKey = await km.createKey("deleted");
-			const primaryKey = await km.createKey("primary");
-			await km.deleteKey(deletedKey.fingerprint);
-
-			const service = new EncryptionService(km, () => ({
-				encryptPathRules: [
-					{
-						pattern: "Secret/**",
-						keyFingerprint: deletedKey.fingerprint,
-					},
-				],
-				maxBlobSize: 20 * 1024 * 1024,
-			}));
-			expect(await service.resolveKeyForNotePath("Secret/note.md")).toBe(
-				primaryKey.fingerprint,
-			);
-		});
-	});
-
 	describe("encryptFile", () => {
 		it("produces encrypted file with correct type and content", async () => {
 			const keyInfo = await km.createKey("test");
@@ -188,55 +128,59 @@ describe("EncryptionService", () => {
 				keyInfo.fingerprint,
 				file,
 			);
-			const encryptedData = await encryptedFile.arrayBuffer();
 
-			const result = await es.decryptFile(encryptedData);
-			expect(result).toBeDefined();
-			expect(result!.mimeType).toBe("text/plain");
-			const decryptedText = new TextDecoder().decode(result!.data);
-			expect(decryptedText).toBe(originalContent);
+			const encryptedBuf = await encryptedFile.arrayBuffer();
+			const decrypted = await es.decryptFile(encryptedBuf);
+
+			expect(decrypted).toBeDefined();
+			expect(decrypted!.mimeType).toBe("text/plain");
+			const text = new TextDecoder().decode(decrypted!.data);
+			expect(text).toBe(originalContent);
 		});
 
-		it("returns undefined for non-encrypted data", async () => {
-			const result = await es.decryptFile(new ArrayBuffer(10));
-			expect(result).toBeUndefined();
+		it("returns undefined when data is not encrypted format", async () => {
+			const plainBuf = new TextEncoder().encode("not encrypted").buffer;
+			const decrypted = await es.decryptFile(plainBuf);
+			expect(decrypted).toBeUndefined();
 		});
 
-		it("throws when decryption key is deleted", async () => {
-			const keyInfo = await km.createKey("disappear");
-			const file = new File(["gone"], "lost.txt", { type: "text/plain" });
+		it("throws when decryption fails due to missing key", async () => {
+			const keyInfo = await km.createKey("to-be-deleted");
+			const file = new File(["data"], "test.txt", { type: "text/plain" });
 			const { encryptedFile } = await es.encryptFile(
 				keyInfo.fingerprint,
 				file,
 			);
-			const encryptedData = await encryptedFile.arrayBuffer();
+			const encryptedBuf = await encryptedFile.arrayBuffer();
 
 			await km.deleteKey(keyInfo.fingerprint);
 
-			await expect(es.decryptFile(encryptedData)).rejects.toThrow(
+			await expect(es.decryptFile(encryptedBuf)).rejects.toThrow(
 				"not found",
 			);
 		});
 	});
 
 	describe("createBlobURL", () => {
-		it("creates a blob URL for encrypted file", async () => {
+		it("creates a blob URL for decrypted content", async () => {
 			const keyInfo = await km.createKey("blob-test");
-			const file = new File(["blob content"], "b.txt", {
+			const file = new File(["blob content"], "blob.txt", {
 				type: "text/plain",
 			});
 			const { encryptedFile } = await es.encryptFile(
 				keyInfo.fingerprint,
 				file,
 			);
-			const encryptedData = await encryptedFile.arrayBuffer();
 
-			const url = await es.createBlobURL(encryptedData);
-			expect(url).toBeTruthy();
+			const encryptedBuf = await encryptedFile.arrayBuffer();
+			const url = await es.createBlobURL(encryptedBuf);
+
+			expect(url).toBeDefined();
 			expect(url).toMatch(/^blob:/);
 
-			const decrypted = await es.decryptFile(encryptedData);
-			const text = new TextDecoder().decode(decrypted?.data);
+			// eslint-disable-next-line no-restricted-globals
+			const res = await fetch(url!);
+			const text = await res.text();
 			expect(text).toBe("blob content");
 		});
 	});
@@ -253,12 +197,6 @@ describe("EncryptionService", () => {
 				false,
 			);
 			expect(EncryptionService.isEncryptedFormat("")).toBe(false);
-		});
-	});
-
-	describe("maxBlobSize", () => {
-		it("returns default max blob size", () => {
-			expect(es.maxBlobSize).toBe(20 * 1024 * 1024);
 		});
 	});
 });

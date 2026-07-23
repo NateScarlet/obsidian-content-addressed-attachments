@@ -5,6 +5,7 @@ import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import type { Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { KeyManager } from "#src/lib/encryption/KeyManager";
 
 describe("processFileAndInsertLink", () => {
 	const validCIDString =
@@ -15,14 +16,18 @@ describe("processFileAndInsertLink", () => {
 		save: vi.fn().mockResolvedValue({ cid: dummyCID }),
 	} as unknown as CAS;
 
-	const mockEncryptionService = {
-		resolveKeyForNotePath: vi
+	const mockKeyManager = {
+		isAvailable: true,
+		getKeyForEncrypt: vi
 			.fn()
-			.mockImplementation((path: string) =>
-				Promise.resolve(
-					path.startsWith("secret/") ? "key123" : undefined,
-				),
+			.mockImplementation((fp: string) =>
+				Promise.resolve(fp === "key123" ? {} : undefined),
 			),
+		getPrimaryKey: vi.fn().mockResolvedValue({ fingerprint: "key123" }),
+	} as unknown as KeyManager;
+
+	const mockEncryptionService = {
+		keyManager: mockKeyManager,
 		encryptFile: vi.fn().mockImplementation((_fp, file: File) =>
 			Promise.resolve({
 				encryptedFile: new File([new Uint8Array(8)], file.name, {
@@ -31,6 +36,8 @@ describe("processFileAndInsertLink", () => {
 			}),
 		),
 	} as unknown as EncryptionService;
+
+	const mockRules = [{ pattern: "secret/**", keyFingerprint: "key123" }];
 
 	function createMockEditor() {
 		let text = "";
@@ -62,6 +69,8 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"notes/regular.md",
 			mockEncryptionService,
+			mockKeyManager,
+			mockRules,
 		);
 
 		const text = editor.getText();
@@ -83,6 +92,8 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"secret/confidential.md",
 			mockEncryptionService,
+			mockKeyManager,
+			mockRules,
 		);
 
 		const text = editor.getText();
@@ -105,6 +116,8 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"secret/confidential.md",
 			mockEncryptionService,
+			mockKeyManager,
+			mockRules,
 		);
 
 		const text = editor.getText();

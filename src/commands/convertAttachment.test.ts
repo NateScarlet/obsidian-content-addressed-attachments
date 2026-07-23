@@ -35,9 +35,15 @@ describe("convertAttachment", () => {
 		trash: mockTrash,
 	} as unknown as CAS;
 
-	const mockEncryptionService = {
-		resolveKeyForNotePath: vi.fn().mockResolvedValue(undefined),
+	const mockKeyManager = {
 		getPrimaryKey: vi.fn().mockResolvedValue({ fingerprint: "keyfp123" }),
+		getKeyForEncrypt: vi
+			.fn()
+			.mockResolvedValue({ fingerprint: "keyfp123" }),
+	};
+
+	const mockEncryptionService = {
+		keyManager: mockKeyManager,
 		encryptFile: vi.fn().mockImplementation((_fp, file: File) =>
 			Promise.resolve({
 				encryptedFile: new File([new Uint8Array(16)], file.name, {

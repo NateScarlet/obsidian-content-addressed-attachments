@@ -1,54 +1,19 @@
-import { KeyManager } from "./KeyManager";
+import type { KeyManager } from "./KeyManager";
 import { CryptoService } from "./CryptoService";
 import {
 	ENCRYPTED_FORMAT,
-	type EncryptionKeyInfo,
 	type DecryptedFile,
 	type EncryptedFileHeader,
 } from "./types";
 
-import type { Settings } from "#src/settings";
-import ignore from "ignore";
-
 export class EncryptionService {
 	constructor(
 		readonly keyManager: KeyManager,
-		private readonly getSettings: () => Pick<
-			Settings,
-			"encryptPathRules" | "maxBlobSize"
-		> = () => ({
-			encryptPathRules: [],
-			maxBlobSize: 20 * 1024 * 1024,
-		}),
 		private readonly cryptoService: CryptoService = new CryptoService(),
 	) {}
 
-	get maxBlobSize(): number {
-		return this.getSettings().maxBlobSize;
-	}
-
 	get isAvailable(): boolean {
 		return this.keyManager.isAvailable;
-	}
-
-	/** 根据笔记路径和规则决定使用哪个 key 加密 */
-	async resolveKeyForNotePath(notePath: string): Promise<string | undefined> {
-		if (!this.isAvailable) return undefined;
-
-		const rules = this.getSettings().encryptPathRules;
-		const rule = rules.find(
-			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
-		);
-		if (!rule) return undefined;
-
-		if (rule.keyFingerprint) {
-			const key = await this.keyManager.getKeyForEncrypt(
-				rule.keyFingerprint,
-			);
-			if (key) return rule.keyFingerprint;
-		}
-
-		return (await this.keyManager.getPrimaryKey())?.fingerprint;
 	}
 
 	/** 加密文件内容，返回可直接用于 CAS.save 的 File 对象 */
@@ -145,17 +110,5 @@ export class EncryptionService {
 	/** 从加密文件数据中解析头部信息 */
 	parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
 		return this.cryptoService.parseHeader(encryptedData);
-	}
-
-	/** 获取主密钥 */
-	async getPrimaryKey(): Promise<EncryptionKeyInfo | undefined> {
-		return this.keyManager.getPrimaryKey();
-	}
-
-	/** 获取加密密钥（跳过已软删除的密钥） */
-	async getKeyForEncrypt(
-		fingerprint: string,
-	): Promise<CryptoKey | undefined> {
-		return this.keyManager.getKeyForEncrypt(fingerprint);
 	}
 }
