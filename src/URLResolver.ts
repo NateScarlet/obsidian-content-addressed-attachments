@@ -279,8 +279,8 @@ export class URLResolver {
 				await this.app.vault.adapter.readBinary(encryptedPath);
 
 			const decrypted =
-				await this.encryptionService.decrypt(encryptedData);
-			if (!decrypted) return;
+				await this.encryptionService.ensureDecrypted(encryptedData);
+			if (!decrypted || !decrypted.wasEncrypted) return;
 
 			const size = decrypted.data.byteLength;
 			const maxBlob = this.settings().maxBlobSize ?? 20 * 1024 * 1024;

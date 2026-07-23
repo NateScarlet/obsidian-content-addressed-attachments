@@ -2,6 +2,7 @@ import { Notice, type App, type TFile, type Editor } from "obsidian";
 import { CID } from "multiformats/cid";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { EncryptPathPolicy } from "#src/lib/encryption/EncryptPathPolicy";
 import type { URLResolver } from "#src/URLResolver";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import findIPFSLinks from "#src/utils/findIPFSLinks";
@@ -9,7 +10,6 @@ import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type { KeyManager } from "#src/lib/encryption/KeyManager";
-import type { EncryptPathRule } from "#src/settings";
 
 import type ReferenceManager from "#src/ReferenceManager";
 
@@ -103,12 +103,12 @@ export async function encryptLink(
 	linkText: string,
 	notePath?: string,
 	keyManager?: KeyManager,
-	rules?: EncryptPathRule[],
+	encryptPathPolicy?: EncryptPathPolicy,
 ): Promise<void> {
 	const km = keyManager ?? encryptionService.keyManager;
 	const fingerprint =
-		(notePath && rules
-			? await encryptionService.resolveKeyForNotePath(notePath)
+		(notePath && encryptPathPolicy
+			? await encryptPathPolicy.resolveKey(notePath)
 			: undefined) ?? (await km.getPrimaryKey())?.fingerprint;
 	if (!fingerprint) {
 		new Notice(t("noKeyAvailable"));
@@ -132,15 +132,17 @@ export async function encryptLink(
 	const file = new File([new Blob([content.buffer])], content.filename, {
 		type: parsed.format || content.format || "application/octet-stream",
 	});
-	const res = await encryptionService.encrypt(file, {
-		notePath,
-		keyFingerprint: fingerprint,
-	});
-	if (!res) {
+	let encryptedFile: File;
+	try {
+		encryptedFile = await encryptionService.ensureEncrypted(
+			file,
+			fingerprint,
+		);
+	} catch {
 		new Notice(t("noKeyAvailable"));
 		return;
 	}
-	const { encryptedFile } = res;
+
 	const { cid: newCid } = await cas.save(dir, encryptedFile);
 	if (!newCid.equals(parsed.cid)) {
 		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
@@ -187,8 +189,8 @@ export async function decryptLink(
 		return;
 	}
 
-	const decrypted = await encryptionService.decrypt(content.buffer);
-	if (!decrypted) {
+	const decrypted = await encryptionService.ensureDecrypted(content.buffer);
+	if (!decrypted || !decrypted.wasEncrypted) {
 		new Notice("Not an encrypted file");
 		return;
 	}
@@ -245,7 +247,7 @@ export async function encryptNote(
 	keyFingerprint: string,
 	dir: string,
 	keyManager?: KeyManager,
-	rules?: EncryptPathRule[],
+	encryptPathPolicy?: EncryptPathPolicy,
 ): Promise<number> {
 	const km = keyManager ?? encryptionService.keyManager;
 	const fp =
@@ -254,8 +256,8 @@ export async function encryptNote(
 					.getKeyForEncrypt(keyFingerprint)
 					.then((k) => (k ? keyFingerprint : undefined))
 			: undefined) ??
-		(rules
-			? await encryptionService.resolveKeyForNotePath(file.path)
+		(encryptPathPolicy
+			? await encryptPathPolicy.resolveKey(file.path)
 			: undefined) ??
 		(await km.getPrimaryKey())?.fingerprint;
 
@@ -285,13 +287,16 @@ export async function encryptNote(
 					"application/octet-stream",
 			},
 		);
-		const res = await encryptionService.encrypt(origFile, {
-			notePath: file.path,
-			keyFingerprint: fp,
-		});
-		if (!res) return undefined;
+		let encryptedFile: File;
+		try {
+			encryptedFile = await encryptionService.ensureEncrypted(
+				origFile,
+				fp,
+			);
+		} catch {
+			return undefined;
+		}
 
-		const { encryptedFile } = res;
 		const { cid: newCid } = await cas.save(dir, encryptedFile);
 		if (!newCid.equals(parsed.cid)) {
 			await trashIfUnreferenced(

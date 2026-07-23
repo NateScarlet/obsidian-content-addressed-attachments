@@ -55,7 +55,6 @@
 </script>
 
 <script lang="ts">
-	import { isEncryptedData, parseHeader } from "#src/lib/encryption/cencHeader";
 	import { getContext } from "./CASFileExplorerContext";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
@@ -129,17 +128,11 @@
 			// 尝试读取二进制数据包，检查文件 Header 是否加密并解析出原始 format
 			try {
 				fileBuffer = await app.vault.adapter.readBinary(path);
-				if (
-					fileBuffer &&
-					isEncryptedData(fileBuffer)
-				) {
-					isEncrypted = true;
-					try {
-						const header =
-							parseHeader(fileBuffer);
+				if (fileBuffer) {
+					const header = await encryptionService.inspect(fileBuffer);
+					if (header) {
+						isEncrypted = true;
 						format = header.originalFormat;
-					} catch {
-						// ignore parse header error
 					}
 				}
 			} catch {
@@ -161,7 +154,7 @@
 					if (fileBuffer) {
 						try {
 							return (
-								await encryptionService.decrypt(fileBuffer)
+								await encryptionService.ensureDecrypted(fileBuffer)
 							)?.toBlobURL();
 						} catch (err) {
 							console.debug(

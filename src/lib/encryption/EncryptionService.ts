@@ -1,20 +1,20 @@
 import type { KeyManager } from "./KeyManager";
 import { CryptoService } from "./CryptoService";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
-import type { EncryptPathRule } from "#src/settings";
-import ignore from "ignore";
 
 /** 支持的统一二进制输入载体 */
 export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
 
 /** 解密富结果接口，提供各种输出载体的转换能力 */
 export interface DecryptedResult {
-	/** 解密后的原始字节 */
+	/** 解密/解包后的原始字节 */
 	data: ArrayBuffer;
-	/** 还原后的 MIME 类型 */
+	/** 原始 MIME 类型 (例如 "image/png") */
 	mimeType: string;
-	/** 解析出的原始 CENC Header */
-	header: EncryptedFileHeader;
+	/** 输入数据是否原本为加密状态 */
+	wasEncrypted: boolean;
+	/** 解析出的 Header 元数据（仅当原本为加密数据时存在） */
+	header?: EncryptedFileHeader;
 	/** 转化为 Blob */
 	toBlob(): Blob;
 	/** 一键转化为 UI 预览用的 Blob URL */
@@ -41,20 +41,17 @@ async function toArrayBuffer(input: BinaryInput): Promise<ArrayBuffer> {
 }
 
 /**
- * # EncryptionService 架构设计说明
+ * # EncryptionService 物理加解密服务
  *
- * ## 1. 构造与使用分离 (Separation of Construction & Usage)
- * - **构造阶段 (Construction)**: 通过构造函数显式注入 `KeyManager`、`CryptoService` 和路径规则获取器，无隐式全局依赖，方便单元测试与环境解耦。
- * - **使用阶段 (Usage)**: 面向高层业务场景暴露极简、高杠杆（Deep Module）的方法。调用方只需表达“加密数据”或“解密数据”，完全无需感知 Key 的查找过程、路径规则匹配、CENC Header 打包及底层 AES-GCM 算术。
+ * 专注物理二进制数据的加解密算术与 CENC Header 解析，彻底不包含任何 Obsidian 笔记路径或规则的概念。
  *
- * ## 2. 统一二进制输入与输出抽象 (Unified Binary Abstraction)
- * - **输入统一 (`BinaryInput`)**: 接受 `File` / `Blob` / `ArrayBuffer` / `Uint8Array` 任意数据载体，调用方无需手动做数据转换。
- * - **输出统一 (`DecryptedResult`)**: 解密后返回具备自描述能力的富结果，提供 `.toBlob()` 和 `.toBlobURL()` 等便利方法，屏蔽 Blob / BlobURL 等转换细节。
+ * - **`inspect(input)`**: Safe 元数据探针（只读解析 Header，明文安全返回 `undefined`）。
+ * - **`ensureDecrypted(input)`**: 确保得到明文（密文解密，明文直接包装；具备幂等性）。
+ * - **`ensureEncrypted(input, keyFingerprint?)`**: 物理层强力确保加密（使用指定 Key 或主 Key 加密；具备防二次加密幂等性）。
  */
 export class EncryptionService {
 	constructor(
 		readonly keyManager: KeyManager,
-		private readonly getRules: () => EncryptPathRule[] = () => [],
 		private readonly cryptoService: CryptoService = new CryptoService(),
 	) {}
 
@@ -63,89 +60,127 @@ export class EncryptionService {
 		return this.keyManager.isAvailable;
 	}
 
-	/** 根据笔记路径和规则解析应使用的 keyFingerprint */
-	async resolveKeyForNotePath(notePath: string): Promise<string | undefined> {
-		if (!this.isAvailable) return undefined;
-
-		const rules = this.getRules();
-		const rule = rules.find(
-			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
-		);
-		if (!rule) return (await this.keyManager.getPrimaryKey())?.fingerprint;
-
-		if (rule.keyFingerprint) {
-			const key = await this.keyManager.getKeyForEncrypt(
-				rule.keyFingerprint,
-			);
-			if (key) return rule.keyFingerprint;
+	/**
+	 * Safe 的元数据探针。
+	 * 尝试解析数据的加密 Header。如果为加密数据，返回 Header 元数据（含 `keyFingerprint`, `originalFormat` 等）；
+	 * 如果为明文数据或非法格式，安全返回 `undefined`，绝不抛出错误。
+	 */
+	async inspect(
+		input: BinaryInput,
+	): Promise<EncryptedFileHeader | undefined> {
+		try {
+			const buffer = await toArrayBuffer(input);
+			if (!this.cryptoService.isEncryptedData(buffer)) {
+				return undefined;
+			}
+			return this.cryptoService.parseHeader(buffer);
+		} catch {
+			return undefined;
 		}
-
-		return (await this.keyManager.getPrimaryKey())?.fingerprint;
 	}
 
 	/**
-	 * 加密数据。
-	 * 接收任意二进制输入（File / Blob / ArrayBuffer / Uint8Array），
-	 * 自动完成路径规则匹配、密钥检索、防重复加密校验及 Web Crypto 打包，
-	 * 返回适配 CAS.save 规范的 File 对象及使用的密钥指纹。
+	 * 确保得到明文 (Ensure Plaintext)。
+	 * - 若输入为密文：自动解密并返回 `DecryptedResult`（`wasEncrypted = true`）；
+	 * - 若输入已为明文：直接包装为 `DecryptedResult`（`wasEncrypted = false`）。
 	 */
-	async encrypt(
+	async ensureDecrypted(
 		input: BinaryInput,
-		options?: {
-			filename?: string;
-			notePath?: string;
-			keyFingerprint?: string;
-		},
-	): Promise<{ encryptedFile: File; fingerprint: string } | undefined> {
+	): Promise<DecryptedResult | undefined> {
+		const buffer = await toArrayBuffer(input);
+		const header = await this.inspect(buffer);
+
+		if (header) {
+			// 加密密文 ➔ 解密
+			const { plaintext } = await this.cryptoService.decrypt(
+				(fp) => this.keyManager.getKey(fp),
+				buffer,
+			);
+			const mimeType =
+				header.originalFormat || "application/octet-stream";
+			return {
+				data: plaintext,
+				mimeType,
+				wasEncrypted: true,
+				header,
+				toBlob() {
+					return new Blob([plaintext], { type: mimeType });
+				},
+				toBlobURL() {
+					return URL.createObjectURL(
+						new Blob([plaintext], { type: mimeType }),
+					);
+				},
+			};
+		} else {
+			// 明文 ➔ 原样包装
+			const mimeType =
+				input instanceof Blob &&
+				input.type &&
+				input.type !== ENCRYPTED_FORMAT
+					? input.type
+					: "application/octet-stream";
+			return {
+				data: buffer,
+				mimeType,
+				wasEncrypted: false,
+				toBlob() {
+					return new Blob([buffer], { type: mimeType });
+				},
+				toBlobURL() {
+					return URL.createObjectURL(
+						new Blob([buffer], { type: mimeType }),
+					);
+				},
+			};
+		}
+	}
+
+	/**
+	 * 强力确保加密 (Ensure Ciphertext)。
+	 * 无论如何输出必须为加密后的密文 `File`（具备防二次加密幂等性）。
+	 * - 若输入为明文：使用指定指纹或主密钥加密；
+	 * - 若输入已是相同指纹加密的密文：原样返回；
+	 * - 若没有可用的加密密钥：抛出异常（绝不静默退回到明文）。
+	 */
+	async ensureEncrypted(
+		input: BinaryInput,
+		keyFingerprint?: string,
+	): Promise<File> {
 		const fingerprint =
-			(options?.keyFingerprint
+			(keyFingerprint
 				? await this.keyManager
-						.getKeyForEncrypt(options.keyFingerprint)
-						.then((k) => (k ? options.keyFingerprint : undefined))
-				: undefined) ??
-			(options?.notePath
-				? await this.resolveKeyForNotePath(options.notePath)
+						.getKeyForEncrypt(keyFingerprint)
+						.then((k) => (k ? keyFingerprint : undefined))
 				: undefined) ??
 			(await this.keyManager.getPrimaryKey())?.fingerprint;
 
-		if (!fingerprint) return undefined;
+		if (!fingerprint) {
+			throw new Error("No encryption key available for encryption");
+		}
 
 		const key = await this.keyManager.getKeyForEncrypt(fingerprint);
 		if (!key) throw new Error(`Encryption key ${fingerprint} not found`);
 
 		const buffer = await toArrayBuffer(input);
-		const filename =
-			options?.filename ??
-			(input instanceof File ? input.name : "attachment");
+		const filename = input instanceof File ? input.name : "attachment";
 		const mimeType =
 			input instanceof Blob && input.type
 				? input.type
 				: "application/octet-stream";
 
-		// 检查文件是否已经被加密
-		if (this.cryptoService.isEncryptedData(buffer)) {
-			try {
-				const header = this.cryptoService.parseHeader(buffer);
-				if (header.keyFingerprint === fingerprint) {
-					const encryptedFile =
-						mimeType === ENCRYPTED_FORMAT && input instanceof File
-							? input
-							: new File([buffer], filename, {
-									type: ENCRYPTED_FORMAT,
-								});
-					return { encryptedFile, fingerprint };
-				} else {
-					throw new Error(
-						`File "${filename}" is already encrypted with key "${header.keyFingerprint}". Please decrypt it first before re-encrypting with key "${fingerprint}".`,
-					);
-				}
-			} catch (err) {
-				if (
-					err instanceof Error &&
-					err.message.includes("already encrypted")
-				) {
-					throw err;
-				}
+		const existingHeader = await this.inspect(buffer);
+		if (existingHeader) {
+			if (existingHeader.keyFingerprint === fingerprint) {
+				return mimeType === ENCRYPTED_FORMAT && input instanceof File
+					? input
+					: new File([buffer], filename, {
+							type: ENCRYPTED_FORMAT,
+						});
+			} else {
+				throw new Error(
+					`File "${filename}" is already encrypted with key "${existingHeader.keyFingerprint}". Please decrypt it first before re-encrypting with key "${fingerprint}".`,
+				);
 			}
 		}
 
@@ -156,61 +191,9 @@ export class EncryptionService {
 			mimeType,
 		);
 
-		const encryptedFile = new File([new Blob([data])], filename, {
+		return new File([new Blob([data])], filename, {
 			type: ENCRYPTED_FORMAT,
 		});
-
-		return { encryptedFile, fingerprint };
-	}
-
-	/**
-	 * 解密数据。
-	 * 接收任意二进制输入，自动解析 CENC Header 里的 keyFingerprint 从 KeyManager 查找密钥并完成解密，
-	 * 返回包含 .toBlob() 和 .toBlobURL() 便利方法的 DecryptedResult。
-	 */
-	async decrypt(input: BinaryInput): Promise<DecryptedResult | undefined> {
-		const buffer = await toArrayBuffer(input);
-
-		if (!this.cryptoService.isEncryptedData(buffer)) return undefined;
-
-		const { plaintext, header } = await this.cryptoService.decrypt(
-			(fp) => this.keyManager.getKey(fp),
-			buffer,
-		);
-
-		const mimeType = header.originalFormat || "application/octet-stream";
-
-		return {
-			data: plaintext,
-			mimeType,
-			header,
-			toBlob() {
-				return new Blob([plaintext], { type: mimeType });
-			},
-			toBlobURL() {
-				return URL.createObjectURL(
-					new Blob([plaintext], { type: mimeType }),
-				);
-			},
-		};
-	}
-
-	/** 判断数据是否为加密格式 */
-	isEncryptedData(input: BinaryInput): Promise<boolean> | boolean {
-		if (input instanceof ArrayBuffer) {
-			return this.cryptoService.isEncryptedData(input);
-		}
-		if (ArrayBuffer.isView(input)) {
-			return this.cryptoService.isEncryptedData(
-				input.buffer.slice(
-					input.byteOffset,
-					input.byteOffset + input.byteLength,
-				) as ArrayBuffer,
-			);
-		}
-		return toArrayBuffer(input).then((buf) =>
-			this.cryptoService.isEncryptedData(buf),
-		);
 	}
 
 	static isEncryptedFormat(format: string): boolean {

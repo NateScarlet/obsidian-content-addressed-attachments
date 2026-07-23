@@ -1,6 +1,6 @@
 import { MarkdownView, type App, type Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
-import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { EncryptPathPolicy } from "#src/lib/encryption/EncryptPathPolicy";
 import insertIPFSLinkAtCursor from "./insertIPFSLinkAtCursor";
 import { IPFSLink } from "#src/utils/IPFSLink";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
@@ -11,11 +11,13 @@ export async function processFileAndInsertLink(
 	editor: Editor,
 	file: File,
 	notePath: string,
-	encryptionService?: EncryptionService,
+	encryptPathPolicy?: EncryptPathPolicy,
 ): Promise<void> {
-	const res = await encryptionService?.encrypt(file, { notePath });
-	if (res) {
-		const { encryptedFile } = res;
+	const encryptedFile = await encryptPathPolicy?.ensureEncrypted(
+		file,
+		notePath,
+	);
+	if (encryptedFile) {
 		const { cid } = await cas.save(dir, encryptedFile);
 		const link = new IPFSLink({
 			cid,
@@ -43,7 +45,7 @@ export default async function insertAttachment(
 	app: App,
 	cas: CAS,
 	dir: string,
-	encryptionService?: EncryptionService,
+	encryptPathPolicy?: EncryptPathPolicy,
 ) {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {
@@ -64,7 +66,7 @@ export default async function insertAttachment(
 			editor,
 			file,
 			notePath,
-			encryptionService,
+			encryptPathPolicy,
 		);
 	}
 }

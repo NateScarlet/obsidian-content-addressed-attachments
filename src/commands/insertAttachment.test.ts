@@ -4,7 +4,7 @@ import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import type { Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
-import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { EncryptPathPolicy } from "#src/lib/encryption/EncryptPathPolicy";
 
 describe("processFileAndInsertLink", () => {
 	const validCIDString =
@@ -15,27 +15,20 @@ describe("processFileAndInsertLink", () => {
 		save: vi.fn().mockResolvedValue({ cid: dummyCID }),
 	} as unknown as CAS;
 
-	const mockEncryptionService = {
-		encrypt: vi
+	const mockEncryptPathPolicy = {
+		ensureEncrypted: vi
 			.fn()
-			.mockImplementation(
-				(file: File, options?: { notePath?: string }) => {
-					if (options?.notePath?.startsWith("secret/")) {
-						return Promise.resolve({
-							encryptedFile: new File(
-								[new Uint8Array(8)],
-								file.name,
-								{
-									type: ENCRYPTED_FORMAT,
-								},
-							),
-							fingerprint: "key123",
-						});
-					}
-					return Promise.resolve(undefined);
-				},
-			),
-	} as unknown as EncryptionService;
+			.mockImplementation((file: File, notePath: string) => {
+				if (notePath.startsWith("secret/")) {
+					return Promise.resolve(
+						new File([new Uint8Array(8)], file.name, {
+							type: ENCRYPTED_FORMAT,
+						}),
+					);
+				}
+				return Promise.resolve(undefined);
+			}),
+	} as unknown as EncryptPathPolicy;
 
 	function createMockEditor() {
 		let text = "";
@@ -66,7 +59,7 @@ describe("processFileAndInsertLink", () => {
 			editor,
 			file,
 			"notes/regular.md",
-			mockEncryptionService,
+			mockEncryptPathPolicy,
 		);
 
 		const text = editor.getText();
@@ -87,7 +80,7 @@ describe("processFileAndInsertLink", () => {
 			editor,
 			file,
 			"secret/confidential.md",
-			mockEncryptionService,
+			mockEncryptPathPolicy,
 		);
 
 		const text = editor.getText();
@@ -109,7 +102,7 @@ describe("processFileAndInsertLink", () => {
 			editor,
 			file,
 			"secret/confidential.md",
-			mockEncryptionService,
+			mockEncryptPathPolicy,
 		);
 
 		const text = editor.getText();

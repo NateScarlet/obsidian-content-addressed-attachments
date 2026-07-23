@@ -37,6 +37,7 @@ import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import { KeyManager } from "./lib/encryption/KeyManager";
 import { EncryptionService } from "./lib/encryption/EncryptionService";
+import { EncryptPathPolicy } from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
@@ -47,6 +48,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public referenceManger = new ReferenceManager(this);
 	public keyManager!: KeyManager;
 	public encryptionService!: EncryptionService;
+	public encryptPathPolicy!: EncryptPathPolicy;
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
@@ -112,8 +114,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			() => this.saveSettings(),
 			hasSecretStorage,
 		);
-		this.encryptionService = new EncryptionService(
+		this.encryptionService = new EncryptionService(this.keyManager);
+		this.encryptPathPolicy = new EncryptPathPolicy(
 			this.keyManager,
+			this.encryptionService,
 			() => this.settings.encryptPathRules,
 		);
 		this.urlResolver = new URLResolver(
@@ -151,7 +155,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							editor,
 							file,
 							notePath,
-							this.encryptionService,
+							this.encryptPathPolicy,
 						);
 					}
 				}
@@ -175,7 +179,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							editor,
 							file,
 							notePath,
-							this.encryptionService,
+							this.encryptPathPolicy,
 						);
 					}
 				}
@@ -253,6 +257,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										ipfsLink.end,
 										ipfsLink.text,
 										view.file?.path,
+										this.keyManager,
+										this.encryptPathPolicy,
 									).catch(showError);
 								});
 						});
@@ -302,7 +308,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.app,
 					this.cas,
 					this.settings.primaryDir,
-					this.encryptionService,
+					this.encryptPathPolicy,
 				).catch(showError);
 			},
 		});
