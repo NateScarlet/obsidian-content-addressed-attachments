@@ -5,7 +5,7 @@ import {
 	IV_LENGTH,
 	AUTH_TAG_LENGTH,
 	parseHeader,
-} from "./cencHeader";
+} from "./fileHeader";
 
 /** AES-256-GCM 参数 */
 const KEY_FINGERPRINT_BYTES = 8; // 64 bits

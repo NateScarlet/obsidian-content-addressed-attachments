@@ -1,7 +1,7 @@
 import type { KeyManager } from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
-import { isEncryptedData, parseHeader } from "./cencHeader";
+import { isEncryptedData, parseHeader } from "./fileHeader";
 
 /** 支持的统一二进制输入载体 */
 export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
