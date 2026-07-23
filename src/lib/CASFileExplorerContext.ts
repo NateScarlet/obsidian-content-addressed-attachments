@@ -3,6 +3,7 @@ import type { App } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type { CASMetadata } from "#src/types/CASMetadata";
 import type ReferenceManager from "#src/ReferenceManager";
+import type { EncryptionService } from "./encryption/EncryptionService";
 
 export enum Mode {
 	LOCAL,
@@ -17,6 +18,7 @@ export interface CASFileExplorerContext {
 	casMetadata: CASMetadata;
 	referenceManager: ReferenceManager;
 	app: App;
+	encryptionService: EncryptionService;
 
 	// 状态
 	mode: { value: Mode };

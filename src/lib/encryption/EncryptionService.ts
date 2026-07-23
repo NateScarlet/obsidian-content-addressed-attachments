@@ -4,6 +4,7 @@ import {
 	ENCRYPTED_FORMAT,
 	type EncryptionKeyInfo,
 	type DecryptedFile,
+	type EncryptedFileHeader,
 } from "./types";
 
 import type { Settings } from "#src/settings";
@@ -103,6 +104,16 @@ export class EncryptionService {
 	/** 判断是否为加密格式标记 */
 	static isEncryptedFormat(format: string): boolean {
 		return format === ENCRYPTED_FORMAT;
+	}
+
+	/** 检查数据是否为加密文件格式 */
+	isEncryptedData(data: ArrayBuffer): boolean {
+		return this.cryptoService.isEncryptedData(data);
+	}
+
+	/** 从加密文件数据中解析头部信息 */
+	parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
+		return this.cryptoService.parseHeader(encryptedData);
 	}
 
 	/** 列出可用密钥 */
