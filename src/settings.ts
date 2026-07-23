@@ -25,8 +25,8 @@ export const DEFAULT_DECRYPTED_CACHE_DIR = "";
 
 interface SettingsV0 {
 	version: undefined;
-	casDir: string;
-	gatewayURLs: {
+	casDir?: string;
+	gatewayURLs?: {
 		urlTemplate: string;
 		name: string;
 		headers: [key: string, value: string][];
@@ -38,35 +38,57 @@ export type SettingsInput =
 	| SettingsV0
 	| {
 			version: 1;
-			primaryDir: string;
-			downloadDir: string;
-			gateways: GatewayConfig[];
+			primaryDir?: string;
+			downloadDir?: string;
+			gateways?: GatewayConfig[];
 			encryptPathRules?: EncryptPathRule[];
 			maxBlobSize?: number;
 			decryptedCacheDir?: string;
+			encryptionKeysSecretId?: string;
 	  };
 
-export function settingsFromInput(input: SettingsInput): Settings {
+export function settingsFromInput(
+	input: SettingsInput | null | undefined,
+): Settings {
+	const defaults = getDefaultSettings();
+	if (!input) {
+		return defaults;
+	}
+
 	if (input.version === 1) {
+		const parsedGateways =
+			Array.isArray(input.gateways) && input.gateways.length > 0
+				? input.gateways
+				: defaults.gateways;
+
 		return {
+			...defaults,
 			...input,
+			gateways: parsedGateways,
 			encryptPathRules: input.encryptPathRules ?? [],
 			maxBlobSize: input.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
 			decryptedCacheDir:
 				input.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR,
 		};
 	}
+
 	const v0 = input;
+	const v0Gateways =
+		Array.isArray(v0.gatewayURLs) && v0.gatewayURLs.length > 0
+			? v0.gatewayURLs.map((g) => ({
+					urlTemplate: g.urlTemplate,
+					name: g.name,
+					headers: g.headers,
+					enabled: g.enabled,
+				}))
+			: defaults.gateways;
+
 	return {
+		...defaults,
 		version: 1,
-		primaryDir: v0.casDir,
+		primaryDir: v0.casDir || defaults.primaryDir,
 		downloadDir: "",
-		gateways: (v0.gatewayURLs ?? []).map((g) => ({
-			urlTemplate: g.urlTemplate,
-			name: g.name,
-			headers: g.headers,
-			enabled: g.enabled,
-		})),
+		gateways: v0Gateways,
 		encryptPathRules: [],
 		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
 		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
