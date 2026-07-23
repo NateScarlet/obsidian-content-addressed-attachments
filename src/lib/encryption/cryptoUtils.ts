@@ -23,6 +23,44 @@ const IV_DOMAIN_LABEL = new Uint8Array([
 	0xb1, 0x77, 0xc6, 0xb7,
 ]);
 
+/**
+ * 构造 AEAD 附加认证数据 (Additional Authenticated Data, AAD)。
+ * 包含文件头中除 IV 和 AuthTag 之外的所有明文元数据字段 (Magic, Version, Fingerprint, OriginalFormat)。
+ * 将文件头绑定进 GCM Tag 认证签名中，彻底防止文件头元数据篡改攻击 (Header / Metadata Tampering Attack)。
+ */
+export function buildHeaderAAD(
+	fingerprint: string,
+	originalFormat: string,
+): Uint8Array {
+	const fpBytes = new TextEncoder().encode(fingerprint);
+	const fmtBytes = new TextEncoder().encode(originalFormat);
+	const aadSize = 4 + 2 + 2 + fpBytes.byteLength + 2 + fmtBytes.byteLength;
+	const aad = new Uint8Array(aadSize);
+	const dv = new DataView(aad.buffer, aad.byteOffset, aad.byteLength);
+	let offset = 0;
+
+	// Magic (4B)
+	aad.set(HEADER_MAGIC, offset);
+	offset += 4;
+
+	// Version (2B)
+	dv.setUint16(offset, HEADER_VERSION, true);
+	offset += 2;
+
+	// Fingerprint length (2B) + Fingerprint
+	dv.setUint16(offset, fpBytes.byteLength, true);
+	offset += 2;
+	aad.set(fpBytes, offset);
+	offset += fpBytes.byteLength;
+
+	// Format length (2B) + Format
+	dv.setUint16(offset, fmtBytes.byteLength, true);
+	offset += 2;
+	aad.set(fmtBytes, offset);
+
+	return aad;
+}
+
 export async function computeFingerprint(keyData: Uint8Array): Promise<string> {
 	const digestResult = await crypto.subtle.digest(
 		"SHA-256",
@@ -122,6 +160,7 @@ export async function encrypt(
 ): Promise<ArrayBuffer> {
 	// 使用带密钥域隔离的合成 IV (Synthetic IV)，实现 CAS 场景下的安全确定性加密
 	const iv = await computeSyntheticIV(key, plaintext);
+	const aad = buildHeaderAAD(fingerprint, originalFormat);
 
 	const encrypted = await crypto.subtle.encrypt(
 		{
@@ -129,6 +168,10 @@ export async function encrypt(
 			iv: (iv.buffer as ArrayBuffer).slice(
 				iv.byteOffset,
 				iv.byteOffset + iv.byteLength,
+			),
+			additionalData: (aad.buffer as ArrayBuffer).slice(
+				aad.byteOffset,
+				aad.byteOffset + aad.byteLength,
 			),
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
@@ -205,6 +248,8 @@ export async function decrypt(
 		);
 	}
 
+	const aad = buildHeaderAAD(header.keyFingerprint, header.originalFormat);
+
 	const data = new Uint8Array(encryptedData);
 	const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
 	let offset = 0;
@@ -230,6 +275,10 @@ export async function decrypt(
 				header.iv.byteOffset,
 				header.iv.byteOffset + header.iv.byteLength,
 			) as ArrayBuffer,
+			additionalData: (aad.buffer as ArrayBuffer).slice(
+				aad.byteOffset,
+				aad.byteOffset + aad.byteLength,
+			),
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,

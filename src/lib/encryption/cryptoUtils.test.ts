@@ -73,6 +73,29 @@ describe("CryptoService pure functions", () => {
 			expect(header.keyFingerprint).toBe("fp1");
 		});
 
+		it("rejects decryption if header metadata (originalFormat) is tampered with (AAD verification failure)", async () => {
+			const key = await cryptoUtils.generateKey();
+			const plaintext = new TextEncoder().encode("tamper test").buffer;
+			const encrypted = await cryptoUtils.encrypt(
+				key,
+				"fp1",
+				plaintext,
+				"image/png",
+			);
+
+			// 找到 format 字符串在 Header 中的位置并篡改它
+			const bytes = new Uint8Array(encrypted);
+			const fmtString = "image/png";
+			const fmtPos = bytes.length - plaintext.byteLength - fmtString.length;
+			const tampered = new Uint8Array(encrypted.slice(0));
+			tampered[fmtPos] = "t".charCodeAt(0); // 将 "image/png" 改为 "tmage/png"
+
+			// AAD 校验应捕获篡改并抛出解密异常
+			await expect(
+				cryptoUtils.decrypt(() => key, tampered.buffer),
+			).rejects.toThrow();
+		});
+
 		it("produces identical ciphertext for identical plaintext and key (deterministic CAS encryption)", async () => {
 			const key = await cryptoUtils.generateKey();
 			const plaintext = new TextEncoder().encode(
