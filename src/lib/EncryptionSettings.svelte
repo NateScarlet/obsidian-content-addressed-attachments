@@ -25,7 +25,7 @@
 			importKeys: "Import keys from backup",
 			encryptPathRules: "Auto-encrypt path rules",
 			encryptPathRulesDesc:
-				"Gitignore-style rules. One pattern per line. Lines starting with # are comments. Attachments in matching notes are automatically encrypted with the selected key.",
+				"Gitignore-style rules. One pattern per line. Lines starting with # are comments. Clear input to remove rule.",
 			encryptPathRulePatternPlaceholder: "# Example:\nSecret/**\nProjects/*",
 			addEncryptPathRule: "Add rule",
 			encryptPathRuleNoKeys: "Create a key first",
@@ -44,7 +44,6 @@
 			permanentlyDeletedNotice: (n: number) => `Permanently deleted ${n} key(s)`,
 			confirmPermanentDelete: (n: number, d: number) =>
 				`Are you sure you want to permanently delete ${n} key(s) that were deleted more than ${d} day(s) ago? This cannot be undone!`,
-			deleteRule: "Delete rule",
 			primaryKeyFallback: "Primary key",
 			none: "None",
 			secretStorageId: "Secret Storage ID",
@@ -67,7 +66,7 @@
 			importKeys: "从备份导入密钥",
 			encryptPathRules: "自动加密路径规则",
 			encryptPathRulesDesc:
-				"支持 gitignore 语法。每行一个规则，# 开头的行为注释。匹配笔记中的附件将自动使用指定密钥加密。",
+				"支持 gitignore 语法。每行一个规则，# 开头的行为注释。清空规则文本即可删除该规则。",
 			encryptPathRulePatternPlaceholder: "# 示例：\nSecret/**\nProjects/*",
 			addEncryptPathRule: "添加规则",
 			encryptPathRuleNoKeys: "请先创建密钥",
@@ -86,7 +85,6 @@
 			permanentlyDeletedNotice: (n: number) => `已永久删除 ${n} 个密钥`,
 			confirmPermanentDelete: (n: number, d: number) =>
 				`确定要永久删除已删除超过 ${d} 天的 ${n} 个密钥吗？此操作不可撤销！`,
-			deleteRule: "删除规则",
 			primaryKeyFallback: "主密钥",
 			none: "无",
 			secretStorageId: "密钥存储 ID",
@@ -242,18 +240,21 @@
 		void saveSettings();
 	}
 
-	function removeRule(index: number) {
-		const rules = [...settings.encryptPathRules];
-		rules.splice(index, 1);
-		settings.encryptPathRules = rules;
-		void saveSettings();
-	}
-
 	function updateRulePattern(index: number, pattern: string) {
 		const rules = [...settings.encryptPathRules];
 		rules[index] = { ...rules[index], pattern };
 		settings.encryptPathRules = rules;
 		void saveSettings();
+	}
+
+	function handleRuleBlur(index: number) {
+		const rule = settings.encryptPathRules[index];
+		if (rule && !rule.pattern.trim()) {
+			const rules = [...settings.encryptPathRules];
+			rules.splice(index, 1);
+			settings.encryptPathRules = rules;
+			void saveSettings();
+		}
 	}
 
 	function updateRuleKey(index: number, keyFingerprint: string) {
@@ -467,6 +468,7 @@
 						class="w-full rounded border border-theme-border bg-theme-bg px-3 py-2 text-xs font-mono text-theme-text resize-y"
 						oninput={(e) =>
 							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
+						onblur={() => handleRuleBlur(index)}
 					></textarea>
 
 					<!-- 第二区域：底部统一操作与配置栏 -->
@@ -493,27 +495,18 @@
 							</select>
 						</div>
 
-						<!-- 右侧：按钮组（加密匹配链接 + 删除规则） -->
-						<div class="flex items-center gap-3">
-							{#if rule.pattern.trim()}
-								<button
-									type="button"
-									class="text-xs text-accent hover:underline font-medium"
-									title={t("encryptMatchingNotesHint")}
-									onclick={() =>
-										onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
-								>
-									{t("encryptMatchingNotes")}
-								</button>
-							{/if}
+						<!-- 右侧：匹配快捷按钮 -->
+						{#if rule.pattern.trim()}
 							<button
 								type="button"
-								class="text-xs text-red-500 hover:text-red-600 transition-colors"
-								onclick={() => removeRule(index)}
+								class="text-xs text-accent hover:underline font-medium"
+								title={t("encryptMatchingNotesHint")}
+								onclick={() =>
+									onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
 							>
-								{t("deleteRule")}
+								{t("encryptMatchingNotes")}
 							</button>
-						</div>
+						{/if}
 					</div>
 				</div>
 			{/each}
