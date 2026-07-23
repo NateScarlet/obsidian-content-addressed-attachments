@@ -37,17 +37,16 @@
 			deletedKeys: "Deleted keys",
 			deletedKeysCount: (n: number) => `${n} deleted key(s)`,
 			noDeletedKeys: "No deleted keys",
-			permanentlyDelete: "Permanently delete",
-			permanentlyDeleteDesc: "Permanently delete keys deleted more than X days ago",
-			permanentlyDeleteDaysLabel: "Days",
+			permanentlyDeletePrefix: "Permanently delete keys deleted more than",
+			permanentlyDeleteSuffix: "days ago",
 			permanentlyDeleteButton: "Permanently delete now",
 			permanentlyDeletedNotice: (n: number) => `Permanently deleted ${n} key(s)`,
 			confirmPermanentDelete: (n: number, d: number) =>
 				`Are you sure you want to permanently delete ${n} key(s) that were deleted more than ${d} day(s) ago? This cannot be undone!`,
 			primaryKeyFallback: "Primary key",
 			none: "None",
-			secretStorageId: "Secret Storage ID",
-			secretStorageIdDesc: "Select the secret key used to store all encryption keys in Obsidian Secret Storage",
+			secretStorageId: "Secret Storage Key",
+			secretStorageIdDesc: "The secret ID used to store encryption keys in Obsidian Secret Storage",
 			keySelectLabel: "Key",
 		},
 		zh: {
@@ -78,17 +77,16 @@
 			deletedKeys: "已删除密钥",
 			deletedKeysCount: (n: number) => `${n} 个已删除密钥`,
 			noDeletedKeys: "无已删除密钥",
-			permanentlyDelete: "永久删除密钥",
-			permanentlyDeleteDesc: "永久删除已被删除超过指定天数的密钥",
-			permanentlyDeleteDaysLabel: "天数",
+			permanentlyDeletePrefix: "彻底清理已被删除超过",
+			permanentlyDeleteSuffix: "天以上的密钥",
 			permanentlyDeleteButton: "立即永久删除",
 			permanentlyDeletedNotice: (n: number) => `已永久删除 ${n} 个密钥`,
 			confirmPermanentDelete: (n: number, d: number) =>
 				`确定要永久删除已删除超过 ${d} 天的 ${n} 个密钥吗？此操作不可撤销！`,
 			primaryKeyFallback: "主密钥",
 			none: "无",
-			secretStorageId: "密钥存储 ID",
-			secretStorageIdDesc: "选择在 Obsidian 密钥存储 (Secret Storage) 中保存所有加密密钥的 Secret Key",
+			secretStorageId: "密钥存储键 ID (Secret ID)",
+			secretStorageIdDesc: "在 Obsidian 密钥存储 (Secret Storage) 中用于保存密钥列表的 Secret ID",
 			keySelectLabel: "密钥",
 		},
 	});
@@ -413,19 +411,19 @@
 						<div
 							class="mt-4 flex items-center justify-between rounded border border-red-500/20 bg-red-500/5 p-3"
 						>
-							<div class="flex items-center gap-2 text-xs">
-								<span>{t("permanentlyDeleteDesc")}</span>
+							<div class="flex items-center gap-1.5 text-xs text-theme-text-muted">
+								<span>{t("permanentlyDeletePrefix")}</span>
 								<input
 									type="number"
 									bind:value={permanentDeleteDays}
 									min="0"
-									class="w-16 rounded border border-theme-border bg-theme-bg px-2 py-0.5 text-xs text-theme-text"
+									class="w-14 rounded border border-theme-border bg-theme-bg px-2 py-0.5 text-xs text-theme-text text-center"
 								/>
-								<span>{t("permanentlyDeleteDaysLabel")}</span>
+								<span>{t("permanentlyDeleteSuffix")}</span>
 							</div>
 							<button
 								type="button"
-								class="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700"
+								class="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700 font-medium"
 								onclick={handlePermanentlyDelete}
 							>
 								{t("permanentlyDeleteButton")}
