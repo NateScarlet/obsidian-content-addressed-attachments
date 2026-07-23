@@ -49,7 +49,7 @@ export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
 	private decryptedBlobStore = new Map<string, string>();
 	// 防抖 cleanup 的 timer ID
-	private cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+	private cleanupTimer: number | undefined;
 
 	constructor(
 		private app: App,
