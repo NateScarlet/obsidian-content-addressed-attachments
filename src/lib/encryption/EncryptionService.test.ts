@@ -140,6 +140,40 @@ describe("EncryptionService", () => {
 			const buf2 = await ef2.arrayBuffer();
 			expect(Buffer.from(buf1).equals(Buffer.from(buf2))).toBe(false);
 		});
+
+		it("returns same file if already encrypted with the same key", async () => {
+			const k1 = await km.createKey("key1");
+			const file = new File(["same"], "a.txt", { type: "text/plain" });
+
+			const { encryptedFile: ef1 } = await es.encryptFile(
+				k1.fingerprint,
+				file,
+			);
+			const { encryptedFile: ef2 } = await es.encryptFile(
+				k1.fingerprint,
+				ef1,
+			);
+
+			expect(ef2.name).toBe("a.txt");
+			const buf1 = await ef1.arrayBuffer();
+			const buf2 = await ef2.arrayBuffer();
+			expect(Buffer.from(buf1).equals(Buffer.from(buf2))).toBe(true);
+		});
+
+		it("throws error if file is already encrypted with a different key", async () => {
+			const k1 = await km.createKey("key1");
+			const k2 = await km.createKey("key2");
+			const file = new File(["same"], "a.txt", { type: "text/plain" });
+
+			const { encryptedFile: ef1 } = await es.encryptFile(
+				k1.fingerprint,
+				file,
+			);
+
+			await expect(es.encryptFile(k2.fingerprint, ef1)).rejects.toThrow(
+				"already encrypted",
+			);
+		});
 	});
 
 	describe("decryptFile", () => {

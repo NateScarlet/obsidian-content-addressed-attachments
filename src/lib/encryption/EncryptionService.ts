@@ -60,6 +60,37 @@ export class EncryptionService {
 		if (!key) throw new Error(`Encryption key ${keyFingerprint} not found`);
 
 		const buffer = await file.arrayBuffer();
+
+		// 检查文件是否已经被加密
+		if (this.cryptoService.isEncryptedData(buffer)) {
+			try {
+				const header = this.cryptoService.parseHeader(buffer);
+				if (header.keyFingerprint === keyFingerprint) {
+					// 已使用相同的密钥加密，直接原样返回
+					const encryptedFile =
+						file.type === ENCRYPTED_FORMAT
+							? file
+							: new File([file], file.name, {
+									type: ENCRYPTED_FORMAT,
+								});
+					return { encryptedFile, fingerprint: keyFingerprint };
+				} else {
+					// 使用了不同的密钥加密，报错要求先解密
+					throw new Error(
+						`File "${file.name}" is already encrypted with key "${header.keyFingerprint}". Please decrypt it first before re-encrypting with key "${keyFingerprint}".`,
+					);
+				}
+			} catch (err) {
+				if (
+					err instanceof Error &&
+					err.message.includes("already encrypted")
+				) {
+					throw err;
+				}
+				// 非有效文件头则按普通明文继续加密
+			}
+		}
+
 		const data = await this.cryptoService.encrypt(
 			key,
 			keyFingerprint,

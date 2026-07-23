@@ -189,19 +189,13 @@ export class CryptoService {
 
 	/** 解密加密文件内容 */
 	async decrypt(
-		keyOrResolver:
-			| CryptoKey
-			| ((
-					fingerprint: string,
-			  ) => Promise<CryptoKey | undefined> | CryptoKey | undefined),
+		keyResolver: (
+			fingerprint: string,
+		) => Promise<CryptoKey | undefined> | CryptoKey | undefined,
 		encryptedData: ArrayBuffer,
 	): Promise<{ plaintext: ArrayBuffer; header: EncryptedFileHeader }> {
 		const header = this.parseHeader(encryptedData);
-
-		const key =
-			typeof keyOrResolver === "function"
-				? await keyOrResolver(header.keyFingerprint)
-				: keyOrResolver;
+		const key = await keyResolver(header.keyFingerprint);
 
 		if (!key) {
 			throw new Error(

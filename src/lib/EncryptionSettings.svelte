@@ -42,6 +42,8 @@
 			days: "days",
 			permanentlyDeleteConfirm: "Permanently delete keys older than the specified days? This cannot be undone.",
 			permanentlyDeletedKeysSuccess: (n: number) => `Permanently deleted ${n} key(s)`,
+			usePrimaryKey: (name: string) => `Primary key (${name})`,
+			none: "None",
 		},
 		zh: {
 			fingerprint: "指纹",
@@ -77,6 +79,8 @@
 			days: "天",
 			permanentlyDeleteConfirm: "确定要永久删除超过指定天数的密钥吗？此操作不可撤销。",
 			permanentlyDeletedKeysSuccess: (n: number) => `已永久删除 ${n} 个密钥`,
+			usePrimaryKey: (name: string) => `主密钥 (${name})`,
+			none: "无",
 		},
 	});
 
@@ -105,6 +109,11 @@
 	let newKeyName = $state("");
 	let showDeletedKeys = $state(false);
 	let permanentDeleteDays = $state(7);
+
+	const primaryKey = $derived(keys[0]);
+	const primaryKeyName = $derived(
+		primaryKey ? keyDisplayName(primaryKey) : t("none"),
+	);
 
 	function formatYearMonth(date: Date | string): string {
 		const d = date instanceof Date ? date : new Date(date);
@@ -140,12 +149,17 @@
 		const name = newKeyName.trim();
 		try {
 			const info = await encryptionService.createKey(name);
-			new Notice(t("keyCreateSuccess")(keyDisplayName(info)));
+			newNotice(t("keyCreateSuccess")(keyDisplayName(info)));
 			newKeyName = "";
 			await loadKeys();
+			display();
 		} catch (err) {
 			showError(err);
 		}
+	}
+
+	function newNotice(msg: string) {
+		new Notice(msg);
 	}
 
 	async function setAsPrimary(key: EncryptionKeyInfo) {
@@ -245,16 +259,16 @@
 {#each keys as key (key.fingerprint)}
 	<div class="flex items-center justify-between gap-2 py-2 border-b border-base-300">
 		<div class="flex flex-col min-w-0 flex-1">
-			<div class="flex items-center gap-1.5 min-w-0">
+			<div class="flex items-center gap-2 min-w-0">
 				<input
 					type="text"
-					class="font-medium bg-transparent border-b border-transparent focus:border-base-400 focus:bg-base-100 px-1 py-0.5 min-w-32 max-w-full text-sm"
+					class="font-medium bg-transparent border-b border-transparent focus:border-accent focus:bg-base-100 px-1.5 py-0.5 min-w-32 max-w-full text-sm rounded-sm transition-colors"
 					placeholder={keyDefaultName(key)}
 					value={key.name}
 					onchange={(e) => void updateKeyName(key, (e.target as HTMLInputElement).value)}
 				/>
 				{#if key === keys[0]}
-					<span class="text-xs bg-accent text-accent-inverse px-1 py-0.5 rounded shrink-0">{t("primary")}</span>
+					<span class="text-xs px-1.5 py-0.5 rounded bg-accent/20 text-accent font-medium shrink-0">{t("primary")}</span>
 				{/if}
 			</div>
 			<div class="flex flex-wrap gap-x-3 text-xs text-base-400">
@@ -283,20 +297,19 @@
 	</div>
 {/each}
 
-<div class="flex gap-2 py-2">
+<div class="flex items-center gap-2 mt-3">
 	<input
 		type="text"
-		class="flex-1"
+		class="px-2 py-1 text-sm border border-base-300 rounded flex-1"
 		placeholder={t("keyNamePlaceholder")}
 		bind:value={newKeyName}
-		onkeydown={(e) => { if (e.key === "Enter") void createKey(); }}
 	/>
 	<button
 		type="button"
-		class="px-3 py-1 bg-accent text-accent-inverse rounded hover:opacity-80"
+		class="px-3 py-1 border border-base-400 rounded hover:bg-base-200 text-sm shrink-0"
 		onclick={createKey}
 	>
-		{t("create")}
+		{t("createNewKey")}
 	</button>
 </div>
 
@@ -383,46 +396,53 @@
 <p class="text-xs text-base-400 mb-3">{t("encryptPathRulesDesc")}</p>
 
 {#each settings.encryptPathRules as rule (rule)}
-	<div class="flex items-start gap-2 py-1">
+	<div class="p-3 border border-base-300 rounded-lg bg-base-100/50 mb-3 space-y-2">
 		<textarea
-			class="flex-1 min-h-20 resize-y font-mono text-xs"
+			class="w-full min-h-20 resize-y font-mono text-xs p-2 border border-base-300 rounded bg-base-100 focus:border-accent"
 			placeholder={t("encryptPathRulePatternPlaceholder")}
 			value={rule.pattern}
 			oninput={(e) => updateRulePattern(rule, (e.target as HTMLTextAreaElement).value)}
 		></textarea>
-		<select
-			class="min-w-32"
-			value={rule.keyFingerprint}
-			onchange={(e) => updateRuleKey(rule, (e.target as HTMLSelectElement).value)}
-		>
-			<option value="">({t("primary")})</option>
-			{#each keys as k (k.fingerprint)}
-				<option value={k.fingerprint}>{keyDisplayName(k)}</option>
-			{/each}
-		</select>
-		<button
-			type="button"
-			class="px-2 py-1 text-sm hover:bg-error/10 text-error rounded shrink-0"
-			onclick={() => removeRule(rule)}
-		>
-			{t("delete")}
-		</button>
+		<div class="flex items-center justify-between gap-2">
+			<div class="flex items-center gap-2">
+				<span class="text-xs text-base-400">{t("keyNamePlaceholder")}:</span>
+				<select
+					class="dropdown text-xs px-2 py-1 border border-base-300 rounded bg-base-100 min-w-44 focus:border-accent"
+					value={rule.keyFingerprint}
+					onchange={(e) => updateRuleKey(rule, (e.target as HTMLSelectElement).value)}
+				>
+					<option value="">{t("usePrimaryKey")(primaryKeyName)}</option>
+					{#each keys as k (k.fingerprint)}
+						<option value={k.fingerprint}>{keyDisplayName(k)}</option>
+					{/each}
+				</select>
+			</div>
+			<div class="flex items-center gap-2">
+				{#if keys.length > 0}
+					<button
+						type="button"
+						class="px-2 py-1 text-xs border border-base-400 rounded hover:bg-accent/10 transition-colors"
+						title={t("encryptMatchingNotesHint")}
+						onclick={() => onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
+					>
+						{t("encryptMatchingNotes")}
+					</button>
+				{/if}
+				<button
+					type="button"
+					class="px-2 py-1 text-xs border border-error/40 text-error rounded hover:bg-error/10 transition-colors"
+					onclick={() => removeRule(rule)}
+				>
+					{t("delete")}
+				</button>
+			</div>
+		</div>
 	</div>
-	{#if keys.length > 0}
-		<button
-			type="button"
-			class="px-2 py-1 text-xs border border-base-400 rounded hover:bg-accent/10 mt-1"
-			title={t("encryptMatchingNotesHint")}
-			onclick={() => onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
-		>
-			{t("encryptMatchingNotes")}
-		</button>
-	{/if}
 {/each}
 
 <button
 	type="button"
-	class="px-3 py-1 border border-base-400 rounded hover:bg-base-200 mt-2"
+	class="px-3 py-1 border border-base-400 rounded hover:bg-base-200 mt-2 text-xs"
 	onclick={addRule}
 >
 	{t("addEncryptPathRule")}

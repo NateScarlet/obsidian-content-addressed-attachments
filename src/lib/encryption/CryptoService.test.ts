@@ -34,7 +34,7 @@ describe("CryptoService", () => {
 
 			expect(data.byteLength).toBeGreaterThan(plaintext.byteLength);
 
-			const { plaintext: decrypted } = await cs.decrypt(key, data);
+			const { plaintext: decrypted } = await cs.decrypt(() => key, data);
 			const decryptedText = new TextDecoder().decode(decrypted);
 			expect(decryptedText).toBe("Hello, World!");
 		});
@@ -51,7 +51,7 @@ describe("CryptoService", () => {
 				"application/octet-stream",
 			);
 
-			const { plaintext: decrypted } = await cs.decrypt(key, data);
+			const { plaintext: decrypted } = await cs.decrypt(() => key, data);
 			const decryptedBytes = new Uint8Array(decrypted);
 			expect(Array.from(decryptedBytes)).toEqual([
 				0, 1, 255, 128, 64, 32, 16, 8, 4, 2,
@@ -182,7 +182,7 @@ describe("CryptoService", () => {
 				"text/plain",
 			);
 
-			await expect(cs.decrypt(key2, data)).rejects.toThrow();
+			await expect(cs.decrypt(() => key2, data)).rejects.toThrow();
 		});
 	});
 
