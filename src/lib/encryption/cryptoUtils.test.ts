@@ -1,7 +1,23 @@
 import { describe, it, expect } from "vitest";
 import * as cryptoUtils from "./cryptoUtils";
+import { hexToBytes, bytesToHex } from "./fileHeader";
 
 describe("CryptoService pure functions", () => {
+	describe("hexToBytes & bytesToHex", () => {
+		it("roundtrips 16-character hex string to 8-byte raw binary", () => {
+			const hex = "a1b2c3d4e5f67890";
+			const bytes = hexToBytes(hex);
+			expect(bytes.byteLength).toBe(8);
+			expect(bytesToHex(bytes)).toBe(hex);
+		});
+
+		it("throws error when hex string is not 16 characters", () => {
+			expect(() => hexToBytes("1234")).toThrow(
+				"Invalid fingerprint hex length",
+			);
+		});
+	});
+
 	describe("generateKey", () => {
 		it("creates AES-256-GCM key usable for encrypt and decrypt", async () => {
 			const key = await cryptoUtils.generateKey();
@@ -58,19 +74,19 @@ describe("CryptoService pure functions", () => {
 			]);
 		});
 
-		it("preserves original format in header", async () => {
+		it("preserves original format and fingerprint in header", async () => {
 			const key = await cryptoUtils.generateKey();
 			const plaintext = new TextEncoder().encode("img").buffer;
 			const data = await cryptoUtils.encrypt(
 				key,
-				"fp1",
+				"1234567812345678",
 				plaintext,
 				"image/png",
 			);
 
 			const { header } = await cryptoUtils.decrypt(() => key, data);
 			expect(header.originalFormat).toBe("image/png");
-			expect(header.keyFingerprint).toBe("fp1");
+			expect(header.keyFingerprint).toBe("1234567812345678");
 		});
 
 		it("rejects decryption if header metadata (originalFormat) is tampered with (AAD verification failure)", async () => {
@@ -78,22 +94,21 @@ describe("CryptoService pure functions", () => {
 			const plaintext = new TextEncoder().encode("tamper test").buffer;
 			const encrypted = await cryptoUtils.encrypt(
 				key,
-				"fp1",
+				"1234567812345678",
 				plaintext,
 				"image/png",
 			);
 
 			// 找到 format 字符串在 Header 中的位置并篡改它
-			const bytes = new Uint8Array(encrypted);
+			const bytes = new Uint8Array(encrypted.slice(0));
 			const fmtString = "image/png";
 			const fmtPos =
 				bytes.length - plaintext.byteLength - fmtString.length;
-			const tampered = new Uint8Array(encrypted.slice(0));
-			tampered[fmtPos] = "t".charCodeAt(0); // 将 "image/png" 改为 "tmage/png"
+			bytes[fmtPos] = "t".charCodeAt(0); // 将 "image/png" 改为 "tmage/png"
 
 			// AAD 校验应捕获篡改并抛出解密异常
 			await expect(
-				cryptoUtils.decrypt(() => key, tampered.buffer),
+				cryptoUtils.decrypt(() => key, bytes.buffer),
 			).rejects.toThrow();
 		});
 
@@ -104,13 +119,13 @@ describe("CryptoService pure functions", () => {
 			).buffer;
 			const data1 = await cryptoUtils.encrypt(
 				key,
-				"fp1",
+				"1234567812345678",
 				plaintext,
 				"image/png",
 			);
 			const data2 = await cryptoUtils.encrypt(
 				key,
-				"fp1",
+				"1234567812345678",
 				plaintext,
 				"image/png",
 			);
@@ -125,13 +140,13 @@ describe("CryptoService pure functions", () => {
 			).buffer;
 			const data1 = await cryptoUtils.encrypt(
 				key,
-				"fp1",
+				"1234567812345678",
 				plaintext,
 				"image/png",
 			);
 			const data2 = await cryptoUtils.encrypt(
 				key,
-				"fp1",
+				"1234567812345678",
 				plaintext,
 				"image/jpeg",
 			);
@@ -144,14 +159,14 @@ describe("CryptoService pure functions", () => {
 			const plaintext = new TextEncoder().encode("test").buffer;
 			const data = await cryptoUtils.encrypt(
 				key,
-				"fp-missing",
+				"1234567812345678",
 				plaintext,
 				"text/plain",
 			);
 
 			await expect(
 				cryptoUtils.decrypt(() => undefined, data),
-			).rejects.toThrow("Decryption key fp-missing not found");
+			).rejects.toThrow("Decryption key 1234567812345678 not found");
 		});
 	});
 
@@ -168,7 +183,7 @@ describe("CryptoService pure functions", () => {
 			const plaintext = new TextEncoder().encode("roundtrip").buffer;
 			const encrypted = await cryptoUtils.encrypt(
 				importedEncrypt,
-				"fp",
+				"1234567812345678",
 				plaintext,
 				"text/plain",
 			);

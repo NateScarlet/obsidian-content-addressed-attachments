@@ -4,13 +4,14 @@ import {
 	HEADER_VERSION,
 	IV_LENGTH,
 	AUTH_TAG_LENGTH,
+	FINGERPRINT_BYTES,
+	hexToBytes,
 	parseHeader,
 } from "./fileHeader";
 
 export const CURRENT_SETTINGS_VERSION = 1;
 
 /** AES-256-GCM 参数 */
-const KEY_FINGERPRINT_BYTES = 8; // 64 bits
 const KEY_ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
 
@@ -30,16 +31,16 @@ const IV_DOMAIN_LABEL = new Uint8Array([
 
 /**
  * 构造 AEAD 附加认证数据 (Additional Authenticated Data, AAD)。
- * 包含文件头中除 IV 和 AuthTag 之外的所有明文元数据字段 (Magic, Version, Fingerprint, OriginalFormat)。
+ * 包含文件头中除 IV 和 AuthTag 之外的所有明文元数据字段 (Magic, Version, 8B Raw Fingerprint, OriginalFormat)。
  * 将文件头绑定进 GCM Tag 认证签名中，彻底防止文件头元数据篡改攻击 (Header / Metadata Tampering Attack)。
  */
 export function buildHeaderAAD(
 	fingerprint: string,
 	originalFormat: string,
 ): Uint8Array {
-	const fpBytes = new TextEncoder().encode(fingerprint);
+	const fpBytes = hexToBytes(fingerprint);
 	const fmtBytes = new TextEncoder().encode(originalFormat);
-	const aadSize = 4 + 2 + 2 + fpBytes.byteLength + 2 + fmtBytes.byteLength;
+	const aadSize = 4 + 2 + FINGERPRINT_BYTES + 2 + fmtBytes.byteLength;
 	const aad = new Uint8Array(aadSize);
 	const dv = new DataView(aad.buffer, aad.byteOffset, aad.byteLength);
 	let offset = 0;
@@ -52,11 +53,9 @@ export function buildHeaderAAD(
 	dv.setUint16(offset, HEADER_VERSION, true);
 	offset += 2;
 
-	// Fingerprint length (2B) + Fingerprint
-	dv.setUint16(offset, fpBytes.byteLength, true);
-	offset += 2;
+	// 8 字节固定 Raw Binary 密钥指纹 (8B)
 	aad.set(fpBytes, offset);
-	offset += fpBytes.byteLength;
+	offset += FINGERPRINT_BYTES;
 
 	// Format length (2B) + Format
 	dv.setUint16(offset, fmtBytes.byteLength, true);
@@ -91,7 +90,7 @@ export async function computeFingerprint(keyData: Uint8Array): Promise<string> {
 		) as ArrayBuffer,
 	);
 	const sha256Bytes = new Uint8Array(digestResult);
-	const fpBytes = sha256Bytes.slice(0, KEY_FINGERPRINT_BYTES);
+	const fpBytes = sha256Bytes.slice(0, FINGERPRINT_BYTES);
 	return Array.from(fpBytes)
 		.map((b) => b.toString(16).padStart(2, "0"))
 		.join("");
@@ -238,13 +237,12 @@ export async function encrypt(
 	const authTag = new Uint8Array(encrypted, ciphertextLen, AUTH_TAG_LENGTH);
 
 	const fmtBytes = new TextEncoder().encode(originalFormat);
-	const fpBytes = new TextEncoder().encode(fingerprint);
+	const fpBytes = hexToBytes(fingerprint);
 
 	const headerSize =
 		4 +
 		2 +
-		2 +
-		fpBytes.byteLength +
+		FINGERPRINT_BYTES +
 		IV_LENGTH +
 		AUTH_TAG_LENGTH +
 		2 +
@@ -257,30 +255,35 @@ export async function encrypt(
 	);
 	let offset = 0;
 
+	// Magic (4B)
 	result.set(HEADER_MAGIC, offset);
 	offset += 4;
 
+	// Version (2B)
 	dv.setUint16(offset, HEADER_VERSION, true);
 	offset += 2;
 
-	dv.setUint16(offset, fpBytes.byteLength, true);
-	offset += 2;
-
+	// 8 字节原生二进制指纹 (8B)
 	result.set(fpBytes, offset);
-	offset += fpBytes.byteLength;
+	offset += FINGERPRINT_BYTES;
 
+	// IV (12B)
 	result.set(iv, offset);
 	offset += IV_LENGTH;
 
+	// AuthTag (16B)
 	result.set(authTag, offset);
 	offset += AUTH_TAG_LENGTH;
 
+	// Format length (2B)
 	dv.setUint16(offset, fmtBytes.byteLength, true);
 	offset += 2;
 
+	// Format (N Bytes)
 	result.set(fmtBytes, offset);
 	offset += fmtBytes.byteLength;
 
+	// Ciphertext
 	result.set(ciphertext, offset);
 
 	return result.buffer;
@@ -308,11 +311,11 @@ export async function decrypt(
 	const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
 	let offset = 0;
 
-	offset += 6;
-	const fpLen = dv.getUint16(offset, true);
-	offset += 2 + fpLen;
-	offset += IV_LENGTH;
-	offset += AUTH_TAG_LENGTH;
+	offset += 4; // Magic
+	offset += 2; // Version
+	offset += FINGERPRINT_BYTES; // 8B Fingerprint
+	offset += IV_LENGTH; // 12B IV
+	offset += AUTH_TAG_LENGTH; // 16B AuthTag
 	const fmtLen = dv.getUint16(offset, true);
 	offset += 2 + fmtLen;
 

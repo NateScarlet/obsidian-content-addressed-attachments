@@ -11,10 +11,33 @@ export const HEADER_VERSION = 1;
 /** AES-256-GCM 参数 */
 export const IV_LENGTH = 12;
 export const AUTH_TAG_LENGTH = 16; // 128 bits
+export const FINGERPRINT_BYTES = 8; // 64 bits 固定 Raw Binary 长度
+
+/** 将 16 字符 Hex 字符串解析为 8 字节原生二进制 */
+export function hexToBytes(hex: string): Uint8Array {
+	if (hex.length !== 16) {
+		throw new Error(`Invalid fingerprint hex length: ${hex.length}`);
+	}
+	const bytes = new Uint8Array(FINGERPRINT_BYTES);
+	for (let i = 0; i < FINGERPRINT_BYTES; i++) {
+		bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+	}
+	return bytes;
+}
+
+/** 将 8 字节原生二进制格式化为 16 字符 Hex 字符串 */
+export function bytesToHex(bytes: Uint8Array): string {
+	let hex = "";
+	for (let i = 0; i < bytes.byteLength; i++) {
+		hex += bytes[i].toString(16).padStart(2, "0");
+	}
+	return hex;
+}
 
 /** 检查数据是否为加密文件格式 */
 export function isEncryptedData(data: ArrayBuffer): boolean {
-	if (data.byteLength < 4 + 2 + 2 + 1 + IV_LENGTH + AUTH_TAG_LENGTH + 2) {
+	// 最小 Header 长度: 4(Magic) + 2(Version) + 8(FP) + 12(IV) + 16(Tag) + 2(FmtLen) = 44 字节
+	if (data.byteLength < 44) {
 		return false;
 	}
 	const bytes = new Uint8Array(data);
@@ -45,11 +68,10 @@ export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
 		throw new Error(`Unsupported encrypted file version: ${version}`);
 	}
 
-	const fpLen = dv.getUint16(offset, true);
-	offset += 2;
-	const fpBytes = data.slice(offset, offset + fpLen);
-	offset += fpLen;
-	const keyFingerprint = new TextDecoder().decode(fpBytes);
+	// 8 字节固定 Raw Binary 密钥指纹
+	const fpBytes = data.slice(offset, offset + FINGERPRINT_BYTES);
+	offset += FINGERPRINT_BYTES;
+	const keyFingerprint = bytesToHex(fpBytes);
 
 	const iv = data.slice(offset, offset + IV_LENGTH);
 	offset += IV_LENGTH;
