@@ -37,7 +37,7 @@ interface SettingsV0 {
 export type SettingsInput =
 	| SettingsV0
 	| {
-			version: 1;
+			version: number;
 			primaryDir?: string;
 			downloadDir?: string;
 			gateways?: GatewayConfig[];
@@ -55,10 +55,12 @@ export function settingsFromInput(
 		return defaults;
 	}
 
-	if (input.version === 1) {
+	// 只要是已知当前版本 (version: 1) 或未来的高版本 (version >= 1)，保留完整的输入字段
+	if (typeof input.version === "number" && input.version >= 1) {
 		return {
 			...defaults,
 			...input,
+			version: 1,
 			gateways: Array.isArray(input.gateways)
 				? input.gateways
 				: defaults.gateways,
@@ -69,7 +71,8 @@ export function settingsFromInput(
 		};
 	}
 
-	const v0 = input;
+	// 无 version 标识的早期旧版本 v0 数据迁移
+	const v0 = input as SettingsV0;
 	const v0Gateways = Array.isArray(v0.gatewayURLs)
 		? v0.gatewayURLs.map((g) => ({
 				urlTemplate: g.urlTemplate,

@@ -27,6 +27,25 @@ describe("settingsFromInput", () => {
 		expect(result.gateways).toEqual(customGateways);
 	});
 
+	it("preserves forward-compatible fields when version > 1", () => {
+		const customGateways = [
+			{
+				name: "Future Gateway",
+				urlTemplate: "https://future.com/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+		];
+		const result = settingsFromInput({
+			version: 2,
+			primaryDir: ".attachments/cas",
+			downloadDir: "",
+			gateways: customGateways,
+		});
+
+		expect(result.gateways).toEqual(customGateways);
+	});
+
 	it("respects user decision when gateways array is explicitly empty []", () => {
 		const resultEmpty = settingsFromInput({
 			version: 1,
