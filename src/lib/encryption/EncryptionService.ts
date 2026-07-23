@@ -1,10 +1,6 @@
 import type { KeyManager } from "./KeyManager";
 import { CryptoService } from "./CryptoService";
-import {
-	ENCRYPTED_FORMAT,
-	type DecryptedFile,
-	type EncryptedFileHeader,
-} from "./types";
+import { ENCRYPTED_FORMAT, type DecryptedFile } from "./types";
 
 export class EncryptionService {
 	constructor(
@@ -100,15 +96,5 @@ export class EncryptionService {
 	/** 判断是否为加密格式标记 */
 	static isEncryptedFormat(format: string): boolean {
 		return format === ENCRYPTED_FORMAT;
-	}
-
-	/** 检查数据是否为加密文件格式 */
-	isEncryptedData(data: ArrayBuffer): boolean {
-		return this.cryptoService.isEncryptedData(data);
-	}
-
-	/** 从加密文件数据中解析头部信息 */
-	parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
-		return this.cryptoService.parseHeader(encryptedData);
 	}
 }

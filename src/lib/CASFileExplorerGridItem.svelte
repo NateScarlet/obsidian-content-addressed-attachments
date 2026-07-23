@@ -55,6 +55,7 @@
 </script>
 
 <script lang="ts">
+	import { isEncryptedData, parseHeader } from "#src/lib/encryption/cencHeader";
 	import { getContext } from "./CASFileExplorerContext";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
@@ -130,12 +131,12 @@
 				fileBuffer = await app.vault.adapter.readBinary(path);
 				if (
 					fileBuffer &&
-					encryptionService.isEncryptedData(fileBuffer)
+					isEncryptedData(fileBuffer)
 				) {
 					isEncrypted = true;
 					try {
 						const header =
-							encryptionService.parseHeader(fileBuffer);
+							parseHeader(fileBuffer);
 						format = header.originalFormat;
 					} catch {
 						// ignore parse header error

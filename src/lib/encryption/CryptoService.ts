@@ -1,12 +1,14 @@
 import type { EncryptedFileHeader } from "./types";
-
-/** 加密文件头幻数 "CENC" */
-const HEADER_MAGIC = new Uint8Array([0x43, 0x45, 0x4e, 0x43]);
-const HEADER_VERSION = 1;
+import {
+	HEADER_MAGIC,
+	HEADER_VERSION,
+	IV_LENGTH,
+	AUTH_TAG_LENGTH,
+	isEncryptedData,
+	parseHeader,
+} from "./cencHeader";
 
 /** AES-256-GCM 参数 */
-const IV_LENGTH = 12;
-const AUTH_TAG_LENGTH = 16; // 128 bits
 const KEY_FINGERPRINT_BYTES = 8; // 64 bits
 const KEY_ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
@@ -149,42 +151,7 @@ export class CryptoService {
 
 	/** 从加密文件内容中解析头部 */
 	parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
-		const data = new Uint8Array(encryptedData);
-		const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-		let offset = 0;
-
-		for (let i = 0; i < 4; i++) {
-			if (data[offset + i] !== HEADER_MAGIC[i]) {
-				throw new Error("Invalid encrypted file: bad magic");
-			}
-		}
-		offset += 4;
-
-		const version = dv.getUint16(offset, true);
-		offset += 2;
-		if (version !== HEADER_VERSION) {
-			throw new Error(`Unsupported encrypted file version: ${version}`);
-		}
-
-		const fpLen = dv.getUint16(offset, true);
-		offset += 2;
-		const fpBytes = data.slice(offset, offset + fpLen);
-		offset += fpLen;
-		const keyFingerprint = new TextDecoder().decode(fpBytes);
-
-		const iv = data.slice(offset, offset + IV_LENGTH);
-		offset += IV_LENGTH;
-
-		const authTag = data.slice(offset, offset + AUTH_TAG_LENGTH);
-		offset += AUTH_TAG_LENGTH;
-
-		const fmtLen = dv.getUint16(offset, true);
-		offset += 2;
-		const fmtBytes = data.slice(offset, offset + fmtLen);
-		offset += fmtLen;
-		const originalFormat = new TextDecoder().decode(fmtBytes);
-
-		return { keyFingerprint, iv, authTag, originalFormat };
+		return parseHeader(encryptedData);
 	}
 
 	/** 解密加密文件内容 */
@@ -194,7 +161,7 @@ export class CryptoService {
 		) => Promise<CryptoKey | undefined> | CryptoKey | undefined,
 		encryptedData: ArrayBuffer,
 	): Promise<{ plaintext: ArrayBuffer; header: EncryptedFileHeader }> {
-		const header = this.parseHeader(encryptedData);
+		const header = parseHeader(encryptedData);
 		const key = await keyResolver(header.keyFingerprint);
 
 		if (!key) {
@@ -374,15 +341,6 @@ export class CryptoService {
 
 	/** 检查数据是否为加密文件格式 */
 	isEncryptedData(data: ArrayBuffer): boolean {
-		if (data.byteLength < 4 + 2 + 2 + 1 + IV_LENGTH + AUTH_TAG_LENGTH + 2) {
-			return false;
-		}
-		const bytes = new Uint8Array(data);
-		for (let i = 0; i < 4; i++) {
-			if (bytes[i] !== HEADER_MAGIC[i]) {
-				return false;
-			}
-		}
-		return true;
+		return isEncryptedData(data);
 	}
 }
