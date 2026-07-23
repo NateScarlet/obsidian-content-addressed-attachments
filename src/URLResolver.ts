@@ -285,7 +285,7 @@ export class URLResolver {
 			if (size <= maxBlob) {
 				const url = decrypted.toBlobURL();
 				this.decryptedBlobStore.set(encryptedPath, url);
-				return { url };
+				return { url, path: encryptedPath };
 			}
 
 			// 大文件：解密到临时缓存目录

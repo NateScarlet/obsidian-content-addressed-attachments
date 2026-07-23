@@ -47,12 +47,24 @@ async function trashIfUnreferenced(
 	await cas.trash(cid);
 }
 
-/** 直接通过 urlResolver 加载二进制内容，无需二次切割解析 */
+/**
+ * 加载二进制内容。
+ * 优先调用 cas.load(cid) 加载（当文件位于垃圾箱 .trash 中时，cas.load 会自动自动还原并校验文件），
+ * 其次回退调用 urlResolver。
+ */
 async function loadFileContent(
 	app: App,
+	cas: CAS,
 	urlResolver: URLResolver,
 	rawURL: string,
 ): Promise<ArrayBuffer | undefined> {
+	const parsed = IPFSLink.parse(rawURL);
+	if (parsed) {
+		const match = await cas.load(parsed.cid);
+		if (match?.normalizedPath) {
+			return app.vault.adapter.readBinary(match.normalizedPath);
+		}
+	}
 	const resolved = await urlResolver.resolveURL(rawURL);
 	if (resolved?.path) {
 		return app.vault.adapter.readBinary(resolved.path);
@@ -86,7 +98,7 @@ export async function encryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
-	const buffer = await loadFileContent(app, urlResolver, linkText);
+	const buffer = await loadFileContent(app, cas, urlResolver, linkText);
 	if (!buffer) {
 		new Notice("File not found");
 		return;
@@ -139,7 +151,7 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const buffer = await loadFileContent(app, urlResolver, linkText);
+	const buffer = await loadFileContent(app, cas, urlResolver, linkText);
 	if (!buffer) {
 		new Notice("File not found");
 		return;
@@ -218,7 +230,7 @@ export async function encryptNote(
 		const parsed = IPFSLink.parse(linkText);
 		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
-		const buffer = await loadFileContent(app, urlResolver, linkText);
+		const buffer = await loadFileContent(app, cas, urlResolver, linkText);
 		if (!buffer) return undefined;
 
 		const origFile = new File([new Blob([buffer])], parsed.filename, {
