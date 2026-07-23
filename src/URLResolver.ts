@@ -369,7 +369,7 @@ export class URLResolver {
 			window.clearTimeout(this.cleanupTimer);
 		}
 
-		this.cleanupTimer = setTimeout(() => {
+		this.cleanupTimer = window.setTimeout(() => {
 			void (async () => {
 				this.cleanupTimer = undefined;
 				const cacheDir = this.settings().decryptedCacheDir;

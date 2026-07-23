@@ -114,6 +114,10 @@ These operations are placed in settings to prevent accidental execution, as they
 # Locked Web Images (after locking)
 
 ![Alt text](internal.ipfs-locked:bafybei...,https://example.com/image.jpg "Optional title")
+
+# Encrypted Attachments
+
+![filename](ipfs://bafybei...?filename=photo.jpg&format=application%2Fx.w1kxt3qz.encrypted)
 ```
 
 ## Configuration
