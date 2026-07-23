@@ -51,7 +51,7 @@ export class URLResolver {
 	// 跟踪 CID → 解密缓存路径的映射，用于清理时判断
 	private decryptedCidToCachePath = new Map<string, string>();
 	// 防抖 cleanup 的 timer ID
-	private cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+	private cleanupTimer: number | undefined;
 
 	constructor(
 		private app: App,
