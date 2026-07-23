@@ -1,5 +1,4 @@
-/** 加密文件格式标记 */
-export const ENCRYPTED_FORMAT = "application/x.w1kxt3qz.encrypted";
+export { ENCRYPTED_FORMAT } from "./constants";
 
 /** 加密密钥信息 */
 export interface EncryptionKeyInfo {
@@ -28,15 +27,15 @@ export interface EncryptedFileHeader {
 export interface KeyStorage {
 	getSecret(
 		key: string,
-	): string | null | undefined | Promise<string | null | undefined>;
-	setSecret(key: string, value: string): void | Promise<void>;
+	): Promise<string | undefined> | string | undefined | null;
+	setSecret(key: string, value: string): Promise<void> | void;
 }
 
-/** 单条 entry 的结构 */
+/** 存储在 secretStorage 中的单条密钥记录 */
 export interface SecretEntry {
-	key: string; // base64 编码的密钥材料
+	key: string; // base64 编码的 256 位密钥原始字节
 	name?: string;
-	createdAt: string; // ISO date
+	createdAt: string; // ISO 8601
 	priority?: number;
-	deletedAt?: string; // ISO date, 标记软删除
+	deletedAt?: string; // ISO 8601，存在则表示已软删除
 }

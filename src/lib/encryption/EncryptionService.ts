@@ -6,16 +6,17 @@ import { isEncryptedData, parseHeader } from "./cencHeader";
 /** 支持的统一二进制输入载体 */
 export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
 
+/** 加密层信息 */
+export type EncryptionLayer = { header: EncryptedFileHeader };
+
 /** 解密富结果接口，提供各种输出载体的转换能力 */
 export interface DecryptedResult {
 	/** 解密/解包后的原始字节 */
 	data: ArrayBuffer;
 	/** 原始 MIME 类型 (例如 "image/png") */
 	mimeType: string;
-	/** 输入数据是否原本为加密状态 */
-	wasEncrypted: boolean;
-	/** 解析出的 Header 元数据（仅当原本为加密数据时存在） */
-	header?: EncryptedFileHeader;
+	/** 解密历经的加密层列表（由外到内，明文则为空数组 []） */
+	layers: EncryptionLayer[];
 	/** 转化为 Blob */
 	toBlob(): Blob;
 	/** 一键转化为 UI 预览用的 Blob URL */
@@ -47,7 +48,7 @@ async function toArrayBuffer(input: BinaryInput): Promise<ArrayBuffer> {
  * 专注物理二进制数据的加解密算术与 CENC Header 解析，不包含任何 Obsidian 笔记路径或规则的概念。
  *
  * - **`inspect(input)`**: Safe 元数据探针（只读解析 Header，明文安全返回 `undefined`）。
- * - **`ensureDecrypted(input)`**: 确保得到明文（密文解密，明文直接包装；具备幂等性）。
+ * - **`ensureDecrypted(input)`**: 确保得到明文（持续解密直至得到纯明文；绝对返回 `DecryptedResult`，非 `undefined`）。
  * - **`ensureEncrypted(input, keyFingerprint?)`**: 物理层强力确保加密（使用指定 Key 或主 Key 加密；具备防二次加密幂等性）。
  */
 export class EncryptionService {
@@ -74,59 +75,53 @@ export class EncryptionService {
 
 	/**
 	 * 确保得到明文 (Ensure Plaintext)。
-	 * - 若输入为密文：自动解密并返回 `DecryptedResult`（`wasEncrypted = true`）；
-	 * - 若输入已为明文：直接包装为 `DecryptedResult`（`wasEncrypted = false`）。
+	 * 自动处理嵌套/多重加密，持续解密直到得到完全纯净的明文数据。
+	 * 绝对返回 `DecryptedResult`，绝不返回 `undefined`。
 	 */
-	async ensureDecrypted(
-		input: BinaryInput,
-	): Promise<DecryptedResult | undefined> {
-		const buffer = await toArrayBuffer(input);
-		const header = await this.inspect(buffer);
+	async ensureDecrypted(input: BinaryInput): Promise<DecryptedResult> {
+		let currentBuffer = await toArrayBuffer(input);
+		const layers: EncryptionLayer[] = [];
+		let mimeType =
+			input instanceof Blob &&
+			input.type &&
+			input.type !== ENCRYPTED_FORMAT
+				? input.type
+				: "application/octet-stream";
 
-		if (header) {
-			// 加密密文 ➔ 解密
+		while (true) {
+			const header = await this.inspect(currentBuffer);
+			if (!header) break;
+
+			layers.push({ header });
 			const { plaintext } = await cryptoUtils.decrypt(
 				(fp) => this.keyManager.getKey(fp),
-				buffer,
+				currentBuffer,
 			);
-			const mimeType =
-				header.originalFormat || "application/octet-stream";
-			return {
-				data: plaintext,
-				mimeType,
-				wasEncrypted: true,
-				header,
-				toBlob() {
-					return new Blob([plaintext], { type: mimeType });
-				},
-				toBlobURL() {
-					return URL.createObjectURL(
-						new Blob([plaintext], { type: mimeType }),
-					);
-				},
-			};
-		} else {
-			// 明文 ➔ 原样包装
-			const mimeType =
-				input instanceof Blob &&
-				input.type &&
-				input.type !== ENCRYPTED_FORMAT
-					? input.type
-					: "application/octet-stream";
-			return {
-				data: buffer,
-				mimeType,
-				wasEncrypted: false,
-				toBlob() {
-					return new Blob([buffer], { type: mimeType });
-				},
-				toBlobURL() {
-					return URL.createObjectURL(
-						new Blob([buffer], { type: mimeType }),
-					);
-				},
-			};
+			currentBuffer = plaintext;
+			if (
+				header.originalFormat &&
+				header.originalFormat !== ENCRYPTED_FORMAT
+			) {
+				mimeType = header.originalFormat;
+			}
 		}
+
+		const finalData = currentBuffer;
+		const finalMimeType = mimeType;
+
+		return {
+			data: finalData,
+			mimeType: finalMimeType,
+			layers,
+			toBlob() {
+				return new Blob([finalData], { type: finalMimeType });
+			},
+			toBlobURL() {
+				return URL.createObjectURL(
+					new Blob([finalData], { type: finalMimeType }),
+				);
+			},
+		};
 	}
 
 	/**

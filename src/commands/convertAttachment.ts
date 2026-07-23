@@ -17,21 +17,13 @@ const { t } = defineLocales({
 	en: {
 		encryptLink: "Encrypt this link",
 		decryptLink: "Decrypt this link",
-		encryptLinkSuccess: "Link encrypted",
-		decryptLinkSuccess: "Link decrypted",
 		noKeyAvailable:
 			"No encryption key available. Create one in settings first.",
-		fileStillReferenced: (paths: string) =>
-			`Source file is still referenced in other notes (${paths}), skipping trash.`,
 	},
 	zh: {
 		encryptLink: "加密此链接",
 		decryptLink: "解密此链接",
-		encryptLinkSuccess: "链接已加密",
-		decryptLinkSuccess: "链接已解密",
 		noKeyAvailable: "没有可用加密密钥。请在设置中先创建密钥。",
-		fileStillReferenced: (paths: string) =>
-			`原文件仍被其他笔记引用（${paths}），跳过清理。`,
 	},
 });
 
@@ -49,7 +41,6 @@ async function trashIfUnreferenced(
 	}
 
 	if (referencingFiles.length > 0) {
-		new Notice(t("fileStillReferenced")(referencingFiles.join(", ")));
 		return;
 	}
 
@@ -130,7 +121,6 @@ export async function encryptLink(
 		editor.offsetToPos(linkStart),
 		editor.offsetToPos(linkEnd),
 	);
-	new Notice(t("encryptLinkSuccess"));
 }
 
 export async function decryptLink(
@@ -156,7 +146,7 @@ export async function decryptLink(
 	}
 
 	const decrypted = await encryptionService.ensureDecrypted(buffer);
-	if (!decrypted || !decrypted.wasEncrypted) {
+	if (decrypted.layers.length === 0) {
 		new Notice("Not an encrypted file");
 		return;
 	}
@@ -179,7 +169,6 @@ export async function decryptLink(
 		editor.offsetToPos(linkStart),
 		editor.offsetToPos(linkEnd),
 	);
-	new Notice(t("decryptLinkSuccess"));
 }
 
 export function findLinkAtPos(

@@ -3,6 +3,7 @@ import { EncryptionService } from "./EncryptionService";
 import { EncryptPathPolicy } from "./EncryptPathPolicy";
 import { KeyManager } from "./KeyManager";
 import { ENCRYPTED_FORMAT, type KeyStorage } from "./types";
+import * as cryptoUtils from "./cryptoUtils";
 
 function createMockStorage(): KeyStorage {
 	const store = new Map<string, string>();
@@ -113,13 +114,13 @@ describe("EncryptionService", () => {
 			const decrypted = await es.ensureDecrypted(encryptedBuf);
 
 			expect(decrypted).toBeDefined();
-			expect(decrypted!.wasEncrypted).toBe(true);
-			expect(decrypted!.mimeType).toBe("text/plain");
+			expect(decrypted.layers.length).toBe(1);
+			expect(decrypted.mimeType).toBe("text/plain");
 
-			const blob = decrypted!.toBlob();
+			const blob = decrypted.toBlob();
 			expect(blob.type).toBe("text/plain");
 
-			const url = decrypted!.toBlobURL();
+			const url = decrypted.toBlobURL();
 			expect(url).toMatch(/^blob:/);
 
 			// eslint-disable-next-line no-restricted-globals
@@ -128,14 +129,46 @@ describe("EncryptionService", () => {
 			expect(text).toBe(originalContent);
 		});
 
-		it("wraps plaintext as DecryptedResult with wasEncrypted = false", async () => {
+		it("wraps plaintext as DecryptedResult with empty layers array", async () => {
 			const plainBuf = new TextEncoder().encode("plain text").buffer;
 			const decrypted = await es.ensureDecrypted(plainBuf);
 
 			expect(decrypted).toBeDefined();
-			expect(decrypted!.wasEncrypted).toBe(false);
-			const text = new TextDecoder().decode(decrypted!.data);
+			expect(decrypted.layers.length).toBe(0);
+			const text = new TextDecoder().decode(decrypted.data);
 			expect(text).toBe("plain text");
+		});
+
+		it("handles multi-layer nested decryption until plaintext is reached", async () => {
+			const k1 = await km.createKey("key-1");
+			const k2 = await km.createKey("key-2");
+
+			const innerEncrypted = await es.ensureEncrypted(
+				new File(["nested data"], "doc.txt", { type: "text/plain" }),
+				k1.fingerprint,
+			);
+			const innerBuf = await innerEncrypted.arrayBuffer();
+
+			const key2 = await km.getKeyForEncrypt(k2.fingerprint);
+			const outerBuf = await cryptoUtils.encrypt(
+				key2!,
+				k2.fingerprint,
+				innerBuf,
+				ENCRYPTED_FORMAT,
+			);
+
+			const decrypted = await es.ensureDecrypted(outerBuf);
+
+			expect(decrypted.layers.length).toBe(2);
+			expect(decrypted.layers[0].header.keyFingerprint).toBe(
+				k2.fingerprint,
+			);
+			expect(decrypted.layers[1].header.keyFingerprint).toBe(
+				k1.fingerprint,
+			);
+			expect(new TextDecoder().decode(decrypted.data)).toBe(
+				"nested data",
+			);
 		});
 	});
 });

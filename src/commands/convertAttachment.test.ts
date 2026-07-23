@@ -54,7 +54,7 @@ describe("convertAttachment", () => {
 		ensureDecrypted: vi.fn().mockResolvedValue({
 			data: new Uint8Array([1, 2, 3]),
 			mimeType: "image/png",
-			wasEncrypted: true,
+			layers: [{ header: {} as unknown }],
 			toBlob: () =>
 				new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
 			toBlobURL: () => "blob:test",

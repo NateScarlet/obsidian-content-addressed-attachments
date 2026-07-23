@@ -1,431 +1,135 @@
-<script module lang="ts">
-	import formatFileSize from "#src/utils/formatFileSize";
-	import defineLocales from "../utils/defineLocales";
-	import type { CASMetadataObject } from "#src/types/CASMetadata";
-	import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
-
-	const { t } = defineLocales({
-		en: {
-			confirmPermanentDelete: (filename: string) =>
-				`Permanently delete "${filename}"? This action cannot be undone.`,
-			restore: "Restore",
-			indexedAt: "Indexed at",
-			trashedAt: "Trashed at",
-			fetchMore: "Fetch more",
-			canNotRestoreFromGateway: "Can not restore from gateway",
-			copied: "Copied markdown link to clipboard",
-			copyLink: "Copy link",
-		},
-		zh: {
-			confirmPermanentDelete: (filename: string) =>
-				`永久删除"${filename}"？此操作无法撤销。`,
-			indexedAt: "索引于",
-			restore: "还原",
-			trashedAt: "删除于",
-			fetchMore: "加载更多",
-			canNotRestoreFromGateway: "无法从网关还原",
-			copied: "已复制 Markdown 链接到剪贴板",
-			copyLink: "复制链接",
-		},
-	});
-
-	function formatDate(date: Date) {
-		return date.toLocaleDateString() + " " + date.toLocaleTimeString();
-	}
-
-	function generateMarkdownLink(
-		file: CASMetadataObject,
-		format: string,
-		isEncrypted: boolean,
-	): string {
-		const url = new URL(`ipfs://${file.cid.toString()}`);
-		if (file.filename) {
-			url.searchParams.set("filename", file.filename);
-		}
-		const linkFormat = isEncrypted ? ENCRYPTED_FORMAT : format;
-		if (linkFormat && !linkFormat.includes("*")) {
-			url.searchParams.set("format", linkFormat);
-		}
-		if (format.startsWith("image/")) {
-			return `![${file.filename || "image"}](${url})`;
-		} else {
-			return `[${file.filename ?? "attachment"}](${url})`;
-		}
-	}
-</script>
-
 <script lang="ts">
 	import { getContext } from "./CASFileExplorerContext";
+	import type { CASMetadataObject } from "#src/types/CASMetadata";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
-	import { getAbortSignal } from "svelte";
-	import {
-		mdiDeleteAlertOutline,
-		mdiLinkVariant,
-		mdiLock,
-		mdiRestore,
-		mdiTrashCanOutline,
-	} from "@mdi/js";
-	import { referenceChange } from "#src/events";
-	import staleWithRevalidate from "#src/lib/stores/staleWhileRevalidate.svelte";
-	import type { Attachment } from "svelte/attachments";
+	import formatFileSize from "#src/utils/formatFileSize";
+	import { ENCRYPTED_FORMAT } from "./encryption/constants";
 
-	const { cas, app, referenceManager, encryptionService } = getContext();
+	let { file }: { file: CASMetadataObject } = $props();
 
-	let {
-		file,
-	}: {
-		file: CASMetadataObject;
-	} = $props();
+	const { cas, casMetadata, app, encryptionService } = getContext();
 
-	async function restoreFile() {
-		const result = await cas.load(file.cid);
-		if (!result) {
-			new Notice(t("canNotRestoreFromGateway"));
+	let isTrashing = $state(false);
+
+	let format = $derived(file.format);
+	let filename = $derived(file.filename);
+
+	let imgSrcPromise = $derived.by(async (): Promise<string | undefined> => {
+		if (format && !format.startsWith("image/") && format !== ENCRYPTED_FORMAT) {
+			return undefined;
 		}
-	}
 
-	async function deleteFile() {
-		if (
-			!confirm(
-				t("confirmPermanentDelete")(
-					$detail?.filename || file.filename || file.cid.toString(),
-				),
-			)
-		) {
+		const match = await cas.load(file.cid);
+		if (!match) return undefined;
+
+		const buffer = await app.vault.adapter.readBinary(match.normalizedPath);
+		const decrypted = await encryptionService.ensureDecrypted(buffer);
+
+		if (decrypted.mimeType.startsWith("image/")) {
+			return decrypted.toBlobURL();
+		}
+
+		return undefined;
+	});
+
+	function insertLink(embed: boolean) {
+		const view = app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) {
+			new Notice("No active Markdown view");
 			return;
 		}
-		await cas.deleteIfTrashed(file.cid);
+		const editor = view.editor;
+
+		const linkText = `ipfs://${file.cid.toString()}?filename=${encodeURIComponent(
+			filename ?? "",
+		)}&format=${encodeURIComponent(format ?? "")}`;
+
+		const isImage = format?.startsWith("image/") || format === ENCRYPTED_FORMAT;
+		const markdownLink =
+			embed || isImage ? `![${filename}](${linkText})` : `[${filename}](${linkText})`;
+
+		editor.replaceSelection(markdownLink);
 	}
 
-	const { result: detail } = staleWithRevalidate(async () => {
-		const signal = getAbortSignal();
-		console.debug("load", file.cid.toString());
-		for await (const match of cas.lookup(file.cid)) {
-			signal.throwIfAborted();
-
-			let filename = file.filename ?? "";
-			let format = file.format ?? "";
-
-			// 基于实际引用获取缺少的文件名和格式
-			if (!filename || !format) {
-				for await (const {
-					url,
-					title,
-				} of referenceManager.findReference(file.cid, signal)) {
-					filename = filename || url.filename || title || "";
-					format = format || url.format || "";
-					if (filename && format) {
-						break;
-					}
-				}
-			}
-
-			let isEncrypted = format === ENCRYPTED_FORMAT;
-			let fileBuffer: ArrayBuffer | undefined;
-			const { path } = match;
-
-			// 尝试读取二进制数据包，检查文件 Header 是否加密并解析出原始 format
-			try {
-				fileBuffer = await app.vault.adapter.readBinary(path);
-				if (fileBuffer) {
-					const header = await encryptionService.inspect(fileBuffer);
-					if (header) {
-						isEncrypted = true;
-						format = header.originalFormat;
-					}
-				}
-			} catch {
-				// ignore read file error
-			}
-
-			const imgSrc = await (async () => {
-				if (
-					format &&
-					!format.startsWith("image/") &&
-					format !== "image/*"
-				) {
-					// 已知不是图片
-					return;
-				}
-
-				if (isEncrypted) {
-					// 加密图片：支持解密并预览
-					if (fileBuffer) {
-						try {
-							return (
-								await encryptionService.ensureDecrypted(fileBuffer)
-							)?.toBlobURL();
-						} catch (err) {
-							console.debug(
-								"Failed to decrypt image preview for CAS item:",
-								err,
-							);
-							return undefined;
-						}
-					}
-					return undefined;
-				}
-
-				const src = app.vault.adapter.getResourcePath(path);
-				if (format) {
-					return src;
-				}
-				// 尝试加载未知格式为图片
-				const img = new Image();
-				img.src = src;
-				return img
-					.decode()
-					.then(() => {
-						format = "image/*";
-						return src;
-					})
-					.catch(() => undefined);
-			})();
-
-			signal.throwIfAborted();
-			return {
-				ok: true,
-				match,
-				imgSrc,
-				format,
-				filename,
-				isEncrypted,
-			};
+	async function handleTrash() {
+		isTrashing = true;
+		try {
+			await cas.trash(file.cid);
+			await casMetadata.delete(file.cid);
+		} catch (err) {
+			showError(err);
+		} finally {
+			isTrashing = false;
 		}
-		return { ok: false };
-	});
-
-	const format = $derived($detail?.format || file.format || "*/*");
-	const isEncrypted = $derived(
-		$detail?.isEncrypted ?? file.format === ENCRYPTED_FORMAT,
-	);
-	const isDeleted = $derived(!!file.trashedAt || $detail?.ok === false);
-
-	let limit = $state(20);
-	function fetchMore() {
-		limit += 20;
-	}
-
-	let version = $state(0);
-	const { result: references } = staleWithRevalidate(async () => {
-		void version;
-		void limit;
-		const cid = file.cid;
-		const signal = getAbortSignal();
-		return Array.fromAsync(
-			(async function* () {
-				let count = 0;
-				for await (const {
-					file,
-					url,
-					title,
-					pos,
-				} of referenceManager.findReference(cid)) {
-					if (signal.aborted) {
-						return;
-					}
-					yield {
-						file,
-						name: title || url.filename,
-						anchorAttrs: {
-							onclick: async () => {
-								try {
-									const leaf = app.workspace.getLeaf(false);
-									await leaf.openFile(file);
-									const view = leaf.view;
-									if (view instanceof MarkdownView) {
-										const editor = view.editor;
-										const range = {
-											from: editor.offsetToPos(pos[0]),
-											to: editor.offsetToPos(pos[1]),
-										};
-										editor.setSelection(
-											range.from,
-											range.to,
-										);
-										editor.scrollIntoView(range, true);
-									}
-								} catch (err) {
-									showError(err);
-								}
-							},
-						},
-					};
-					count += 1;
-					if (count == limit) {
-						return;
-					}
-				}
-			})(),
-		);
-	});
-	$effect(() => {
-		return referenceChange.subscribe((e) => {
-			if (e.detail.cid.equals(file.cid)) {
-				version += 1;
-			}
-		});
-	});
-
-	const drag: Attachment<HTMLElement> = (node) => {
-		node.draggable = true;
-		const handleDragStart = (event: DragEvent) => {
-			const markdownLink = generateMarkdownLink(
-				file,
-				format,
-				isEncrypted,
-			);
-			event.dataTransfer?.setData("text/plain", markdownLink);
-		};
-
-		node.addEventListener("dragstart", handleDragStart);
-		return () => {
-			node.removeEventListener("dragstart", handleDragStart);
-		};
-	};
-
-	async function copyLink() {
-		const markdownLink = generateMarkdownLink(file, format, isEncrypted);
-		await navigator.clipboard.writeText(markdownLink);
-		new Notice(t("copied"));
 	}
 </script>
 
-<!-- 卡片布局 -->
 <div
-	{@attach drag}
-	class="flex flex-col border rounded-lg p-1 @md:p-2 bg-secondary hover:bg-hover transition duration-300 ease-in-out"
+	class="group relative flex flex-col rounded-lg border border-theme-border bg-theme-bg p-2 transition-all hover:border-theme-border-hover hover:shadow-sm"
+	role="region"
+	aria-label={filename ?? file.cid.toString()}
 >
-	<!-- 图片预览 -->
-	{#if $detail?.imgSrc}
-		<div class="mb-3 flex justify-center">
-			<img
-				src={$detail.imgSrc}
-				class="max-h-32 max-w-full rounded"
-				alt={file.filename}
-				loading="lazy"
-				title="{file.filename} ({file.cid})"
-			/>
-		</div>
-	{/if}
-
-	<!-- 文件名 -->
+	<!-- 预览区域 -->
 	<div
-		class={[
-			"font-semibold truncate text-center flex items-center justify-center gap-1",
-			{
-				"text-muted": file.trashedAt && $detail?.ok,
-				"text-error": $detail?.ok === false,
-				"text-normal": !isDeleted,
-				"line-through": file.trashedAt,
-			},
-		]}
-		title={file.filename}
+		class="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded bg-theme-bg-secondary"
 	>
-		{#if isEncrypted}
-			<svg
-				class="inline fill-current h-[1.1em] text-accent shrink-0"
-				viewBox="0 0 24 24"
-			>
-				<path d={mdiLock} />
-			</svg>
-		{/if}
-		<span class="truncate">{file.filename}</span>
-	</div>
-	<!-- 元数据 -->
-	<div class="text-center space-x-1 text-sm text-muted">
-		<span>{format}</span>
-		<span title="{file.size} Byte"
-			>{formatFileSize(
-				$detail?.match?.stat.size ?? file.size ?? -1,
-			)}</span
-		>
-	</div>
-
-	<!-- 引用文件列表 -->
-	<ul class="space-y-1 max-h-64 overflow-y-auto list-none m-1 p-0">
-		{#each $references as i (i.file.path)}
-			<li class="break-all">
-				<a {...i.anchorAttrs}>
-					{i.file.path}
-				</a>
-				{#if i.name && i.name !== file.filename}
-					<span>|</span>
-					<span>{i.name}</span>
-				{/if}
-			</li>
-		{/each}
-		{#if $references?.length == limit}
-			<button type="button" class="w-full" onclick={fetchMore}>
-				{t("fetchMore")}
-			</button>
-		{/if}
-	</ul>
-
-	<div class="flex-auto"></div>
-
-	<!-- 操作按钮 -->
-	<div class="flex gap-2">
-		{#if !isDeleted}
-			<!-- 复制 -->
-			<button class="flex-2" onclick={() => copyLink().catch(showError)}>
-				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
-					<path d={mdiLinkVariant} />
-				</svg>
-				<span>{t("copyLink")}</span>
-			</button>
-			<!-- 移动到回收站 -->
-			<button
-				class="flex-1"
-				onclick={() => cas.trash(file.cid).catch(showError)}
-			>
-				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
-					<path d={mdiTrashCanOutline} />
-				</svg>
-				<wbr />
-			</button>
-		{:else}
-			<button
-				class="flex-2"
-				onclick={() => restoreFile().catch(showError)}
-			>
-				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
-					<path d={mdiRestore} />
-				</svg>
-				{t("restore")}
-			</button>
-			<button
-				class="flex-1 bg-error! text-primary!"
-				onclick={() => deleteFile().catch(showError)}
-			>
-				<svg class="inline fill-current h-[1.25em]" viewBox="0 0 24 24">
-					<path d={mdiDeleteAlertOutline} />
-				</svg>
-				<wbr />
-			</button>
-		{/if}
-	</div>
-
-	<div class="flex flex-wrap justify-between text-faint text-xs gap-1">
-		<span class="select-all truncate flex-1 font-mono">{file.cid}</span>
-		<!-- 时间戳 -->
-		<div class="flex-none text-right">
-			{#if file.trashedAt}
-				<span class="flex-none">
-					<span>{t("trashedAt")}</span>
-					<time datetime={file.trashedAt.toISOString()}
-						>{formatDate(file.trashedAt)}</time
-					>
-				</span>
+		{#await imgSrcPromise}
+			<div class="animate-pulse text-xs text-theme-text-muted">Loading...</div>
+		{:then src}
+			{#if src}
+				<img
+					{src}
+					alt={filename ?? file.cid.toString()}
+					class="h-full w-full object-cover"
+				/>
 			{:else}
-				<span class="flex-none">
-					<span>{t("indexedAt")}</span>
-					<time datetime={file.indexedAt.toISOString()}
-						>{formatDate(file.indexedAt)}</time
-					>
-				</span>
+				<div class="flex flex-col items-center justify-center p-2 text-center">
+					<span class="text-xs font-medium text-theme-text-muted truncate max-w-full">
+						{format ?? "Unknown"}
+					</span>
+				</div>
 			{/if}
+		{:catch err}
+			<div class="text-xs text-theme-error p-1 text-center truncate max-w-full" title={err instanceof Error ? err.message : String(err)}>
+				{err instanceof Error ? err.message : String(err)}
+			</div>
+		{/await}
+	</div>
+
+	<!-- 文件信息区域 -->
+	<div class="mt-2 flex flex-col gap-0.5">
+		<span
+			class="truncate text-xs font-medium text-theme-text"
+			title={filename ?? file.cid.toString()}
+		>
+			{filename ?? file.cid.toString()}
+		</span>
+		<div class="flex items-center justify-between text-[10px] text-theme-text-muted">
+			<span>{formatFileSize(file.size ?? 0)}</span>
 		</div>
+	</div>
+
+	<!-- 悬浮操作面板 -->
+	<div
+		class="absolute inset-0 hidden items-center justify-center gap-2 rounded-lg bg-black/40 backdrop-blur-[1px] group-hover:flex"
+	>
+		<button
+			type="button"
+			class="flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-800 shadow hover:bg-gray-100 text-xs font-bold"
+			title="Insert Link"
+			onclick={() => insertLink(false)}
+		>
+			Link
+		</button>
+		<button
+			type="button"
+			class="flex h-8 w-8 items-center justify-center rounded-full bg-red-600 text-white shadow hover:bg-red-700 disabled:opacity-50 text-xs font-bold"
+			title="Trash"
+			disabled={isTrashing}
+			onclick={handleTrash}
+		>
+			Trash
+		</button>
 	</div>
 </div>

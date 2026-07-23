@@ -277,7 +277,7 @@ export class URLResolver {
 
 			const decrypted =
 				await this.encryptionService.ensureDecrypted(encryptedData);
-			if (!decrypted || !decrypted.wasEncrypted) return;
+			if (decrypted.layers.length === 0) return;
 
 			const size = decrypted.data.byteLength;
 			const maxBlob = this.settings().maxBlobSize;

@@ -32,7 +32,7 @@ export class KeyManager {
 	/** 设置存储密钥的 secret ID */
 	async setKeysStorageId(id: string): Promise<void> {
 		const settings = this.getSettings();
-		(settings as Settings).encryptionKeysSecretId = id;
+		settings.encryptionKeysSecretId = id;
 		await this.saveSettings();
 	}
 
