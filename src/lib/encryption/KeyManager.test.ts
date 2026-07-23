@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { KeyManager } from "./KeyManager";
 import type { KeyStorage, SecretEntry } from "./types";
-import { CryptoService } from "./CryptoService";
+import * as cryptoUtils from "./cryptoUtils";
 
 function createMockStorage(): KeyStorage {
 	const store = new Map<string, string>();
@@ -15,32 +15,16 @@ function createMockStorage(): KeyStorage {
 	};
 }
 
-function createMockSettings(): { encryptionKeysSecretId?: string } {
-	return {};
-}
-
 describe("KeyManager", () => {
-	let storage: KeyStorage;
 	let km: KeyManager;
+	let storage: KeyStorage;
+	const createMockSettings = () => ({
+		encryptionKeysSecretId: undefined,
+	});
 
 	beforeEach(() => {
 		storage = createMockStorage();
 		km = new KeyManager(storage, createMockSettings, async () => {});
-	});
-
-	describe("isAvailable", () => {
-		it("returns true when storage is provided", () => {
-			expect(km.isAvailable).toBe(true);
-		});
-
-		it("returns false when storage is null or undefined", () => {
-			const unavailable = new KeyManager(
-				undefined as unknown as KeyStorage,
-				createMockSettings,
-				async () => {},
-			);
-			expect(unavailable.isAvailable).toBe(false);
-		});
 	});
 
 	describe("createKey", () => {
@@ -59,17 +43,17 @@ describe("KeyManager", () => {
 		});
 
 		it("persists key data to storage", async () => {
-			const info = await km.createKey("persisted");
-			const stored = await storage.getSecret("encryption-keys-w1kxt3qz");
-			expect(stored).toBeTruthy();
+			const info = await km.createKey("test");
+			const json = await storage.getSecret(km.getKeysStorageId());
+			expect(json).toBeTruthy();
 
-			const data = JSON.parse(stored!) as {
+			const parsed = JSON.parse(json!) as {
+				version: number;
 				keys: Record<string, SecretEntry>;
 			};
-			expect(data.keys[info.fingerprint]).toBeTruthy();
-			expect(data.keys[info.fingerprint].name).toBe("persisted");
-			expect(data.keys[info.fingerprint].key).toBeTruthy();
-			expect(data.keys[info.fingerprint].createdAt).toBeTruthy();
+			expect(parsed.version).toBe(1);
+			expect(parsed.keys[info.fingerprint]).toBeDefined();
+			expect(parsed.keys[info.fingerprint].name).toBe("test");
 		});
 
 		it("returns different fingerprints for consecutive keys", async () => {
@@ -86,18 +70,19 @@ describe("KeyManager", () => {
 		});
 
 		it("returns all created keys", async () => {
-			await km.createKey("key1");
-			await km.createKey("key2");
+			await km.createKey("k1");
+			await km.createKey("k2");
+
 			const keys = await km.listKeys();
-			expect(keys).toHaveLength(2);
+			expect(keys.length).toBe(2);
 			const names = keys.map((k) => k.name);
-			expect(names).toContain("key1");
-			expect(names).toContain("key2");
+			expect(names).toContain("k1");
+			expect(names).toContain("k2");
 		});
 
 		it("listKeys returns keys sorted by priority descending", async () => {
-			const k1 = await km.createKey("key1");
-			const k2 = await km.createKey("key2");
+			const k1 = await km.createKey("k1");
+			const k2 = await km.createKey("k2");
 
 			await km.setPrimaryKey(k2.fingerprint);
 
@@ -109,88 +94,81 @@ describe("KeyManager", () => {
 
 	describe("getPrimaryKey", () => {
 		it("returns undefined when no keys exist", async () => {
-			expect(await km.getPrimaryKey()).toBeUndefined();
+			const pk = await km.getPrimaryKey();
+			expect(pk).toBeUndefined();
 		});
 
 		it("returns the key with highest priority", async () => {
-			await km.createKey("first");
-			const k2 = await km.createKey("second");
-
-			// Initially first key listed
-			const primary1 = await km.getPrimaryKey();
-			expect(primary1?.fingerprint).toBeDefined();
-
-			// Promote k2
-			await km.setPrimaryKey(k2.fingerprint);
-			const primary2 = await km.getPrimaryKey();
-			expect(primary2?.fingerprint).toBe(k2.fingerprint);
-		});
-	});
-
-	describe("setPrimaryKey", () => {
-		it("setPrimaryKey promotes a key to highest priority", async () => {
 			await km.createKey("k1");
 			const k2 = await km.createKey("k2");
 
 			await km.setPrimaryKey(k2.fingerprint);
 
-			const primary = await km.getPrimaryKey();
-			expect(primary?.fingerprint).toBe(k2.fingerprint);
-			expect(primary?.name).toBe("k2");
+			const pk = await km.getPrimaryKey();
+			expect(pk?.fingerprint).toBe(k2.fingerprint);
+		});
+	});
+
+	describe("setPrimaryKey", () => {
+		it("setPrimaryKey promotes a key to highest priority", async () => {
+			const k1 = await km.createKey("k1");
+			await km.createKey("k2");
+
+			await km.setPrimaryKey(k1.fingerprint);
+
+			const pk = await km.getPrimaryKey();
+			expect(pk?.fingerprint).toBe(k1.fingerprint);
+			expect(pk?.name).toBe("k1");
 		});
 
 		it("setPrimaryKey throws for nonexistent key", async () => {
 			await expect(km.setPrimaryKey("nonexistent")).rejects.toThrow(
-				"not found",
+				"Key nonexistent not found",
 			);
-		});
-	});
-
-	describe("hasKey", () => {
-		it("returns true for existing key", async () => {
-			const info = await km.createKey("test");
-			expect(await km.hasKey(info.fingerprint)).toBe(true);
-		});
-
-		it("returns false for nonexistent key", async () => {
-			expect(await km.hasKey("nonexistent")).toBe(false);
 		});
 	});
 
 	describe("getKey / getKeyForEncrypt", () => {
 		it("returns CryptoKey for decrypt", async () => {
-			const info = await km.createKey("test");
+			const info = await km.createKey("decrypt-test");
 			const key = await km.getKey(info.fingerprint);
+
 			expect(key).toBeDefined();
-			expect(key!.algorithm.name).toBe("AES-GCM");
+			expect(key?.algorithm.name).toBe("AES-GCM");
+			expect(key?.usages).toEqual(["decrypt"]);
 		});
 
 		it("returns CryptoKey for encrypt with encrypt+decrypt usages", async () => {
-			const info = await km.createKey("test");
+			const info = await km.createKey("encrypt-test");
 			const key = await km.getKeyForEncrypt(info.fingerprint);
+
 			expect(key).toBeDefined();
-			expect(key!.usages).toContain("encrypt");
-			expect(key!.usages).toContain("decrypt");
+			expect(key?.algorithm.name).toBe("AES-GCM");
+			expect(key?.usages).toContain("encrypt");
+			expect(key?.usages).toContain("decrypt");
 		});
 
 		it("returns undefined for unknown fingerprint", async () => {
-			expect(await km.getKey("unknown")).toBeUndefined();
-			expect(await km.getKeyForEncrypt("unknown")).toBeUndefined();
+			const key = await km.getKey("unknown-fp");
+			expect(key).toBeUndefined();
 		});
 	});
 
 	describe("deleteKey", () => {
-		it("removes key from storage", async () => {
+		it("removes key from listKeys but keeps in listDeletedKeys", async () => {
 			const info = await km.createKey("to-delete");
 			await km.deleteKey(info.fingerprint);
-			expect(await km.hasKey(info.fingerprint)).toBe(false);
-		});
 
-		it("removes key from key listing", async () => {
-			const info = await km.createKey("to-delete");
-			await km.deleteKey(info.fingerprint);
-			const keys = await km.listKeys();
-			expect(keys).toHaveLength(0);
+			expect(await km.exportKey(info.fingerprint)).toBeUndefined();
+			const activeKeys = await km.listKeys();
+			expect(
+				activeKeys.find((k) => k.fingerprint === info.fingerprint),
+			).toBeUndefined();
+
+			const deletedKeys = await km.listDeletedKeys();
+			expect(
+				deletedKeys.find((k) => k.fingerprint === info.fingerprint),
+			).toBeDefined();
 		});
 	});
 
@@ -200,106 +178,100 @@ describe("KeyManager", () => {
 			await km.renameKey(info.fingerprint, "new-name");
 
 			const keys = await km.listKeys();
-			expect(keys[0].name).toBe("new-name");
+			const found = keys.find((k) => k.fingerprint === info.fingerprint);
+			expect(found?.name).toBe("new-name");
 		});
 
 		it("throws for nonexistent key", async () => {
-			await expect(km.renameKey("nonexistent", "name")).rejects.toThrow(
-				"not found",
-			);
+			await expect(
+				km.renameKey("nonexistent", "new-name"),
+			).rejects.toThrow("Key nonexistent not found");
 		});
 	});
 
 	describe("exportKey / importKey", () => {
 		it("exports key material for an existing key", async () => {
-			const info = await km.createKey("to-export");
+			const info = await km.createKey("export-me");
 			const exported = await km.exportKey(info.fingerprint);
+
 			expect(exported).toBeTruthy();
 			expect(typeof exported).toBe("string");
 		});
 
 		it("returns undefined for nonexistent key", async () => {
-			expect(await km.exportKey("nonexistent")).toBeUndefined();
+			const exported = await km.exportKey("nonexistent");
+			expect(exported).toBeUndefined();
 		});
 
 		it("imports exported key material", async () => {
-			const info = await km.createKey("original");
-			const exported = (await km.exportKey(info.fingerprint))!;
+			const info = await km.createKey("source");
+			const exported = await km.exportKey(info.fingerprint);
 
 			const km2 = new KeyManager(
 				createMockStorage(),
 				createMockSettings,
 				async () => {},
 			);
-			const imported = await km2.importKey("imported", exported);
+			const imported = await km2.importKey("imported", exported!);
 
 			expect(imported.fingerprint).toBe(info.fingerprint);
 			expect(imported.name).toBe("imported");
-			expect(await km2.hasKey(info.fingerprint)).toBe(true);
+			expect(await km2.exportKey(info.fingerprint)).toBeDefined();
 		});
 
 		it("rejects duplicate import", async () => {
-			const info = await km.createKey("unique");
-			const exported = (await km.exportKey(info.fingerprint))!;
+			const info = await km.createKey("original");
+			const exported = await km.exportKey(info.fingerprint);
 
-			await expect(km.importKey("duplicate", exported)).rejects.toThrow(
-				"already exists",
+			await expect(km.importKey("duplicate", exported!)).rejects.toThrow(
+				`Key with fingerprint ${info.fingerprint} already exists`,
 			);
 		});
 	});
 
 	describe("exportAllKeys / importAllKeys", () => {
 		it("exports all keys encrypted with passphrase", async () => {
-			await km.createKey("key1");
-			await km.createKey("key2");
+			await km.createKey("k1");
+			await km.createKey("k2");
+
 			const encrypted = await km.exportAllKeys("backup-pass");
 			expect(encrypted).toBeTruthy();
 
-			const plaintext = await new CryptoService().decryptWithPassphrase(
+			const plaintext = await cryptoUtils.decryptWithPassphrase(
 				encrypted,
 				"backup-pass",
 			);
-			const parsed = JSON.parse(plaintext) as unknown[];
-			expect(parsed).toHaveLength(2);
+			const entries = JSON.parse(plaintext) as Array<{
+				fingerprint: string;
+				name: string;
+			}>;
+
+			expect(entries.length).toBe(2);
 		});
 
 		it("imports keys from backup", async () => {
-			const origKm = new KeyManager(
+			await km.createKey("k1");
+			await km.createKey("k2");
+			const backup = await km.exportAllKeys("backup-pass");
+
+			const km2 = new KeyManager(
 				createMockStorage(),
 				createMockSettings,
 				async () => {},
 			);
-			await origKm.createKey("imported-key");
-			const encrypted = await origKm.exportAllKeys("pass");
+			const count = await km2.importAllKeys(backup, "backup-pass");
 
-			// start fresh — no keys
-			expect(await km.listKeys()).toHaveLength(0);
-
-			const count = await km.importAllKeys(encrypted, "pass");
-			expect(count).toBe(1);
-
-			const keys = await km.listKeys();
-			expect(keys).toHaveLength(1);
-			expect(keys[0].name).toBe("imported-key");
+			expect(count).toBe(2);
+			const keys = await km2.listKeys();
+			expect(keys.length).toBe(2);
 		});
 
 		it("reuses existing keys on import (skips duplicates)", async () => {
-			const origKm = new KeyManager(
-				createMockStorage(),
-				createMockSettings,
-				async () => {},
-			);
-			const k1 = await origKm.createKey("existing");
-			const exportedAll = await origKm.exportAllKeys("pass");
+			await km.createKey("k1");
+			const backup = await km.exportAllKeys("backup-pass");
 
-			// Pre-populate km with same key material
-			const rawKey = (await origKm.exportKey(k1.fingerprint))!;
-			await km.importKey("existing", rawKey);
-
-			// Import backup containing duplicate
-			const count = await km.importAllKeys(exportedAll, "pass");
-			expect(count).toBe(0); // skipped 1 duplicate
-			expect(await km.listKeys()).toHaveLength(1);
+			const count = await km.importAllKeys(backup, "backup-pass");
+			expect(count).toBe(0);
 		});
 	});
 });

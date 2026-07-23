@@ -1,4 +1,4 @@
-import { CryptoService } from "./CryptoService";
+import * as cryptoUtils from "./cryptoUtils";
 import {
 	type EncryptionKeyInfo,
 	type KeyStorage,
@@ -20,13 +20,7 @@ export class KeyManager {
 		private storage: KeyStorage,
 		private getSettings: () => Pick<Settings, "encryptionKeysSecretId">,
 		private saveSettings: () => Promise<void>,
-		private available = true,
-		private cryptoService = new CryptoService(),
 	) {}
-
-	get isAvailable(): boolean {
-		return this.available && Boolean(this.storage);
-	}
 
 	/** 获取当前存储密钥的 secret ID */
 	getKeysStorageId(): string {
@@ -70,16 +64,14 @@ export class KeyManager {
 	}
 
 	async createKey(name: string): Promise<EncryptionKeyInfo> {
-		const key = await this.cryptoService.generateKey();
-		const raw = await this.cryptoService.exportKeyRaw(key);
-		const fingerprint = await this.cryptoService.computeFingerprint(raw);
+		const key = await cryptoUtils.generateKey();
+		const raw = await cryptoUtils.exportKeyRaw(key);
+		const fingerprint = await cryptoUtils.computeFingerprint(raw);
 		const priority = 0;
 
 		const data = await this.loadKeysData();
 		data.keys[fingerprint] = {
-			key: this.cryptoService.arrayBufferToBase64(
-				raw.buffer as ArrayBuffer,
-			),
+			key: cryptoUtils.arrayBufferToBase64(raw.buffer as ArrayBuffer),
 			name,
 			createdAt: new Date().toISOString(),
 			priority,
@@ -128,29 +120,26 @@ export class KeyManager {
 		const data = await this.loadKeysData();
 		const cutoff = new Date();
 		cutoff.setDate(cutoff.getDate() - olderThanDays);
-		const cutoffStr = cutoff.toISOString();
 
-		let deleted = 0;
+		let count = 0;
 		for (const [fingerprint, entry] of Object.entries(data.keys)) {
-			if (entry.deletedAt && entry.deletedAt < cutoffStr) {
+			if (entry.deletedAt && new Date(entry.deletedAt) <= cutoff) {
 				delete data.keys[fingerprint];
-				deleted++;
+				count++;
 			}
 		}
-		if (deleted > 0) {
+		if (count > 0) {
 			await this.saveKeysData(data);
 		}
-		return deleted;
+		return count;
 	}
 
 	async getKey(fingerprint: string): Promise<CryptoKey | undefined> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
-		if (!entry || entry.deletedAt) return;
-		const raw = new Uint8Array(
-			this.cryptoService.base64ToArrayBuffer(entry.key),
-		);
-		return this.cryptoService.importKeyRaw(raw);
+		if (!entry) return undefined;
+		const raw = cryptoUtils.base64ToArrayBuffer(entry.key);
+		return cryptoUtils.importKeyRaw(new Uint8Array(raw));
 	}
 
 	async getKeyForEncrypt(
@@ -158,20 +147,12 @@ export class KeyManager {
 	): Promise<CryptoKey | undefined> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
-		if (!entry || entry.deletedAt) return;
-		const raw = new Uint8Array(
-			this.cryptoService.base64ToArrayBuffer(entry.key),
-		);
-		return this.cryptoService.importKeyRawEncrypt(raw);
+		if (!entry || entry.deletedAt) return undefined;
+		const raw = cryptoUtils.base64ToArrayBuffer(entry.key);
+		return cryptoUtils.importKeyRawEncrypt(new Uint8Array(raw));
 	}
 
-	async hasKey(fingerprint: string): Promise<boolean> {
-		const data = await this.loadKeysData();
-		const entry = data.keys[fingerprint];
-		return !!(entry && !entry.deletedAt);
-	}
-
-	/** 列出未删除的密钥，按 priority 降序 */
+	/** 列出所有未被删除的密钥，按 priority 降序 */
 	async listKeys(): Promise<EncryptionKeyInfo[]> {
 		const data = await this.loadKeysData();
 		const results: EncryptionKeyInfo[] = [];
@@ -232,7 +213,6 @@ export class KeyManager {
 
 	async exportAllKeys(passphrase: string): Promise<string> {
 		const data = await this.loadKeysData();
-		// 导出时包含已删除的密钥，以便备份恢复
 		const entries = Object.entries(data.keys).map(
 			([fingerprint, entry]) => ({
 				fingerprint,
@@ -244,14 +224,14 @@ export class KeyManager {
 			}),
 		);
 		const plaintext = JSON.stringify(entries, null, 2);
-		return this.cryptoService.encryptWithPassphrase(plaintext, passphrase);
+		return cryptoUtils.encryptWithPassphrase(plaintext, passphrase);
 	}
 
 	async importAllKeys(
 		encryptedJson: string,
 		passphrase: string,
 	): Promise<number> {
-		const plaintext = await this.cryptoService.decryptWithPassphrase(
+		const plaintext = await cryptoUtils.decryptWithPassphrase(
 			encryptedJson,
 			passphrase,
 		);
@@ -270,9 +250,9 @@ export class KeyManager {
 			const existing = data.keys[entry.fingerprint];
 			if (existing && !existing.deletedAt) continue;
 			const raw = new Uint8Array(
-				this.cryptoService.base64ToArrayBuffer(entry.key),
+				cryptoUtils.base64ToArrayBuffer(entry.key),
 			);
-			await this.cryptoService.importKeyRawEncrypt(raw);
+			await cryptoUtils.importKeyRawEncrypt(raw);
 			data.keys[entry.fingerprint] = {
 				key: entry.key,
 				name: entry.name,
@@ -290,9 +270,9 @@ export class KeyManager {
 		keyMaterialBase64: string,
 	): Promise<EncryptionKeyInfo> {
 		const raw = new Uint8Array(
-			this.cryptoService.base64ToArrayBuffer(keyMaterialBase64),
+			cryptoUtils.base64ToArrayBuffer(keyMaterialBase64),
 		);
-		const fingerprint = await this.cryptoService.computeFingerprint(raw);
+		const fingerprint = await cryptoUtils.computeFingerprint(raw);
 
 		const data = await this.loadKeysData();
 		if (data.keys[fingerprint]) {
@@ -301,7 +281,7 @@ export class KeyManager {
 			);
 		}
 
-		await this.cryptoService.importKeyRawEncrypt(raw);
+		await cryptoUtils.importKeyRawEncrypt(raw);
 
 		data.keys[fingerprint] = {
 			key: keyMaterialBase64,

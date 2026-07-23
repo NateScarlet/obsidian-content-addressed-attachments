@@ -202,7 +202,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		);
 
 		//#region 加密设置
-		if (this.plugin.encryptionService?.isAvailable) {
+		if (this.plugin.hasSecretStorage) {
 			new Setting(containerEl).setName(t("encryption")).setHeading();
 
 			const target = containerEl.createDiv();

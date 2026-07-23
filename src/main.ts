@@ -50,6 +50,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public encryptionService!: EncryptionService;
 	public encryptPathPolicy!: EncryptPathPolicy;
 
+	public get hasSecretStorage(): boolean {
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		return !!this.app.secretStorage;
+	}
+
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
 	public migrationManager!: MigrationManager;
@@ -94,7 +99,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		});
 		// eslint-disable-next-line obsidianmd/no-unsupported-api
 		const secretStorage = this.app.secretStorage;
-		const hasSecretStorage = !!secretStorage;
 		const storage: KeyStorage = secretStorage ?? {
 			getSecret() {
 				return Promise.resolve(undefined);
@@ -112,7 +116,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			storage,
 			() => this.settings,
 			() => this.saveSettings(),
-			hasSecretStorage,
 		);
 		this.encryptionService = new EncryptionService(this.keyManager);
 		this.encryptPathPolicy = new EncryptPathPolicy(
@@ -219,7 +222,12 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					findLinkAtPos(content, toOffset);
 
 				if (ipfsLink) {
-					const isEncrypted = isEncryptedLink(ipfsLink.text);
+					const rawText =
+						typeof ipfsLink.url.toURL === "function"
+							? ipfsLink.url.toURL()
+							: undefined;
+					if (!rawText) return;
+					const isEncrypted = isEncryptedLink(rawText);
 					if (isEncrypted) {
 						menu.addItem((item) => {
 							item.setTitle(t("decryptLink"))
@@ -233,9 +241,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										this.referenceManger,
 										this.settings.primaryDir,
 										editor,
-										ipfsLink.start,
-										ipfsLink.end,
-										ipfsLink.text,
+										ipfsLink.pos[0],
+										ipfsLink.pos[1],
+										rawText,
 										view.file?.path,
 									).catch(showError);
 								});
@@ -253,9 +261,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										this.referenceManger,
 										this.settings.primaryDir,
 										editor,
-										ipfsLink.start,
-										ipfsLink.end,
-										ipfsLink.text,
+										ipfsLink.pos[0],
+										ipfsLink.pos[1],
+										rawText,
 										view.file?.path,
 										this.keyManager,
 										this.encryptPathPolicy,

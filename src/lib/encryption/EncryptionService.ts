@@ -1,6 +1,7 @@
 import type { KeyManager } from "./KeyManager";
-import { CryptoService } from "./CryptoService";
+import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
+import { isEncryptedData, parseHeader } from "./cencHeader";
 
 /** 支持的统一二进制输入载体 */
 export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
@@ -43,22 +44,14 @@ async function toArrayBuffer(input: BinaryInput): Promise<ArrayBuffer> {
 /**
  * # EncryptionService 物理加解密服务
  *
- * 专注物理二进制数据的加解密算术与 CENC Header 解析，彻底不包含任何 Obsidian 笔记路径或规则的概念。
+ * 专注物理二进制数据的加解密算术与 CENC Header 解析，不包含任何 Obsidian 笔记路径或规则的概念。
  *
  * - **`inspect(input)`**: Safe 元数据探针（只读解析 Header，明文安全返回 `undefined`）。
  * - **`ensureDecrypted(input)`**: 确保得到明文（密文解密，明文直接包装；具备幂等性）。
  * - **`ensureEncrypted(input, keyFingerprint?)`**: 物理层强力确保加密（使用指定 Key 或主 Key 加密；具备防二次加密幂等性）。
  */
 export class EncryptionService {
-	constructor(
-		readonly keyManager: KeyManager,
-		private readonly cryptoService: CryptoService = new CryptoService(),
-	) {}
-
-	/** 当前密钥库是否可用 */
-	get isAvailable(): boolean {
-		return this.keyManager.isAvailable;
-	}
+	constructor(readonly keyManager: KeyManager) {}
 
 	/**
 	 * Safe 的元数据探针。
@@ -70,10 +63,10 @@ export class EncryptionService {
 	): Promise<EncryptedFileHeader | undefined> {
 		try {
 			const buffer = await toArrayBuffer(input);
-			if (!this.cryptoService.isEncryptedData(buffer)) {
+			if (!isEncryptedData(buffer)) {
 				return undefined;
 			}
-			return this.cryptoService.parseHeader(buffer);
+			return parseHeader(buffer);
 		} catch {
 			return undefined;
 		}
@@ -92,7 +85,7 @@ export class EncryptionService {
 
 		if (header) {
 			// 加密密文 ➔ 解密
-			const { plaintext } = await this.cryptoService.decrypt(
+			const { plaintext } = await cryptoUtils.decrypt(
 				(fp) => this.keyManager.getKey(fp),
 				buffer,
 			);
@@ -184,7 +177,7 @@ export class EncryptionService {
 			}
 		}
 
-		const data = await this.cryptoService.encrypt(
+		const data = await cryptoUtils.encrypt(
 			key,
 			fingerprint,
 			buffer,

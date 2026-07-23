@@ -139,10 +139,7 @@ export class URLResolver {
 		using stack = new DisposableStack();
 		const match = await this.cas.load(data.cid);
 		if (match) {
-			if (
-				data.format() === ENCRYPTED_FORMAT &&
-				this.encryptionService?.isAvailable
-			) {
+			if (data.format() === ENCRYPTED_FORMAT && this.encryptionService) {
 				return this.resolveEncryptedFile(match.normalizedPath);
 			}
 			return {
@@ -283,7 +280,7 @@ export class URLResolver {
 			if (!decrypted || !decrypted.wasEncrypted) return;
 
 			const size = decrypted.data.byteLength;
-			const maxBlob = this.settings().maxBlobSize ?? 20 * 1024 * 1024;
+			const maxBlob = this.settings().maxBlobSize;
 
 			if (size <= maxBlob) {
 				const url = decrypted.toBlobURL();

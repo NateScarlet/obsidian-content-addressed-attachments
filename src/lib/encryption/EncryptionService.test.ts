@@ -29,12 +29,6 @@ describe("EncryptionService", () => {
 		es = new EncryptionService(km);
 	});
 
-	describe("isAvailable", () => {
-		it("delegates to keyManager", () => {
-			expect(es.isAvailable).toBe(true);
-		});
-	});
-
 	describe("inspect", () => {
 		it("returns undefined for plaintext data without error", async () => {
 			const buf = new TextEncoder().encode("plain text").buffer;

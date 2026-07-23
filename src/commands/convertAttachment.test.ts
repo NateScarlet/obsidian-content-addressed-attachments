@@ -62,7 +62,7 @@ describe("convertAttachment", () => {
 	} as unknown as EncryptionService;
 
 	const mockUrlResolver = {
-		resolveURL: vi.fn().mockResolvedValue(undefined),
+		resolveURL: vi.fn().mockResolvedValue({ path: "cas/path" }),
 	} as unknown as URLResolver;
 
 	const mockReferenceManager = {
@@ -102,7 +102,11 @@ describe("convertAttachment", () => {
 
 			expect(pos).toBeDefined();
 			expect(pos?.isEmbed).toBe(true);
-			expect(pos?.text).toBe(url);
+			expect(
+				typeof pos?.url.toURL === "function"
+					? pos.url.toURL()
+					: undefined,
+			).toBe(url);
 		});
 
 		it("detects attachment link position when cursor is on IPFS URL", () => {
@@ -115,9 +119,13 @@ describe("convertAttachment", () => {
 
 			expect(pos).toBeDefined();
 			expect(pos?.isEmbed).toBe(true);
-			expect(pos?.text).toBe(url);
-			expect(pos?.start).toBe(markdown.indexOf(url));
-			expect(pos?.end).toBe(markdown.indexOf(url) + url.length);
+			expect(
+				typeof pos?.url.toURL === "function"
+					? pos.url.toURL()
+					: undefined,
+			).toBe(url);
+			expect(pos?.pos[0]).toBe(markdown.indexOf(url));
+			expect(pos?.pos[1]).toBe(markdown.indexOf(url) + url.length);
 		});
 	});
 

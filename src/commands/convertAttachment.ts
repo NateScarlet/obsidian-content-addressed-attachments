@@ -5,7 +5,7 @@ import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
 import type { EncryptPathPolicy } from "#src/lib/encryption/EncryptPathPolicy";
 import type { URLResolver } from "#src/URLResolver";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
-import findIPFSLinks from "#src/utils/findIPFSLinks";
+import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
@@ -35,13 +35,6 @@ const { t } = defineLocales({
 	},
 });
 
-interface LinkPos {
-	start: number;
-	end: number;
-	text: string;
-	isEmbed: boolean;
-}
-
 async function trashIfUnreferenced(
 	cas: CAS,
 	referenceManager: ReferenceManager,
@@ -63,30 +56,15 @@ async function trashIfUnreferenced(
 	await cas.trash(cid);
 }
 
+/** 直接通过 urlResolver 加载二进制内容，无需二次切割解析 */
 async function loadFileContent(
 	app: App,
-	cas: CAS,
-	cidStr: string,
 	urlResolver: URLResolver,
-	fallbackFilename?: string,
-): Promise<
-	{ buffer: ArrayBuffer; filename: string; format: string } | undefined
-> {
-	const cid = CID.parse(cidStr);
-
-	const match = await cas.load(cid);
-	if (match) {
-		const buffer = await app.vault.adapter.readBinary(match.normalizedPath);
-		const filename = fallbackFilename ?? "";
-		return { buffer, filename, format: "" };
-	}
-
-	const rawURL = `ipfs://${cidStr}`;
+	rawURL: string,
+): Promise<ArrayBuffer | undefined> {
 	const resolved = await urlResolver.resolveURL(rawURL);
 	if (resolved?.path) {
-		const buffer = await app.vault.adapter.readBinary(resolved.path);
-		const filename = fallbackFilename ?? "";
-		return { buffer, filename, format: "" };
+		return app.vault.adapter.readBinary(resolved.path);
 	}
 }
 
@@ -117,25 +95,19 @@ export async function encryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(
-		app,
-		cas,
-		parsed.cid.toString(),
-		urlResolver,
-		parsed.filename,
-	);
-	if (!content) {
+	const buffer = await loadFileContent(app, urlResolver, linkText);
+	if (!buffer) {
 		new Notice("File not found");
 		return;
 	}
 
-	const file = new File([new Blob([content.buffer])], content.filename, {
-		type: parsed.format || content.format || "application/octet-stream",
+	const rawFile = new File([new Blob([buffer])], parsed.filename, {
+		type: parsed.format || "application/octet-stream",
 	});
 	let encryptedFile: File;
 	try {
 		encryptedFile = await encryptionService.ensureEncrypted(
-			file,
+			rawFile,
 			fingerprint,
 		);
 	} catch {
@@ -177,25 +149,19 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const content = await loadFileContent(
-		app,
-		cas,
-		parsed.cid.toString(),
-		urlResolver,
-		parsed.filename,
-	);
-	if (!content) {
+	const buffer = await loadFileContent(app, urlResolver, linkText);
+	if (!buffer) {
 		new Notice("File not found");
 		return;
 	}
 
-	const decrypted = await encryptionService.ensureDecrypted(content.buffer);
+	const decrypted = await encryptionService.ensureDecrypted(buffer);
 	if (!decrypted || !decrypted.wasEncrypted) {
 		new Notice("Not an encrypted file");
 		return;
 	}
 
-	const file = new File([decrypted.toBlob()], content.filename || "file", {
+	const file = new File([decrypted.toBlob()], parsed.filename || "file", {
 		type: decrypted.mimeType,
 	});
 	const { cid: newCid } = await cas.save(dir, file);
@@ -219,15 +185,10 @@ export async function decryptLink(
 export function findLinkAtPos(
 	content: string,
 	offset: number,
-): LinkPos | undefined {
+): IPFSLinkMatch | undefined {
 	for (const match of findIPFSLinks(content)) {
 		if (offset >= match.pos[0] && offset <= match.pos[1]) {
-			return {
-				start: match.pos[0],
-				end: match.pos[1],
-				text: content.slice(match.pos[0], match.pos[1]),
-				isEmbed: match.isEmbed,
-			};
+			return match;
 		}
 	}
 }
@@ -268,25 +229,12 @@ export async function encryptNote(
 		const parsed = IPFSLink.parse(linkText);
 		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
-		const result = await loadFileContent(
-			app,
-			cas,
-			parsed.cid.toString(),
-			urlResolver,
-			parsed.filename,
-		);
-		if (!result) return undefined;
+		const buffer = await loadFileContent(app, urlResolver, linkText);
+		if (!buffer) return undefined;
 
-		const origFile = new File(
-			[new Blob([result.buffer])],
-			result.filename,
-			{
-				type:
-					parsed.format ||
-					result.format ||
-					"application/octet-stream",
-			},
-		);
+		const origFile = new File([new Blob([buffer])], parsed.filename, {
+			type: parsed.format || "application/octet-stream",
+		});
 		let encryptedFile: File;
 		try {
 			encryptedFile = await encryptionService.ensureEncrypted(
