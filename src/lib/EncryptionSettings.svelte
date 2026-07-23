@@ -49,7 +49,7 @@
 			none: "None",
 			secretStorageId: "Secret Storage ID",
 			secretStorageIdDesc: "Select the secret key used to store all encryption keys in Obsidian Secret Storage",
-			keySelectLabel: "Encryption key",
+			keySelectLabel: "Key",
 		},
 		zh: {
 			fingerprint: "指纹",
@@ -91,7 +91,7 @@
 			none: "无",
 			secretStorageId: "密钥存储 ID",
 			secretStorageIdDesc: "选择在 Obsidian 密钥存储 (Secret Storage) 中保存所有加密密钥的 Secret Key",
-			keySelectLabel: "加密密钥",
+			keySelectLabel: "密钥",
 		},
 	});
 
@@ -158,7 +158,7 @@
 				.setName(t("secretStorageId"))
 				.setDesc(t("secretStorageIdDesc"));
 
-			// eslint-disable-next-line obsidianmd/no-unsupported-api
+			 
 			new SecretComponent(app, setting.controlEl)
 				.setValue(keyManager.getKeysStorageId())
 				.onChange(async (newId) => {
@@ -457,10 +457,21 @@
 		<div class="space-y-3">
 			{#each settings.encryptPathRules as rule, index (index)}
 				<div
-					class="flex flex-col gap-2 rounded border border-theme-border bg-theme-bg-secondary p-3"
+					class="flex flex-col gap-2 rounded-lg border border-theme-border bg-theme-bg-secondary p-3"
 				>
-					<!-- 第一行：密钥选择与操作工具栏 -->
-					<div class="flex items-center justify-between gap-2">
+					<!-- 第一区域：多行规则文本框 -->
+					<textarea
+						rows={3}
+						value={rule.pattern}
+						placeholder={t("encryptPathRulePatternPlaceholder")}
+						class="w-full rounded border border-theme-border bg-theme-bg px-3 py-2 text-xs font-mono text-theme-text resize-y"
+						oninput={(e) =>
+							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
+					></textarea>
+
+					<!-- 第二区域：底部统一操作与配置栏 -->
+					<div class="flex items-center justify-between gap-2 pt-1">
+						<!-- 左侧：密钥选择 -->
 						<div class="flex items-center gap-2">
 							<span class="text-xs font-medium text-theme-text-muted">
 								{t("keySelectLabel")}:
@@ -482,39 +493,28 @@
 							</select>
 						</div>
 
-						<button
-							type="button"
-							class="text-xs text-red-500 hover:text-red-600 transition-colors"
-							onclick={() => removeRule(index)}
-						>
-							{t("deleteRule")}
-						</button>
-					</div>
-
-					<!-- 第二行：多行文本框独占整行 -->
-					<textarea
-						rows={3}
-						value={rule.pattern}
-						placeholder={t("encryptPathRulePatternPlaceholder")}
-						class="w-full rounded border border-theme-border bg-theme-bg px-3 py-2 text-xs font-mono text-theme-text resize-y"
-						oninput={(e) =>
-							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
-					></textarea>
-
-					<!-- 第三行：匹配选项快捷按钮 -->
-					{#if rule.pattern.trim()}
-						<div class="flex justify-end pt-0.5">
+						<!-- 右侧：按钮组（加密匹配链接 + 删除规则） -->
+						<div class="flex items-center gap-3">
+							{#if rule.pattern.trim()}
+								<button
+									type="button"
+									class="text-xs text-accent hover:underline font-medium"
+									title={t("encryptMatchingNotesHint")}
+									onclick={() =>
+										onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
+								>
+									{t("encryptMatchingNotes")}
+								</button>
+							{/if}
 							<button
 								type="button"
-								class="text-[11px] text-accent hover:underline"
-								title={t("encryptMatchingNotesHint")}
-								onclick={() =>
-									onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
+								class="text-xs text-red-500 hover:text-red-600 transition-colors"
+								onclick={() => removeRule(index)}
 							>
-								{t("encryptMatchingNotes")}
+								{t("deleteRule")}
 							</button>
 						</div>
-					{/if}
+					</div>
 				</div>
 			{/each}
 		</div>
