@@ -97,7 +97,7 @@ describe("CryptoService pure functions", () => {
 			).rejects.toThrow();
 		});
 
-		it("produces identical ciphertext for identical plaintext and key (deterministic CAS encryption)", async () => {
+		it("produces identical ciphertext for identical plaintext, key, and AAD (deterministic CAS encryption)", async () => {
 			const key = await cryptoUtils.generateKey();
 			const plaintext = new TextEncoder().encode(
 				"identical content",
@@ -116,6 +116,27 @@ describe("CryptoService pure functions", () => {
 			);
 
 			expect(Buffer.from(data1).equals(Buffer.from(data2))).toBe(true);
+		});
+
+		it("produces different ciphertext and IV when same plaintext is encrypted with different AAD metadata", async () => {
+			const key = await cryptoUtils.generateKey();
+			const plaintext = new TextEncoder().encode(
+				"identical content",
+			).buffer;
+			const data1 = await cryptoUtils.encrypt(
+				key,
+				"fp1",
+				plaintext,
+				"image/png",
+			);
+			const data2 = await cryptoUtils.encrypt(
+				key,
+				"fp1",
+				plaintext,
+				"image/jpeg",
+			);
+
+			expect(Buffer.from(data1).equals(Buffer.from(data2))).toBe(false);
 		});
 
 		it("throws when key is missing from resolver", async () => {

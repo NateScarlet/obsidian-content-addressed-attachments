@@ -114,11 +114,13 @@ export async function importKeyRawEncrypt(raw: Uint8Array): Promise<CryptoKey> {
 
 /**
  * 计算合成确定性 IV (Synthetic IV)，采用密钥域隔离 (Key Domain Separation)，
- * 使相同明文与密钥生成确定的 AES-GCM 密文（契合 CAS 去重，消除密钥混用安全风险）。
+ * 将明文数据与 AAD (附加认证数据) 共同引入 HMAC 输入，
+ * 遵循 RFC 5297 Synthetic IV 密码学规范，消除相同明文搭配不同 AAD 元数据导致的 GCM IV 碰撞隐患。
  */
 async function computeSyntheticIV(
 	key: CryptoKey,
 	plaintext: ArrayBuffer,
+	aad: Uint8Array,
 ): Promise<Uint8Array> {
 	const rawKey = await exportKeyRaw(key);
 
@@ -139,7 +141,15 @@ async function computeSyntheticIV(
 		IV_DOMAIN_LABEL,
 	);
 
-	// 2. 用专属 IV 子密钥对明文签名，生成 32 字节摘要并截取前 12 字节 (96-bit)
+	// 2. 将 AAD 字节与 Plaintext 字节拼接，作为 HMAC 输入 (RFC 5297 SIV)
+	const plaintextBytes = new Uint8Array(plaintext);
+	const hmacInput = new Uint8Array(
+		aad.byteLength + plaintextBytes.byteLength,
+	);
+	hmacInput.set(aad, 0);
+	hmacInput.set(plaintextBytes, aad.byteLength);
+
+	// 3. 用专属 IV 子密钥签名，生成 32 字节摘要并截取前 12 字节 (96-bit)
 	const ivHmacKey = await crypto.subtle.importKey(
 		"raw",
 		ivKeyBytes,
@@ -147,7 +157,7 @@ async function computeSyntheticIV(
 		false,
 		["sign"],
 	);
-	const fullTag = await crypto.subtle.sign("HMAC", ivHmacKey, plaintext);
+	const fullTag = await crypto.subtle.sign("HMAC", ivHmacKey, hmacInput);
 	return new Uint8Array(fullTag, 0, IV_LENGTH);
 }
 
@@ -158,9 +168,9 @@ export async function encrypt(
 	plaintext: ArrayBuffer,
 	originalFormat: string,
 ): Promise<ArrayBuffer> {
-	// 使用带密钥域隔离的合成 IV (Synthetic IV)，实现 CAS 场景下的安全确定性加密
-	const iv = await computeSyntheticIV(key, plaintext);
 	const aad = buildHeaderAAD(fingerprint, originalFormat);
+	// 使用包含 AAD 与密钥域隔离的合成 IV (Synthetic IV)，实现 CAS 场景下的安全确定性加密
+	const iv = await computeSyntheticIV(key, plaintext, aad);
 
 	const encrypted = await crypto.subtle.encrypt(
 		{
