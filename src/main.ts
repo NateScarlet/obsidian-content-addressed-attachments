@@ -125,11 +125,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.encryptionService,
 			() => this.settings.encryptPathRules,
 		);
-		this.urlResolver = new URLResolver(
-			this.app,
-			this.cas,
-			() => this.settings,
-			this.encryptionService,
+		this.urlResolver = this.stack.use(
+			new URLResolver(
+				this.app,
+				this.cas,
+				() => this.settings,
+				this.encryptionService,
+			),
 		);
 		this.migrationManager = this.stack.use(new MigrationManager(this));
 		this.lockManager = this.stack.use(new LockManager(this));
@@ -487,7 +489,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	onunload() {
-		this.urlResolver.revokeAllBlobs();
 		this.stack.dispose();
 	}
 }

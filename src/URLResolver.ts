@@ -48,10 +48,8 @@ export interface ResolveURLResult {
 export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
 	private decryptedBlobStore = new Map<string, string>();
-	// 跟踪 CID → 解密缓存路径的映射，用于清理时判断
-	private decryptedCidToCachePath = new Map<string, string>();
 	// 防抖 cleanup 的 timer ID
-	private cleanupTimer: number | undefined;
+	private cleanupTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		private app: App,
@@ -60,8 +58,12 @@ export class URLResolver {
 		private encryptionService?: EncryptionService,
 	) {}
 
-	/** 清理所有解密产生的 blob URL */
-	revokeAllBlobs(): void {
+	/** 清理所有解密产生的 blob URL 和定时器 */
+	[Symbol.dispose](): void {
+		if (this.cleanupTimer) {
+			window.clearTimeout(this.cleanupTimer);
+			this.cleanupTimer = undefined;
+		}
 		for (const url of this.decryptedBlobStore.values()) {
 			URL.revokeObjectURL(url);
 		}
@@ -331,7 +333,6 @@ export class URLResolver {
 			// 如果缓存文件已存在，直接返回
 			const cacheExists = await this.app.vault.adapter.exists(cachePath);
 			if (cacheExists) {
-				this.decryptedCidToCachePath.set(cid.toString(), cachePath);
 				return {
 					path: cachePath,
 					url: this.app.vault.adapter.getResourcePath(cachePath),
@@ -346,9 +347,6 @@ export class URLResolver {
 
 			await this.app.vault.adapter.writeBinary(cachePath, decrypted.data);
 
-			// 记录 CID → 缓存路径映射
-			this.decryptedCidToCachePath.set(cid.toString(), cachePath);
-
 			return {
 				path: cachePath,
 				url: this.app.vault.adapter.getResourcePath(cachePath),
@@ -359,9 +357,12 @@ export class URLResolver {
 	}
 
 	/**
-	 * 清理不再被任何活跃笔记引用的解密缓存文件。
+	 * 清理不再被任何活跃笔记引用的解密缓存文件和 blob URL。
 	 * 调用者应在笔记关闭时调用此方法，传入所有当前打开笔记中引用的 CID 集合。
 	 * 内部使用 30 秒防抖，避免用户快速切换笔记时频繁清理。
+	 *
+	 * 缓存文件命名格式为 `<cid>.decrypted`，直接扫描缓存目录匹配此模式，
+	 * 而非维护内存映射，确保应用中途崩溃后残留文件也能被正确清理。
 	 */
 	cleanupDecryptedCache(activeCids: Set<string>): void {
 		if (this.cleanupTimer) {
@@ -372,23 +373,51 @@ export class URLResolver {
 			void (async () => {
 				this.cleanupTimer = undefined;
 				const cacheDir = this.settings().decryptedCacheDir;
-				if (!cacheDir) return;
 
-				for (const [cid, cachePath] of this.decryptedCidToCachePath) {
-					if (!activeCids.has(cid)) {
-						try {
-							const exists =
-								await this.app.vault.adapter.exists(cachePath);
-							if (exists) {
-								await this.app.vault.adapter.remove(cachePath);
+				// 清理磁盘缓存文件
+				if (cacheDir) {
+					try {
+						const cacheDirExists =
+							await this.app.vault.adapter.exists(cacheDir);
+						if (cacheDirExists) {
+							const files =
+								await this.app.vault.adapter.list(cacheDir);
+							for (const filePath of files.files) {
+								const fileName =
+									filePath.split("/").pop() ?? "";
+								if (!fileName.endsWith(".decrypted")) continue;
+								// 提取 CID（文件名去掉 .decrypted 后缀）
+								const cid = fileName.slice(
+									0,
+									-".decrypted".length,
+								);
+								if (!activeCids.has(cid)) {
+									try {
+										await this.app.vault.adapter.remove(
+											filePath,
+										);
+									} catch (err) {
+										console.error(
+											`Failed to cleanup decrypted cache for CID ${cid}:`,
+											err,
+										);
+									}
+								}
 							}
-						} catch (err) {
-							console.error(
-								`Failed to cleanup decrypted cache for CID ${cid}:`,
-								err,
-							);
 						}
-						this.decryptedCidToCachePath.delete(cid);
+					} catch (err) {
+						console.error(
+							"Failed to list decrypted cache directory:",
+							err,
+						);
+					}
+				}
+
+				// 清理不再引用的 blob URL
+				for (const [cid, url] of this.decryptedBlobStore) {
+					if (!activeCids.has(cid)) {
+						URL.revokeObjectURL(url);
+						this.decryptedBlobStore.delete(cid);
 					}
 				}
 			})();

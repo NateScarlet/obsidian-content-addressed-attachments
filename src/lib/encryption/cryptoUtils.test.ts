@@ -230,5 +230,52 @@ describe("CryptoService pure functions", () => {
 			);
 			expect(json1).not.toEqual(json2);
 		});
+
+		it("rejects empty passphrase on encrypt and decrypt", async () => {
+			await expect(
+				cryptoUtils.encryptWithPassphrase("data", ""),
+			).rejects.toThrow("Passphrase cannot be empty");
+			await expect(
+				cryptoUtils.decryptWithPassphrase(
+					'{"salt":"a","iv":"b","data":"c"}',
+					"",
+				),
+			).rejects.toThrow("Passphrase cannot be empty");
+		});
+
+		it("rejects malformed or invalid JSON payload", async () => {
+			await expect(
+				cryptoUtils.decryptWithPassphrase("invalid-json", "pass"),
+			).rejects.toThrow("Invalid encrypted JSON payload");
+			await expect(
+				cryptoUtils.decryptWithPassphrase("12345", "pass"),
+			).rejects.toThrow("Invalid encrypted JSON object format");
+			await expect(
+				cryptoUtils.decryptWithPassphrase('{"salt": "abc"}', "pass"),
+			).rejects.toThrow("Missing required encrypted payload fields");
+		});
+
+		it("rejects untrusted or unsafe PBKDF2 iterations", async () => {
+			const validJson = await cryptoUtils.encryptWithPassphrase(
+				"data",
+				"pass",
+			);
+			const parsed = JSON.parse(validJson);
+
+			// iterations 太低
+			const lowIter = JSON.stringify({ ...parsed, iterations: 1000 });
+			await expect(
+				cryptoUtils.decryptWithPassphrase(lowIter, "pass"),
+			).rejects.toThrow("Invalid PBKDF2 iterations count");
+
+			// iterations 超高防止 DoS
+			const highIter = JSON.stringify({
+				...parsed,
+				iterations: 999_999_999,
+			});
+			await expect(
+				cryptoUtils.decryptWithPassphrase(highIter, "pass"),
+			).rejects.toThrow("Invalid PBKDF2 iterations count");
+		});
 	});
 });

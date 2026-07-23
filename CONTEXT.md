@@ -3,7 +3,7 @@
 ## 项目概述
 
 - **目标**：Obsidian 社区插件（将 TypeScript 编译并打包为单文件 JavaScript）。
-- **插件定位**：基于内容寻址存储（CAS）管理 Obsidian 的本地和网络附件（基于文件内容的 CID 进行分片存储与去重，防止附件丢失和重复）。
+- **插件定位**：基于内容寻址存储（CAS）管理 Obsidian 的本地和网络附件（基于文件内容的 CID 进行分片存储与去重，防止附件丢失和重复）。支持附件加密（AES-256-GCM），加密文件在存储前自动加密，读取时透明解密。
 - **入口文件**：`src/main.ts`。经编译生成根目录下的发布产物 `main.js` 由 Obsidian 加载。
 - **发布产物**：`main.js`、`manifest.json` 和可选的 `styles.css`。
 

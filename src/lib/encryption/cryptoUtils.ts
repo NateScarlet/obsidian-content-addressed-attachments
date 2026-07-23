@@ -7,13 +7,18 @@ import {
 	parseHeader,
 } from "./fileHeader";
 
+export const CURRENT_SETTINGS_VERSION = 1;
+
 /** AES-256-GCM 参数 */
 const KEY_FINGERPRINT_BYTES = 8; // 64 bits
 const KEY_ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
 
-/** PBKDF2 迭代次数 */
+/** PBKDF2 迭代次数与安全限制 */
 const PBKDF2_ITERATIONS = 1_500_000;
+const MIN_PBKDF2_ITERATIONS = 100_000;
+const MAX_PBKDF2_ITERATIONS = 5_000_000;
+
 /** 口令加密盐值长度 */
 const SALT_LENGTH = 32;
 
@@ -348,6 +353,10 @@ export async function encryptWithPassphrase(
 	plaintext: string,
 	passphrase: string,
 ): Promise<string> {
+	if (!passphrase) {
+		throw new Error("Passphrase cannot be empty");
+	}
+
 	const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
 	const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
@@ -395,16 +404,47 @@ export async function decryptWithPassphrase(
 	encryptedJson: string,
 	passphrase: string,
 ): Promise<string> {
-	const parsed = JSON.parse(encryptedJson) as {
+	if (!passphrase) {
+		throw new Error("Passphrase cannot be empty");
+	}
+
+	if (!encryptedJson || typeof encryptedJson !== "string") {
+		throw new Error("Invalid encrypted payload");
+	}
+
+	let parsed: {
 		algorithm?: string;
 		keyLength?: number;
 		kdf?: string;
 		kdfHash?: string;
 		iterations?: number;
-		salt: string;
-		iv: string;
-		data: string;
+		salt?: string;
+		iv?: string;
+		data?: string;
 	};
+
+	try {
+		parsed = JSON.parse(encryptedJson);
+	} catch {
+		throw new Error("Invalid encrypted JSON payload");
+	}
+
+	if (typeof parsed !== "object" || parsed === null) {
+		throw new Error("Invalid encrypted JSON object format");
+	}
+
+	if (
+		typeof parsed.salt !== "string" ||
+		typeof parsed.iv !== "string" ||
+		typeof parsed.data !== "string" ||
+		!parsed.salt ||
+		!parsed.iv ||
+		!parsed.data
+	) {
+		throw new Error(
+			"Missing required encrypted payload fields (salt, iv, data)",
+		);
+	}
 
 	const algorithm = parsed.algorithm ?? KEY_ALGORITHM;
 	const keyLength = parsed.keyLength ?? KEY_LENGTH;
@@ -416,7 +456,23 @@ export async function decryptWithPassphrase(
 		throw new Error(`Unsupported KDF: ${kdf}`);
 	}
 	if (algorithm !== KEY_ALGORITHM) {
-		throw new Error(`Unsupported algorithm: ${algorithm}`);
+		throw new Error(`Unsupported encryption algorithm: ${algorithm}`);
+	}
+	if (kdfHash !== "SHA-256") {
+		throw new Error(`Unsupported KDF hash algorithm: ${kdfHash}`);
+	}
+	if (keyLength !== KEY_LENGTH) {
+		throw new Error(`Unsupported key length: ${keyLength}`);
+	}
+	if (
+		typeof iterations !== "number" ||
+		!Number.isInteger(iterations) ||
+		iterations < MIN_PBKDF2_ITERATIONS ||
+		iterations > MAX_PBKDF2_ITERATIONS
+	) {
+		throw new Error(
+			`Invalid PBKDF2 iterations count: ${iterations} (must be between ${MIN_PBKDF2_ITERATIONS} and ${MAX_PBKDF2_ITERATIONS})`,
+		);
 	}
 
 	const keyMaterial = await crypto.subtle.importKey(
