@@ -7,6 +7,7 @@
 	import defineLocales from "#src/utils/defineLocales";
 	import { DEFAULT_KEYS_STORAGE_ID, type KeyManager } from "./encryption/KeyManager";
 	import { onMount } from "svelte";
+	import { RenameKeyModal } from "#src/ui/modals/RenameKeyModal";
 
 	const { t } = defineLocales({
 		en: {
@@ -21,7 +22,7 @@
 			create: "Create",
 			keyNamePlaceholder: "Key name",
 			unnamedKey: "Unnamed key",
-			defaultKeyName: (ym: string, suffix: string) => `key_${ym}_${suffix}`,
+			defaultKeyName: (ym: string, suffix: string) => `Key ${ym} (${suffix})`,
 			exportAllKeys: "Export all keys",
 			importKeys: "Import keys from backup",
 			encryptPathRules: "Auto-encrypt path rules",
@@ -63,7 +64,7 @@
 			create: "创建",
 			keyNamePlaceholder: "密钥名称",
 			unnamedKey: "未命名密钥",
-			defaultKeyName: (ym: string, suffix: string) => `key_${ym}_${suffix}`,
+			defaultKeyName: (ym: string, suffix: string) => `密钥 ${ym} (${suffix})`,
 			exportAllKeys: "导出所有密钥",
 			importKeys: "从备份导入密钥",
 			encryptPathRules: "自动加密路径规则",
@@ -144,8 +145,8 @@
 
 	async function loadKeys() {
 		try {
-			keys = await keyManager.listKeys();
-			deletedKeys = await keyManager.listDeletedKeys();
+			keys = [...(await keyManager.listKeys())];
+			deletedKeys = [...(await keyManager.listDeletedKeys())];
 		} catch (err) {
 			showError(err);
 		}
@@ -221,12 +222,19 @@
 		}
 	}
 
-	async function renameKey(fingerprint: string, oldName: string) {
-		const newName = window.prompt(t("rename"), oldName);
-		if (newName !== null && newName !== oldName) {
-			await keyManager.renameKey(fingerprint, newName.trim());
-			await loadKeys();
-		}
+	function renameKey(fingerprint: string, oldName: string) {
+		const targetKey = keys.find((k) => k.fingerprint === fingerprint);
+		const defaultName = targetKey ? keyDefaultName(targetKey) : "";
+		new RenameKeyModal(
+			app,
+			keyManager,
+			fingerprint,
+			oldName,
+			defaultName,
+			async () => {
+				await loadKeys();
+			},
+		).open();
 	}
 
 	function openExportModal() {
