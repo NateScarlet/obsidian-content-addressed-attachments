@@ -20,7 +20,7 @@
 			create: "Create",
 			keyNamePlaceholder: "Key name",
 			unnamedKey: "Unnamed key",
-			defaultKeyName: (ym: string, suffix: string) => `Key ${ym} (${suffix})`,
+			defaultKeyName: (ym: string, suffix: string) => `key_${ym}_${suffix}`,
 			exportAllKeys: "Export all keys",
 			importKeys: "Import keys from backup",
 			encryptPathRules: "Auto-encrypt path rules",
@@ -61,7 +61,7 @@
 			create: "创建",
 			keyNamePlaceholder: "密钥名称",
 			unnamedKey: "未命名密钥",
-			defaultKeyName: (ym: string, suffix: string) => `密钥 ${ym} (${suffix})`,
+			defaultKeyName: (ym: string, suffix: string) => `密钥_${ym}_${suffix}`,
 			exportAllKeys: "导出所有密钥",
 			importKeys: "从备份导入密钥",
 			encryptPathRules: "自动加密路径规则",
@@ -324,7 +324,7 @@
 									type="text"
 									value={key.name}
 									placeholder={keyDefaultName(key)}
-									class="rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs font-medium text-theme-text hover:border-theme-border focus:border-accent focus:bg-theme-bg focus:outline-none transition-colors"
+									class="rounded border-b border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-theme-text hover:border-theme-border focus:border-accent focus:bg-theme-bg focus:outline-none transition-colors min-w-32 max-w-full"
 									onchange={(e) =>
 										updateKeyName(
 											key.fingerprint,
@@ -339,7 +339,7 @@
 									</span>
 								{/if}
 							</div>
-							<span class="font-mono text-[10px] text-theme-text-muted px-1.5">
+							<span class="font-mono text-[10px] text-theme-text-muted px-1">
 								FP: {key.fingerprint}
 							</span>
 						</div>
