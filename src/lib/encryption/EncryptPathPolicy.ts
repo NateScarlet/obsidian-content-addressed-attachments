@@ -24,7 +24,7 @@ export class EncryptPathPolicy {
 		const rule = rules.find(
 			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
 		);
-		if (!rule) return (await this.keyManager.getPrimaryKey())?.fingerprint;
+		if (!rule) return undefined;
 
 		if (rule.keyFingerprint) {
 			const key = await this.keyManager.getKeyForEncrypt(

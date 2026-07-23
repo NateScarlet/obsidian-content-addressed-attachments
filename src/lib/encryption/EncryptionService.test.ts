@@ -202,10 +202,12 @@ describe("EncryptPathPolicy", () => {
 		const key = await km.createKey("path-key");
 		const policy = new EncryptPathPolicy(km, es, () => [
 			{ pattern: "Secret/**", keyFingerprint: key.fingerprint },
+			{ pattern: "Notes/**", keyFingerprint: "" },
 		]);
 
 		expect(await policy.resolveKey("Secret/doc.md")).toBe(key.fingerprint);
-		expect(await policy.resolveKey("Public/doc.md")).toBe(key.fingerprint); // Primary key fallback
+		expect(await policy.resolveKey("Notes/doc.md")).toBe(key.fingerprint); // Primary key fallback when rule matches but key is unassigned
+		expect(await policy.resolveKey("Public/doc.md")).toBeUndefined(); // Returns undefined when no rule matches
 	});
 
 	it("encrypts file when note matches path rule", async () => {
@@ -226,8 +228,11 @@ describe("EncryptPathPolicy", () => {
 		expect(encryptedFile!.type).toBe(ENCRYPTED_FORMAT);
 	});
 
-	it("returns undefined if note path does not match any key/rule and no primary key", async () => {
-		const policy = new EncryptPathPolicy(km, es, () => []);
+	it("returns undefined if note path does not match any path rule", async () => {
+		await km.createKey("primary-key");
+		const policy = new EncryptPathPolicy(km, es, () => [
+			{ pattern: "Secret/**", keyFingerprint: "" },
+		]);
 		const file = new File(["hello world"], "test.txt", {
 			type: "text/plain",
 		});

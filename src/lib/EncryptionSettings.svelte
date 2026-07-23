@@ -461,14 +461,14 @@
 					class="flex flex-col gap-2 rounded border border-theme-border bg-theme-bg-secondary p-3"
 				>
 					<div class="flex items-center gap-2">
-						<input
-							type="text"
+						<textarea
+							rows={3}
 							value={rule.pattern}
 							placeholder={t("encryptPathRulePatternPlaceholder")}
-							class="flex-1 rounded border border-theme-border bg-theme-bg px-3 py-1.5 text-xs font-mono text-theme-text"
+							class="flex-1 rounded border border-theme-border bg-theme-bg px-3 py-1.5 text-xs font-mono text-theme-text resize-y"
 							oninput={(e) =>
-								updateRulePattern(index, (e.target as HTMLInputElement).value)}
-						/>
+								updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
+						></textarea>
 						<select
 							value={rule.keyFingerprint}
 							class="rounded border border-theme-border bg-theme-bg px-3 py-1.5 text-xs text-theme-text"
