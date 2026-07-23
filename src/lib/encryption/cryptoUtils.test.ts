@@ -262,8 +262,11 @@ describe("CryptoService pure functions", () => {
 			);
 			const parsed = JSON.parse(validJson) as Record<string, unknown>;
 
-			// iterations 太低
-			const lowIter = JSON.stringify({ ...parsed, iterations: 1000 });
+			// iterations 低于 1.5M 阈值（降级攻击拒绝）
+			const lowIter = JSON.stringify({
+				...parsed,
+				iterations: 1_000_000,
+			});
 			await expect(
 				cryptoUtils.decryptWithPassphrase(lowIter, "pass"),
 			).rejects.toThrow("Invalid PBKDF2 iterations count");
@@ -276,6 +279,26 @@ describe("CryptoService pure functions", () => {
 			await expect(
 				cryptoUtils.decryptWithPassphrase(highIter, "pass"),
 			).rejects.toThrow("Invalid PBKDF2 iterations count");
+		});
+
+		it("rejects passphrase decryption if KDF metadata in AAD is tampered with", async () => {
+			const validJson = await cryptoUtils.encryptWithPassphrase(
+				"secret-key-data",
+				"passphrase123",
+			);
+			const parsed = JSON.parse(validJson) as Record<string, unknown>;
+
+			// 篡改 algorithm 破坏 AAD 签名绑定
+			const tamperedAlgorithm = JSON.stringify({
+				...parsed,
+				algorithm: "AES-CBC",
+			});
+			await expect(
+				cryptoUtils.decryptWithPassphrase(
+					tamperedAlgorithm,
+					"passphrase123",
+				),
+			).rejects.toThrow();
 		});
 	});
 });

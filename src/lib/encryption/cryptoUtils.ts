@@ -14,9 +14,9 @@ const KEY_FINGERPRINT_BYTES = 8; // 64 bits
 const KEY_ALGORITHM = "AES-GCM";
 const KEY_LENGTH = 256;
 
-/** PBKDF2 迭代次数与安全限制 */
+/** PBKDF2 迭代次数与安全限制（首个版本严格为 1.5M 次迭代，防止降级攻击） */
 const PBKDF2_ITERATIONS = 1_500_000;
-const MIN_PBKDF2_ITERATIONS = 100_000;
+const MIN_PBKDF2_ITERATIONS = 1_500_000;
 const MAX_PBKDF2_ITERATIONS = 5_000_000;
 
 /** 口令加密盐值长度 */
@@ -64,6 +64,22 @@ export function buildHeaderAAD(
 	aad.set(fmtBytes, offset);
 
 	return aad;
+}
+
+/**
+ * 构造口令加密的 AAD (Additional Authenticated Data)，
+ * 将 KDF 参数与算法配置绑定入 AES-GCM 签名中，防止 KDF 参数降级或篡改攻击。
+ */
+export function buildPassphraseAAD(
+	kdf: string,
+	kdfHash: string,
+	iterations: number,
+	algorithm: string,
+	keyLength: number,
+): Uint8Array {
+	return new TextEncoder().encode(
+		`${kdf}|${kdfHash}|${iterations}|${algorithm}|${keyLength}`,
+	);
 }
 
 export async function computeFingerprint(keyData: Uint8Array): Promise<string> {
@@ -359,6 +375,13 @@ export async function encryptWithPassphrase(
 
 	const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
 	const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+	const aad = buildPassphraseAAD(
+		"PBKDF2",
+		"SHA-256",
+		PBKDF2_ITERATIONS,
+		KEY_ALGORITHM,
+		KEY_LENGTH,
+	);
 
 	const keyMaterial = await crypto.subtle.importKey(
 		"raw",
@@ -382,7 +405,15 @@ export async function encryptWithPassphrase(
 	);
 
 	const encrypted = await crypto.subtle.encrypt(
-		{ name: KEY_ALGORITHM, iv, tagLength: AUTH_TAG_LENGTH * 8 },
+		{
+			name: KEY_ALGORITHM,
+			iv,
+			additionalData: (aad.buffer as ArrayBuffer).slice(
+				aad.byteOffset,
+				aad.byteOffset + aad.byteLength,
+			),
+			tagLength: AUTH_TAG_LENGTH * 8,
+		},
 		key,
 		new TextEncoder().encode(plaintext),
 	);
@@ -475,6 +506,14 @@ export async function decryptWithPassphrase(
 		);
 	}
 
+	const aad = buildPassphraseAAD(
+		kdf,
+		kdfHash,
+		iterations,
+		algorithm,
+		keyLength,
+	);
+
 	const keyMaterial = await crypto.subtle.importKey(
 		"raw",
 		new TextEncoder().encode(passphrase),
@@ -500,6 +539,10 @@ export async function decryptWithPassphrase(
 		{
 			name: algorithm,
 			iv: base64ToArrayBuffer(parsed.iv),
+			additionalData: (aad.buffer as ArrayBuffer).slice(
+				aad.byteOffset,
+				aad.byteOffset + aad.byteLength,
+			),
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,
