@@ -27,6 +27,16 @@ src/
   lib/                      # 核心 Svelte UI 交互组件
     CASFileExplorer.svelte
     CASFileExplorerHeader.svelte
+    EncryptionSettings.svelte  # 加密密钥管理设置面板
+    encryption/               # 加密子系统
+      EncryptionService.ts    # 加解密应用层门面
+      KeyManager.ts           # 密钥生命周期管理（基于 Obsidian SecretStorage）
+      CryptoService.ts        # AES-256-GCM 物理加解密
+      EncryptPathPolicy.ts    # 笔记路径加密策略
+      cryptoUtils.ts          # Web Crypto API 封装
+      fileHeader.ts           # 加密文件头解析
+      constants.ts            # 加密常量
+      types.ts                # 加密类型定义
     ...
   ui/                       # Obsidian 面板、视图和弹窗包装器
     CASFileExplorerView.ts  # Obsidian Panel 视图绑定

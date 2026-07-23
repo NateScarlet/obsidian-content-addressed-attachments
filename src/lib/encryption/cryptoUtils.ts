@@ -424,7 +424,7 @@ export async function decryptWithPassphrase(
 	};
 
 	try {
-		parsed = JSON.parse(encryptedJson);
+		parsed = JSON.parse(encryptedJson) as Record<string, unknown>;
 	} catch {
 		throw new Error("Invalid encrypted JSON payload");
 	}

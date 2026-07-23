@@ -260,7 +260,7 @@ describe("CryptoService pure functions", () => {
 				"data",
 				"pass",
 			);
-			const parsed = JSON.parse(validJson);
+			const parsed = JSON.parse(validJson) as Record<string, unknown>;
 
 			// iterations 太低
 			const lowIter = JSON.stringify({ ...parsed, iterations: 1000 });
