@@ -1,6 +1,8 @@
 import type { GatewayConfig } from "./URLResolver";
 import defineLocales from "./utils/defineLocales";
 
+export const CURRENT_SETTINGS_VERSION = 1;
+
 export const EXAMPLE_URL =
 	"ipfs://bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di?filename=image.png&format=image%2Fpng";
 
@@ -55,8 +57,21 @@ export function settingsFromInput(
 		return defaults;
 	}
 
-	// 只要是已知当前版本 (version: 1) 或未来的高版本 (version >= 1)，保留完整的输入字段
-	if (typeof input.version === "number" && input.version >= 1) {
+	// 遭遇未来不识别的高版本配置，遵循“快速失败”原则报错拒绝执行
+	if (
+		typeof input.version === "number" &&
+		input.version > CURRENT_SETTINGS_VERSION
+	) {
+		throw new Error(
+			t("unsupportedSettingsVersion")(
+				input.version,
+				CURRENT_SETTINGS_VERSION,
+			),
+		);
+	}
+
+	// 当前版本 version === 1
+	if (input.version === CURRENT_SETTINGS_VERSION) {
 		return {
 			...defaults,
 			...input,
@@ -149,10 +164,14 @@ const { t } = defineLocales({
 	en: {
 		localGatewayExample: "Local gateway example",
 		githubExample: "GitHub repository example",
+		unsupportedSettingsVersion: (v: number, max: number) =>
+			`Unsupported settings version ${v} (max supported version is ${max}). Please update the plugin.`,
 	},
 	zh: {
 		localGatewayExample: "本地网关示例",
 		githubExample: "GitHub 仓库示例",
+		unsupportedSettingsVersion: (v: number, max: number) =>
+			`不支持的设置配置版本 v${v}（当前插件最大支持版本为 v${max}）。请更新插件。`,
 	},
 });
 //#endregion
