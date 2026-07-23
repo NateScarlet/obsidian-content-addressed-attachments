@@ -49,6 +49,7 @@
 			none: "None",
 			secretStorageId: "Secret Storage ID",
 			secretStorageIdDesc: "Select the secret key used to store all encryption keys in Obsidian Secret Storage",
+			keySelectLabel: "Encryption key",
 		},
 		zh: {
 			fingerprint: "指纹",
@@ -90,6 +91,7 @@
 			none: "无",
 			secretStorageId: "密钥存储 ID",
 			secretStorageIdDesc: "选择在 Obsidian 密钥存储 (Secret Storage) 中保存所有加密密钥的 Secret Key",
+			keySelectLabel: "加密密钥",
 		},
 	});
 
@@ -156,7 +158,7 @@
 				.setName(t("secretStorageId"))
 				.setDesc(t("secretStorageIdDesc"));
 
-			 
+			// eslint-disable-next-line obsidianmd/no-unsupported-api
 			new SecretComponent(app, setting.controlEl)
 				.setValue(keyManager.getKeysStorageId())
 				.onChange(async (newId) => {
@@ -457,41 +459,51 @@
 				<div
 					class="flex flex-col gap-2 rounded border border-theme-border bg-theme-bg-secondary p-3"
 				>
-					<div class="flex items-center gap-2">
-						<textarea
-							rows={3}
-							value={rule.pattern}
-							placeholder={t("encryptPathRulePatternPlaceholder")}
-							class="flex-1 rounded border border-theme-border bg-theme-bg px-3 py-1.5 text-xs font-mono text-theme-text resize-y"
-							oninput={(e) =>
-								updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
-						></textarea>
-						<select
-							value={rule.keyFingerprint}
-							class="rounded border border-theme-border bg-theme-bg px-3 py-1.5 text-xs text-theme-text"
-							onchange={(e) =>
-								updateRuleKey(index, (e.target as HTMLSelectElement).value)}
-						>
-							<option value="">
-								{t("primaryKeyFallback")} ({primaryKeyName})
-							</option>
-							{#each keys as k (k.fingerprint)}
-								<option value={k.fingerprint}>
-									{keyDisplayName(k)} ({k.fingerprint.slice(-4)})
+					<!-- 第一行：密钥选择与操作工具栏 -->
+					<div class="flex items-center justify-between gap-2">
+						<div class="flex items-center gap-2">
+							<span class="text-xs font-medium text-theme-text-muted">
+								{t("keySelectLabel")}:
+							</span>
+							<select
+								value={rule.keyFingerprint}
+								class="rounded border border-theme-border bg-theme-bg px-2.5 py-1 text-xs text-theme-text"
+								onchange={(e) =>
+									updateRuleKey(index, (e.target as HTMLSelectElement).value)}
+							>
+								<option value="">
+									{t("primaryKeyFallback")} ({primaryKeyName})
 								</option>
-							{/each}
-						</select>
+								{#each keys as k (k.fingerprint)}
+									<option value={k.fingerprint}>
+										{keyDisplayName(k)} ({k.fingerprint.slice(-4)})
+									</option>
+								{/each}
+							</select>
+						</div>
+
 						<button
 							type="button"
-							class="text-xs text-red-500 hover:text-red-600"
+							class="text-xs text-red-500 hover:text-red-600 transition-colors"
 							onclick={() => removeRule(index)}
 						>
 							{t("deleteRule")}
 						</button>
 					</div>
 
+					<!-- 第二行：多行文本框独占整行 -->
+					<textarea
+						rows={3}
+						value={rule.pattern}
+						placeholder={t("encryptPathRulePatternPlaceholder")}
+						class="w-full rounded border border-theme-border bg-theme-bg px-3 py-2 text-xs font-mono text-theme-text resize-y"
+						oninput={(e) =>
+							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
+					></textarea>
+
+					<!-- 第三行：匹配选项快捷按钮 -->
 					{#if rule.pattern.trim()}
-						<div class="flex justify-end">
+						<div class="flex justify-end pt-0.5">
 							<button
 								type="button"
 								class="text-[11px] text-accent hover:underline"
