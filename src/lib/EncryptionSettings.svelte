@@ -27,7 +27,7 @@
 			encryptPathRules: "Auto-encrypt path rules",
 			encryptPathRulesDesc:
 				"Gitignore-style rules. One pattern per line. Lines starting with # are comments. Clear input to remove rule.",
-			encryptPathRulePatternPlaceholder: "# Example:\nSecret/**\nProjects/*",
+			encryptPathRulePatternPlaceholder: "Secret/**\nProjects/*",
 			addEncryptPathRule: "Add rule",
 			encryptPathRuleNoKeys: "Create a key first",
 			encryptMatchingNotes: "Encrypt existing links",
@@ -51,7 +51,7 @@
 			decryptedCacheDir: "Decrypted cache directory",
 			decryptedCacheDirDesc:
 				"Directory for large decrypted attachments. Leave empty to disable disk cache (memory-only decryption). Ensure this directory is excluded from 3rd-party sync rules!",
-			decryptedCacheDirPlaceholder: "Empty (Memory-only, e.g. .attachments/decrypted)",
+			decryptedCacheDirPlaceholder: "e.g. .attachments/decrypted",
 			maxBlobSize: "Max memory decryption limit (MB)",
 			maxBlobSizeDesc:
 				"Maximum file size allowed for memory-only decryption (default 20 MB). Decryption of files larger than this limit will be rejected unless a Decrypted Cache Directory is configured.",
@@ -76,7 +76,7 @@
 			encryptPathRules: "自动加密路径规则",
 			encryptPathRulesDesc:
 				"支持 gitignore 语法。每行一个规则，# 开头的行为注释。清空规则文本即可删除该规则。",
-			encryptPathRulePatternPlaceholder: "# 示例：\nSecret/**\nProjects/*",
+			encryptPathRulePatternPlaceholder: "Secret/**\nProjects/*",
 			addEncryptPathRule: "添加规则",
 			encryptPathRuleNoKeys: "请先创建密钥",
 			encryptMatchingNotes: "加密已有链接",
@@ -100,7 +100,7 @@
 			decryptedCacheDir: "解密缓存目录",
 			decryptedCacheDirDesc:
 				"解密附件暂存目录。留空表示禁用磁盘缓存（仅允许纯内存解密）。配置此目录前请务必在第三方同步插件（如 Sync/Remotely Save 等）中将其设为排除同步！",
-			decryptedCacheDirPlaceholder: "留空（仅纯内存解密，例如 .attachments/decrypted）",
+			decryptedCacheDirPlaceholder: "例如: .attachments/decrypted",
 			maxBlobSize: "内存解密文件限制 (MB)",
 			maxBlobSizeDesc:
 				"解密文件默认只在内存中解析预览（安全无泄露）。允许纯内存解密的最大文件大小（默认 20 MB）。超过此限制且未配置文件解密缓存目录的大文件将被拒绝解密。",
@@ -172,7 +172,7 @@
 				.setName(t("secretStorageId"))
 				.setDesc(t("secretStorageIdDesc"));
 
-			 
+			// eslint-disable-next-line obsidianmd/no-unsupported-api
 			new SecretComponent(app, setting.controlEl)
 				.setValue(keyManager.getKeysStorageId())
 				.onChange(async (newId) => {
