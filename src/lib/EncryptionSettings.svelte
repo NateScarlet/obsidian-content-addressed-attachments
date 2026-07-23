@@ -302,12 +302,12 @@
 			<div class="setting-item-description">{t("maxBlobSizeDesc")}</div>
 		</div>
 		<div class="setting-item-control">
-			<div class="flex items-center gap-1.5">
+			<div class="flex items-center gap-2">
 				<input
 					type="number"
 					min="1"
 					value={Math.round(settings.maxBlobSize / (1024 * 1024))}
-					class="w-20 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2.5 py-1 text-xs text-theme-text text-center"
+					class="w-20 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text text-center"
 					onchange={(e) => updateMaxBlobSize((e.target as HTMLInputElement).value)}
 				/>
 				<span class="text-xs font-medium text-theme-text-muted">MB</span>
@@ -345,15 +345,15 @@
 			<div class="flex gap-2">
 				<button
 					type="button"
-					class="mod-cta rounded px-3 py-1.5 text-xs"
-					onclick={openImportModal}
+					class="mod-cta rounded px-3 py-2 text-xs"
+						onclick={openImportModal}
 				>
 					{t("importKeys")}
 				</button>
 				<button
 					type="button"
-					class="mod-cta rounded px-3 py-1.5 text-xs"
-					onclick={openExportModal}
+					class="mod-cta rounded px-3 py-2 text-xs"
+						onclick={openExportModal}
 				>
 					{t("exportAllKeys")}
 				</button>
@@ -365,12 +365,12 @@
 				type="text"
 				bind:value={newKeyName}
 				placeholder={t("keyNamePlaceholder")}
-				class="flex-1 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1.5 text-xs text-theme-text"
+				class="flex-1 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-2 text-xs text-theme-text"
 				onkeydown={(e) => e.key === "Enter" && createKey()}
 			/>
 			<button
 				type="button"
-				class="mod-cta rounded px-4 py-1.5 text-xs font-medium"
+				class="mod-cta rounded px-4 py-2 text-xs font-medium"
 				onclick={createKey}
 			>
 				{t("create")}
@@ -388,13 +388,13 @@
 					<div
 						class="flex items-center justify-between rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3"
 					>
-						<div class="flex flex-col gap-0.5 flex-1 mr-4">
+						<div class="flex flex-col gap-0 flex-1 mr-4">
 							<div class="flex items-center gap-2">
 								<input
 									type="text"
 									value={key.name}
 									placeholder={keyDefaultName(key)}
-									class="rounded border-b border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-theme-text hover:border-[var(--background-modifier-border)] focus:border-accent focus:bg-[var(--background-primary)] focus:outline-none transition-colors min-w-32 max-w-full"
+									class="rounded border-b border-transparent bg-transparent px-1 py-0 text-xs font-medium text-theme-text hover:border-[var(--background-modifier-border)] focus:border-accent focus:bg-[var(--background-primary)] focus:outline-none transition-colors min-w-32 max-w-full"
 									onchange={(e) =>
 										updateKeyName(
 											key.fingerprint,
@@ -403,13 +403,13 @@
 								/>
 								{#if i === 0}
 									<span
-										class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent shrink-0"
+										class="rounded bg-accent/10 px-2 py-0 text-xs font-medium text-accent shrink-0"
 									>
 										{t("primary")}
 									</span>
 								{/if}
 							</div>
-							<span class="font-mono text-[10px] text-theme-text-muted px-1">
+							<span class="font-mono text-xs text-theme-text-muted px-1">
 								FP: {key.fingerprint}
 							</span>
 						</div>
@@ -480,13 +480,13 @@
 						<div
 							class="mt-4 flex items-center justify-between rounded border border-red-500/20 bg-red-500/5 p-3"
 						>
-							<div class="flex items-center gap-1.5 text-xs text-theme-text-muted">
+							<div class="flex items-center gap-2 text-xs text-theme-text-muted">
 								<span>{t("permanentlyDeletePrefix")}</span>
 								<input
 									type="number"
 									bind:value={permanentDeleteDays}
 									min="0"
-									class="w-14 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-0.5 text-xs text-theme-text text-center"
+									class="w-14 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-0 text-xs text-theme-text text-center"
 								/>
 								<span>{t("permanentlyDeleteSuffix")}</span>
 							</div>
@@ -545,7 +545,7 @@
 							</span>
 							<select
 								value={rule.keyFingerprint}
-								class="rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2.5 py-1 text-xs text-theme-text"
+								class="rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text"
 								onchange={(e) =>
 									updateRuleKey(index, (e.target as HTMLSelectElement).value)}
 							>
@@ -554,8 +554,8 @@
 								</option>
 								{#each keys as k (k.fingerprint)}
 									<option value={k.fingerprint}>
-										{keyDisplayName(k)} ({k.fingerprint.slice(-4)})
-									</option>
+										{keyDisplayName(k)}
+										</option>
 								{/each}
 							</select>
 						</div>

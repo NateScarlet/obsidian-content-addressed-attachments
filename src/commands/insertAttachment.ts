@@ -11,30 +11,16 @@ export async function processFileAndInsertLink(
 	editor: Editor,
 	file: File,
 	notePath: string,
-	encryptPathPolicy?: EncryptPathPolicy,
+	encryptPathPolicy: EncryptPathPolicy,
 ): Promise<void> {
-	const encryptedFile = await encryptPathPolicy?.ensureEncrypted(
-		file,
-		notePath,
-	);
-	if (encryptedFile) {
-		const { cid } = await cas.save(dir, encryptedFile);
-		const link = new IPFSLink({
-			cid,
-			filename: file.name,
-			format: ENCRYPTED_FORMAT,
-		});
-		insertIPFSLinkAtCursor(editor, link, {
-			embed: file.type.startsWith("image/"),
-		});
-		return;
-	}
-
-	const { cid } = await cas.save(dir, file);
+	// 合并两个分支：策略加密后若未返回密文则直接使用原始文件
+	const fileToSave =
+		(await encryptPathPolicy.ensureEncrypted(file, notePath)) ?? file;
+	const { cid } = await cas.save(dir, fileToSave);
 	const link = new IPFSLink({
 		cid,
 		filename: file.name,
-		format: file.type,
+		format: fileToSave === file ? file.type : ENCRYPTED_FORMAT,
 	});
 	insertIPFSLinkAtCursor(editor, link, {
 		embed: file.type.startsWith("image/"),
@@ -45,7 +31,7 @@ export default async function insertAttachment(
 	app: App,
 	cas: CAS,
 	dir: string,
-	encryptPathPolicy?: EncryptPathPolicy,
+	encryptPathPolicy: EncryptPathPolicy,
 ) {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {

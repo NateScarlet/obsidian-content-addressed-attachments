@@ -48,6 +48,10 @@ export interface ResolveURLResult {
 export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
 	private decryptedBlobStore = new Map<string, string>();
+	// 跟踪 CID → 解密缓存路径的映射，用于清理时判断
+	private decryptedCidToCachePath = new Map<string, string>();
+	// 防抖 cleanup 的 timer ID
+	private cleanupTimer: ReturnType<typeof setTimeout> | undefined;
 
 	constructor(
 		private app: App,
@@ -140,8 +144,8 @@ export class URLResolver {
 		const match = await this.cas.load(data.cid);
 		if (match) {
 			if (data.format() === ENCRYPTED_FORMAT && this.encryptionService) {
-				return this.resolveEncryptedFile(match.normalizedPath);
-			}
+					return this.resolveEncryptedFile(match.normalizedPath, data.cid);
+				}
 			return {
 				path: match.normalizedPath,
 				url: this.app.vault.adapter.getResourcePath(
@@ -268,6 +272,7 @@ export class URLResolver {
 
 	private async resolveEncryptedFile(
 		encryptedPath: string,
+		cid: CID,
 	): Promise<ResolveURLResult | undefined> {
 		if (!this.encryptionService) return;
 
@@ -288,7 +293,7 @@ export class URLResolver {
 				return { url, path: encryptedPath };
 			}
 
-			// 大文件：解密到临时缓存目录
+			// 大文件：解密到缓存目录
 			const cacheDir = this.settings().decryptedCacheDir;
 			if (!cacheDir) {
 				console.error(
@@ -316,8 +321,19 @@ export class URLResolver {
 				}
 			}
 
-			const cacheFilename = `dec-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+			// 以密文 CID 命名缓存文件，避免重复解密
+			const cacheFilename = `${cid.toString()}.decrypted`;
 			const cachePath = `${cacheDir}/${cacheFilename}`;
+
+			// 如果缓存文件已存在，直接返回
+			const cacheExists = await this.app.vault.adapter.exists(cachePath);
+			if (cacheExists) {
+				this.decryptedCidToCachePath.set(cid.toString(), cachePath);
+				return {
+					path: cachePath,
+					url: this.app.vault.adapter.getResourcePath(cachePath),
+				};
+			}
 
 			const cacheDirExists =
 				await this.app.vault.adapter.exists(cacheDir);
@@ -327,6 +343,9 @@ export class URLResolver {
 
 			await this.app.vault.adapter.writeBinary(cachePath, decrypted.data);
 
+			// 记录 CID → 缓存路径映射
+			this.decryptedCidToCachePath.set(cid.toString(), cachePath);
+
 			return {
 				path: cachePath,
 				url: this.app.vault.adapter.getResourcePath(cachePath),
@@ -334,6 +353,41 @@ export class URLResolver {
 		} catch (err) {
 			console.error("Failed to decrypt file:", encryptedPath, err);
 		}
+	}
+
+	/**
+	 * 清理不再被任何活跃笔记引用的解密缓存文件。
+	 * 调用者应在笔记关闭时调用此方法，传入所有当前打开笔记中引用的 CID 集合。
+	 * 内部使用 30 秒防抖，避免用户快速切换笔记时频繁清理。
+	 */
+	async cleanupDecryptedCache(activeCids: Set<string>): Promise<void> {
+		if (this.cleanupTimer) {
+			clearTimeout(this.cleanupTimer);
+		}
+
+		this.cleanupTimer = setTimeout(async () => {
+			this.cleanupTimer = undefined;
+			const cacheDir = this.settings().decryptedCacheDir;
+			if (!cacheDir) return;
+
+			for (const [cid, cachePath] of this.decryptedCidToCachePath) {
+				if (!activeCids.has(cid)) {
+					try {
+						const exists =
+							await this.app.vault.adapter.exists(cachePath);
+						if (exists) {
+							await this.app.vault.adapter.remove(cachePath);
+						}
+					} catch (err) {
+						console.error(
+							`Failed to cleanup decrypted cache for CID ${cid}:`,
+							err,
+						);
+					}
+					this.decryptedCidToCachePath.delete(cid);
+				}
+			}
+		}, 30_000);
 	}
 }
 
