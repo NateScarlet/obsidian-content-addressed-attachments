@@ -535,6 +535,13 @@ export async function decryptWithPassphrase(
 		["decrypt"],
 	);
 
+	const ciphertextBuffer = base64ToArrayBuffer(parsed.data);
+	if (ciphertextBuffer.byteLength < AUTH_TAG_LENGTH) {
+		throw new Error(
+			`Invalid ciphertext length: ${ciphertextBuffer.byteLength} bytes (minimum required is ${AUTH_TAG_LENGTH} bytes for Auth Tag)`,
+		);
+	}
+
 	const decrypted = await crypto.subtle.decrypt(
 		{
 			name: algorithm,
@@ -546,7 +553,7 @@ export async function decryptWithPassphrase(
 			tagLength: AUTH_TAG_LENGTH * 8,
 		},
 		key,
-		base64ToArrayBuffer(parsed.data),
+		ciphertextBuffer,
 	);
 
 	return new TextDecoder().decode(decrypted);

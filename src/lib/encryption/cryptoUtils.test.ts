@@ -281,6 +281,26 @@ describe("CryptoService pure functions", () => {
 			).rejects.toThrow("Invalid PBKDF2 iterations count");
 		});
 
+		it("rejects ciphertext payload shorter than Auth Tag length (16 bytes)", async () => {
+			const validJson = await cryptoUtils.encryptWithPassphrase(
+				"secret-key-data",
+				"passphrase123",
+			);
+			const parsed = JSON.parse(validJson) as Record<string, unknown>;
+
+			// 将 data 改成过短的 Base64 (解码小于 16 字节)
+			const shortDataPayload = JSON.stringify({
+				...parsed,
+				data: "aGVsbG8=", // "hello" (5 字节)
+			});
+			await expect(
+				cryptoUtils.decryptWithPassphrase(
+					shortDataPayload,
+					"passphrase123",
+				),
+			).rejects.toThrow("Invalid ciphertext length");
+		});
+
 		it("rejects passphrase decryption if KDF metadata in AAD is tampered with", async () => {
 			const validJson = await cryptoUtils.encryptWithPassphrase(
 				"secret-key-data",
