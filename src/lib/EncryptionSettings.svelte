@@ -45,8 +45,8 @@
 				`Are you sure you want to permanently delete ${n} key(s) that were deleted more than ${d} day(s) ago? This cannot be undone!`,
 			primaryKeyFallback: "Primary key",
 			none: "None",
-			secretStorageId: "Secret Storage Key",
-			secretStorageIdDesc: "The secret ID used to store encryption keys in Obsidian Secret Storage",
+			secretStorageId: "Secret Storage ID",
+			secretStorageIdDesc: "The ID used to store encryption keys in Obsidian Secret Storage",
 			keySelectLabel: "Key",
 		},
 		zh: {
@@ -85,8 +85,8 @@
 				`确定要永久删除已删除超过 ${d} 天的 ${n} 个密钥吗？此操作不可撤销！`,
 			primaryKeyFallback: "主密钥",
 			none: "无",
-			secretStorageId: "密钥存储键 ID (Secret ID)",
-			secretStorageIdDesc: "在 Obsidian 密钥存储 (Secret Storage) 中用于保存密钥列表的 Secret ID",
+			secretStorageId: "密钥存储 ID",
+			secretStorageIdDesc: "在 Obsidian 密钥存储 (Secret Storage) 中保存加密密钥列表的 ID",
 			keySelectLabel: "密钥",
 		},
 	});
