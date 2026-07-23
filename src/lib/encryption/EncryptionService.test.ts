@@ -261,34 +261,4 @@ describe("EncryptionService", () => {
 			expect(es.maxBlobSize).toBe(20 * 1024 * 1024);
 		});
 	});
-
-	describe("key management delegation", () => {
-		it("delegates createKey, listKeys, renameKey, exportKey, deleteKey, exportAllKeys, importAllKeys", async () => {
-			const k1 = await es.createKey("key1");
-			expect(k1.name).toBe("key1");
-
-			let keys = await es.listKeys();
-			expect(keys).toHaveLength(1);
-
-			await es.renameKey(k1.fingerprint, "renamed-key");
-			keys = await es.listKeys();
-			expect(keys[0].name).toBe("renamed-key");
-
-			const exported = await es.exportKey(k1.fingerprint);
-			expect(exported).toBeTruthy();
-
-			const backup = await es.exportAllKeys("pass123");
-			expect(backup).toBeTruthy();
-
-			await es.deleteKey(k1.fingerprint);
-			expect(await es.listKeys()).toHaveLength(0);
-
-			const importedCount = await es.importAllKeys(backup, "pass123");
-			expect(importedCount).toBe(1);
-
-			await es.setPrimaryKey(k1.fingerprint);
-			keys = await es.listKeys();
-			expect(keys[0].fingerprint).toBe(k1.fingerprint);
-		});
-	});
 });

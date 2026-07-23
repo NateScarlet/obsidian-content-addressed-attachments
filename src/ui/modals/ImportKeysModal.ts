@@ -1,5 +1,5 @@
 import { Modal, Setting, Notice, type App } from "obsidian";
-import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type { KeyManager } from "#src/lib/encryption/KeyManager";
 import defineLocales from "#src/utils/defineLocales";
 
 const { t } = defineLocales({
@@ -46,7 +46,7 @@ export class ImportKeysModal extends Modal {
 
 	constructor(
 		app: App,
-		private encryptionService: EncryptionService,
+		private keyManager: KeyManager,
 	) {
 		super(app);
 	}
@@ -97,11 +97,10 @@ export class ImportKeysModal extends Modal {
 						const passphrase = this.passphraseInput.value;
 						if (!this.encryptedData || !passphrase) return;
 						try {
-							const count =
-								await this.encryptionService.importAllKeys(
-									this.encryptedData,
-									passphrase,
-								);
+							const count = await this.keyManager.importAllKeys(
+								this.encryptedData,
+								passphrase,
+							);
 							new Notice(t("keyImportSuccess")(count));
 							this.close();
 						} catch {

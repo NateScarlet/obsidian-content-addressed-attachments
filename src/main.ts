@@ -45,6 +45,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public casMetadata!: CASMetadata;
 	public urlResolver!: URLResolver;
 	public referenceManger = new ReferenceManager(this);
+	public keyManager!: KeyManager;
 	public encryptionService!: EncryptionService;
 
 	private inProgressElements = new WeakSet<HTMLElement>();
@@ -105,13 +106,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				return Promise.resolve([]);
 			},
 		};
+		this.keyManager = new KeyManager(
+			storage,
+			() => this.settings,
+			() => this.saveSettings(),
+			hasSecretStorage,
+		);
 		this.encryptionService = new EncryptionService(
-			new KeyManager(
-				storage,
-				() => this.settings,
-				() => this.saveSettings(),
-				hasSecretStorage,
-			),
+			this.keyManager,
 			() => this.settings,
 			undefined,
 		);

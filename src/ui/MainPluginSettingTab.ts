@@ -210,6 +210,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				mount(EncryptionSettingsComponent, {
 					target,
 					props: {
+						keyManager: this.plugin.keyManager,
 						encryptionService: this.plugin.encryptionService,
 						settings: this.plugin.settings,
 						saveSettings: () => this.plugin.saveSettings(),

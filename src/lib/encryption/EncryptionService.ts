@@ -12,7 +12,7 @@ import ignore from "ignore";
 
 export class EncryptionService {
 	constructor(
-		private readonly keyManager: KeyManager,
+		readonly keyManager: KeyManager,
 		private readonly getSettings: () => Pick<
 			Settings,
 			"encryptPathRules" | "maxBlobSize"
@@ -145,64 +145,6 @@ export class EncryptionService {
 	/** 从加密文件数据中解析头部信息 */
 	parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
 		return this.cryptoService.parseHeader(encryptedData);
-	}
-
-	/** 列出可用密钥 */
-	async listKeys(): Promise<EncryptionKeyInfo[]> {
-		return this.keyManager.listKeys();
-	}
-
-	/** 创建新密钥 */
-	async createKey(name: string): Promise<EncryptionKeyInfo> {
-		return this.keyManager.createKey(name);
-	}
-
-	/** 删除密钥（软删除） */
-	async deleteKey(fingerprint: string): Promise<void> {
-		return this.keyManager.deleteKey(fingerprint);
-	}
-
-	/** 恢复已软删除的密钥 */
-	async restoreKey(fingerprint: string): Promise<void> {
-		return this.keyManager.restoreKey(fingerprint);
-	}
-
-	/** 永久删除超过指定天数的已删除密钥 */
-	async permanentlyDeleteKeys(olderThanDays: number): Promise<number> {
-		return this.keyManager.permanentlyDeleteKeys(olderThanDays);
-	}
-
-	/** 列出已删除的密钥 */
-	async listDeletedKeys(): Promise<EncryptionKeyInfo[]> {
-		return this.keyManager.listDeletedKeys();
-	}
-
-	/** 导出单条密钥 */
-	async exportKey(fingerprint: string): Promise<string | undefined> {
-		return this.keyManager.exportKey(fingerprint);
-	}
-
-	/** 重命名密钥 */
-	async renameKey(fingerprint: string, newName: string): Promise<void> {
-		return this.keyManager.renameKey(fingerprint, newName);
-	}
-
-	/** 导出所有加密密钥 */
-	async exportAllKeys(passphrase: string): Promise<string> {
-		return this.keyManager.exportAllKeys(passphrase);
-	}
-
-	/** 导入密钥备份 */
-	async importAllKeys(
-		encryptedJson: string,
-		passphrase: string,
-	): Promise<number> {
-		return this.keyManager.importAllKeys(encryptedJson, passphrase);
-	}
-
-	/** 设置主密钥 */
-	async setPrimaryKey(fingerprint: string): Promise<void> {
-		return this.keyManager.setPrimaryKey(fingerprint);
 	}
 
 	/** 获取主密钥 */
