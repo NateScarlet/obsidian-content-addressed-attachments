@@ -150,8 +150,8 @@ async function getOrDeriveIVHmacKey(key: CryptoKey): Promise<CryptoKey> {
 
 /**
  * 计算合成确定性 IV (Synthetic IV)，采用密钥域隔离 (Key Domain Separation)，
- * 将明文数据与 AAD (附加认证数据) 共同引入 HMAC 输入，
- * 遵循 RFC 5297 Synthetic IV 密码学规范，消除相同明文搭配不同 AAD 元数据导致的 GCM IV 碰撞隐患。
+ * 采用带长度前缀的领域隔离 Frame 编码 (Length-Prefixed Framing)，
+ * 遵循 RFC 5297 SIV 密码学规范，彻底消除可变长 AAD 与明文直接拼接的二义性 (Framing Ambiguity)。
  */
 async function computeSyntheticIV(
 	key: CryptoKey,
@@ -161,13 +161,23 @@ async function computeSyntheticIV(
 	// 1. 获取（或从 WeakMap 缓存中读取）对应主密钥派生的 IV HMAC 子密钥
 	const ivHmacKey = await getOrDeriveIVHmacKey(key);
 
-	// 2. 将 AAD 字节与 Plaintext 字节拼接，作为 HMAC 输入 (RFC 5297 SIV)
+	// 2. 带长度前缀 (Length-Prefixed) 编码，防止 AAD 与 Plaintext 直接拼接产生的二义性碰撞
 	const plaintextBytes = new Uint8Array(plaintext);
-	const hmacInput = new Uint8Array(
-		aad.byteLength + plaintextBytes.byteLength,
-	);
-	hmacInput.set(aad, 0);
-	hmacInput.set(plaintextBytes, aad.byteLength);
+	const hmacInputSize = 8 + aad.byteLength + 8 + plaintextBytes.byteLength;
+	const hmacInput = new Uint8Array(hmacInputSize);
+	const dv = new DataView(hmacInput.buffer);
+
+	let offset = 0;
+	// 写入 AAD 长度 (8B uint64 Big-Endian) + AAD 内容
+	dv.setBigUint64(offset, BigInt(aad.byteLength), false);
+	offset += 8;
+	hmacInput.set(aad, offset);
+	offset += aad.byteLength;
+
+	// 写入 Plaintext 长度 (8B uint64 Big-Endian) + Plaintext 内容
+	dv.setBigUint64(offset, BigInt(plaintextBytes.byteLength), false);
+	offset += 8;
+	hmacInput.set(plaintextBytes, offset);
 
 	// 3. 用专属 IV 子密钥签名，生成 32 字节摘要并截取前 12 字节 (96-bit)
 	const fullTag = await crypto.subtle.sign("HMAC", ivHmacKey, hmacInput);
