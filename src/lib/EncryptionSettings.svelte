@@ -6,7 +6,6 @@
 	import showError from "#src/utils/showError";
 	import defineLocales from "#src/utils/defineLocales";
 	import { DEFAULT_KEYS_STORAGE_ID, type KeyManager } from "./encryption/KeyManager";
-	import type { EncryptionService } from "./encryption/EncryptionService";
 	import { onMount } from "svelte";
 
 	const { t } = defineLocales({
@@ -106,10 +105,8 @@
 		onEncryptMatchingNotes,
 	}: {
 		keyManager: KeyManager;
-		encryptionService?: EncryptionService;
 		settings: Settings;
 		saveSettings: () => Promise<void>;
-		display?: () => void;
 		app: App;
 		ExportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
 		ImportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
