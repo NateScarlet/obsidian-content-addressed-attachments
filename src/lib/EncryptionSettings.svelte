@@ -50,8 +50,11 @@
 			secretStorageIdDesc: "The ID used to store encryption keys in Obsidian Secret Storage",
 			decryptedCacheDir: "Decrypted cache directory",
 			decryptedCacheDirDesc:
-				"Directory for temporary decrypted attachment files (leave empty for default .decrypted folder)",
-			decryptedCacheDirPlaceholder: "Default (e.g. .attachments/decrypted)",
+				"Directory for large decrypted attachments. Leave empty to disable disk cache (memory-only decryption). Ensure this directory is excluded from 3rd-party sync rules!",
+			decryptedCacheDirPlaceholder: "Empty (Memory-only, e.g. .attachments/decrypted)",
+			maxBlobSize: "Max memory decryption limit (MB)",
+			maxBlobSizeDesc:
+				"Maximum file size allowed for memory-only decryption (default 20 MB). Decryption of files larger than this limit will be rejected unless a Decrypted Cache Directory is configured.",
 			keySelectLabel: "Key",
 			keyManagement: "Key management",
 		},
@@ -95,8 +98,12 @@
 			secretStorageId: "密钥存储 ID",
 			secretStorageIdDesc: "在 Obsidian 密钥存储 (Secret Storage) 中保存加密密钥列表的 ID",
 			decryptedCacheDir: "解密缓存目录",
-			decryptedCacheDirDesc: "解密附件本地暂存目录（留空则默认存放在主存储目录同级的 .decrypted 目录下）",
-			decryptedCacheDirPlaceholder: "默认 (例如 .attachments/decrypted)",
+			decryptedCacheDirDesc:
+				"解密附件暂存目录。留空表示禁用磁盘缓存（仅允许纯内存解密）。配置此目录前请务必在第三方同步插件（如 Sync/Remotely Save 等）中将其设为排除同步！",
+			decryptedCacheDirPlaceholder: "留空（仅纯内存解密，例如 .attachments/decrypted）",
+			maxBlobSize: "内存解密文件限制 (MB)",
+			maxBlobSizeDesc:
+				"解密文件默认只在内存中解析预览（安全无泄露）。允许纯内存解密的最大文件大小（默认 20 MB）。超过此限制且未配置文件解密缓存目录的大文件将被拒绝解密。",
 			keySelectLabel: "密钥",
 			keyManagement: "密钥管理",
 		},
@@ -239,6 +246,14 @@
 		void saveSettings();
 	}
 
+	function updateMaxBlobSize(mbString: string) {
+		const numMB = parseInt(mbString, 10);
+		if (!isNaN(numMB) && numMB > 0) {
+			settings.maxBlobSize = numMB * 1024 * 1024;
+			void saveSettings();
+		}
+	}
+
 	function openExportModal() {
 		new ExportKeysModal(app, keyManager).open();
 	}
@@ -280,7 +295,24 @@
 </script>
 
 <div class="space-y-4">
-	<!-- 解密缓存目录设置项（标准 Obsidian Setting 布局） -->
+	<!-- 内存解密最大文件限制 (MB) 设置项 -->
+	<div class="setting-item">
+		<div class="setting-item-info">
+			<div class="setting-item-name">{t("maxBlobSize")}</div>
+			<div class="setting-item-description">{t("maxBlobSizeDesc")}</div>
+		</div>
+		<div class="setting-item-control">
+			<input
+				type="number"
+				min="1"
+				value={Math.round(settings.maxBlobSize / (1024 * 1024))}
+				class="w-24 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text text-center"
+				onchange={(e) => updateMaxBlobSize((e.target as HTMLInputElement).value)}
+			/>
+		</div>
+	</div>
+
+	<!-- 解密缓存目录设置项 -->
 	<div class="setting-item">
 		<div class="setting-item-info">
 			<div class="setting-item-name">{t("decryptedCacheDir")}</div>
@@ -402,7 +434,7 @@
 			{/if}
 		</div>
 
-		<!-- 已删除密钥折叠区域 (分隔线统一采用 var(--background-modifier-border)) -->
+		<!-- 已删除密钥折叠区域 -->
 		<div class="w-full border-t border-[var(--background-modifier-border)] pt-4 mt-2">
 			<button
 				type="button"
