@@ -37,6 +37,18 @@ describe("EncryptionService", () => {
 			expect(header).toBeUndefined();
 		});
 
+		it("returns undefined for text starting with CENC or ENC without false positive", async () => {
+			const buf1 = new TextEncoder().encode(
+				"CENC architecture notes and design details",
+			).buffer;
+			const buf2 = new TextEncoder().encode(
+				"ENC plain text content",
+			).buffer;
+
+			expect(await es.inspect(buf1)).toBeUndefined();
+			expect(await es.inspect(buf2)).toBeUndefined();
+		});
+
 		it("returns header metadata for encrypted data", async () => {
 			const key = await km.createKey("test-key");
 			const file = new File(["secret"], "a.txt", { type: "text/plain" });

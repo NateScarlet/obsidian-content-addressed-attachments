@@ -17,8 +17,11 @@ const PBKDF2_ITERATIONS = 1_500_000;
 /** 口令加密盐值长度 */
 const SALT_LENGTH = 32;
 
-/** IV 派生密钥域隔离标签 */
-const IV_DOMAIN_LABEL = new TextEncoder().encode("CENC_SYNTHETIC_IV_DOMAIN_v1");
+/** IV 派生密钥域隔离标签，无语义随机生成 */
+const IV_DOMAIN_LABEL = new Uint8Array([
+	0xbb, 0x37, 0xad, 0xc4, 0x48, 0x98, 0x98, 0x42, 0xb1, 0x7e, 0x97, 0x5e,
+	0xb1, 0x77, 0xc6, 0xb7,
+]);
 
 export async function computeFingerprint(keyData: Uint8Array): Promise<string> {
 	const digestResult = await crypto.subtle.digest(

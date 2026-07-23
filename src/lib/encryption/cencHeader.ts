@@ -1,7 +1,11 @@
 import type { EncryptedFileHeader } from "./types";
 
-/** 加密文件头幻数 "CENC" */
-export const HEADER_MAGIC = new Uint8Array([0x43, 0x45, 0x4e, 0x43]);
+/**
+ * 加密文件头魔数 "\xfdENC" (0xFD, 'E', 'N', 'C')
+ * - 0xFD 具有非 ASCII / 非合法 UTF-8 文本开头特征，彻底排除纯文本误判；
+ * - "ENC" 保持终端 hexdump 可读的加密文件特征。
+ */
+export const HEADER_MAGIC = new Uint8Array([0xfd, 0x45, 0x4e, 0x43]);
 export const HEADER_VERSION = 1;
 
 /** AES-256-GCM 参数 */
