@@ -112,6 +112,42 @@ export async function importKeyRawEncrypt(raw: Uint8Array): Promise<CryptoKey> {
 	);
 }
 
+/** 缓存从主密钥派生的专属 IV HMAC 子密钥，避免每次加密重复执行 exportKey/importKey 派生开销 */
+const ivHmacKeyCache = new WeakMap<CryptoKey, Promise<CryptoKey>>();
+
+async function getOrDeriveIVHmacKey(key: CryptoKey): Promise<CryptoKey> {
+	let cachedPromise = ivHmacKeyCache.get(key);
+	if (!cachedPromise) {
+		cachedPromise = (async () => {
+			const rawKey = await exportKeyRaw(key);
+			const masterHmacKey = await crypto.subtle.importKey(
+				"raw",
+				rawKey.buffer.slice(
+					rawKey.byteOffset,
+					rawKey.byteOffset + rawKey.byteLength,
+				) as ArrayBuffer,
+				{ name: "HMAC", hash: "SHA-256" },
+				false,
+				["sign"],
+			);
+			const ivKeyBytes = await crypto.subtle.sign(
+				"HMAC",
+				masterHmacKey,
+				IV_DOMAIN_LABEL,
+			);
+			return crypto.subtle.importKey(
+				"raw",
+				ivKeyBytes,
+				{ name: "HMAC", hash: "SHA-256" },
+				false,
+				["sign"],
+			);
+		})();
+		ivHmacKeyCache.set(key, cachedPromise);
+	}
+	return cachedPromise;
+}
+
 /**
  * 计算合成确定性 IV (Synthetic IV)，采用密钥域隔离 (Key Domain Separation)，
  * 将明文数据与 AAD (附加认证数据) 共同引入 HMAC 输入，
@@ -122,24 +158,8 @@ async function computeSyntheticIV(
 	plaintext: ArrayBuffer,
 	aad: Uint8Array,
 ): Promise<Uint8Array> {
-	const rawKey = await exportKeyRaw(key);
-
-	// 1. 密钥域隔离：使用主密钥派生专门算 IV 的子密钥 K_iv，绝不直接将主密钥作为 HMAC 密钥混用
-	const masterHmacKey = await crypto.subtle.importKey(
-		"raw",
-		rawKey.buffer.slice(
-			rawKey.byteOffset,
-			rawKey.byteOffset + rawKey.byteLength,
-		) as ArrayBuffer,
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign"],
-	);
-	const ivKeyBytes = await crypto.subtle.sign(
-		"HMAC",
-		masterHmacKey,
-		IV_DOMAIN_LABEL,
-	);
+	// 1. 获取（或从 WeakMap 缓存中读取）对应主密钥派生的 IV HMAC 子密钥
+	const ivHmacKey = await getOrDeriveIVHmacKey(key);
 
 	// 2. 将 AAD 字节与 Plaintext 字节拼接，作为 HMAC 输入 (RFC 5297 SIV)
 	const plaintextBytes = new Uint8Array(plaintext);
@@ -150,13 +170,6 @@ async function computeSyntheticIV(
 	hmacInput.set(plaintextBytes, aad.byteLength);
 
 	// 3. 用专属 IV 子密钥签名，生成 32 字节摘要并截取前 12 字节 (96-bit)
-	const ivHmacKey = await crypto.subtle.importKey(
-		"raw",
-		ivKeyBytes,
-		{ name: "HMAC", hash: "SHA-256" },
-		false,
-		["sign"],
-	);
 	const fullTag = await crypto.subtle.sign("HMAC", ivHmacKey, hmacInput);
 	return new Uint8Array(fullTag, 0, IV_LENGTH);
 }
