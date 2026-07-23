@@ -52,7 +52,7 @@
 			decryptedCacheDirDesc:
 				"Directory for large decrypted attachments. Leave empty to disable disk cache (memory-only decryption). Ensure this directory is excluded from 3rd-party sync rules!",
 			decryptedCacheDirPlaceholder: "e.g. .attachments/decrypted",
-			maxBlobSize: "Max memory decryption limit (MB)",
+			maxBlobSize: "Max memory decryption limit",
 			maxBlobSizeDesc:
 				"Maximum file size allowed for memory-only decryption (default 20 MB). Decryption of files larger than this limit will be rejected unless a Decrypted Cache Directory is configured.",
 			keySelectLabel: "Key",
@@ -101,7 +101,7 @@
 			decryptedCacheDirDesc:
 				"解密附件暂存目录。留空表示禁用磁盘缓存（仅允许纯内存解密）。配置此目录前请务必在第三方同步插件（如 Sync/Remotely Save 等）中将其设为排除同步！",
 			decryptedCacheDirPlaceholder: "例如: .attachments/decrypted",
-			maxBlobSize: "内存解密文件限制 (MB)",
+			maxBlobSize: "内存解密文件限制",
 			maxBlobSizeDesc:
 				"解密文件默认只在内存中解析预览（安全无泄露）。允许纯内存解密的最大文件大小（默认 20 MB）。超过此限制且未配置文件解密缓存目录的大文件将被拒绝解密。",
 			keySelectLabel: "密钥",
@@ -172,7 +172,7 @@
 				.setName(t("secretStorageId"))
 				.setDesc(t("secretStorageIdDesc"));
 
-			// eslint-disable-next-line obsidianmd/no-unsupported-api
+			 
 			new SecretComponent(app, setting.controlEl)
 				.setValue(keyManager.getKeysStorageId())
 				.onChange(async (newId) => {
@@ -295,20 +295,23 @@
 </script>
 
 <div class="space-y-4">
-	<!-- 内存解密最大文件限制 (MB) 设置项 -->
+	<!-- 内存解密最大文件限制设置项 -->
 	<div class="setting-item">
 		<div class="setting-item-info">
 			<div class="setting-item-name">{t("maxBlobSize")}</div>
 			<div class="setting-item-description">{t("maxBlobSizeDesc")}</div>
 		</div>
 		<div class="setting-item-control">
-			<input
-				type="number"
-				min="1"
-				value={Math.round(settings.maxBlobSize / (1024 * 1024))}
-				class="w-24 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text text-center"
-				onchange={(e) => updateMaxBlobSize((e.target as HTMLInputElement).value)}
-			/>
+			<div class="flex items-center gap-1.5">
+				<input
+					type="number"
+					min="1"
+					value={Math.round(settings.maxBlobSize / (1024 * 1024))}
+					class="w-20 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2.5 py-1 text-xs text-theme-text text-center"
+					onchange={(e) => updateMaxBlobSize((e.target as HTMLInputElement).value)}
+				/>
+				<span class="text-xs font-medium text-theme-text-muted">MB</span>
+			</div>
 		</div>
 	</div>
 
