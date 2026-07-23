@@ -17,6 +17,9 @@ const PBKDF2_ITERATIONS = 1_500_000;
 /** 口令加密盐值长度 */
 const SALT_LENGTH = 32;
 
+/** IV 派生密钥域隔离标签 */
+const IV_DOMAIN_LABEL = new TextEncoder().encode("CENC_SYNTHETIC_IV_DOMAIN_v1");
+
 export async function computeFingerprint(keyData: Uint8Array): Promise<string> {
 	const digestResult = await crypto.subtle.digest(
 		"SHA-256",
@@ -69,14 +72,17 @@ export async function importKeyRawEncrypt(raw: Uint8Array): Promise<CryptoKey> {
 }
 
 /**
- * 计算合成确定性 IV (Synthetic IV)，使相同明文与密钥生成确定的 AES-GCM 密文（契合 CAS 去重）
+ * 计算合成确定性 IV (Synthetic IV)，采用密钥域隔离 (Key Domain Separation)，
+ * 使相同明文与密钥生成确定的 AES-GCM 密文（契合 CAS 去重，消除密钥混用安全风险）。
  */
 async function computeSyntheticIV(
 	key: CryptoKey,
 	plaintext: ArrayBuffer,
 ): Promise<Uint8Array> {
 	const rawKey = await exportKeyRaw(key);
-	const hmacKey = await crypto.subtle.importKey(
+
+	// 1. 密钥域隔离：使用主密钥派生专门算 IV 的子密钥 K_iv，绝不直接将主密钥作为 HMAC 密钥混用
+	const masterHmacKey = await crypto.subtle.importKey(
 		"raw",
 		rawKey.buffer.slice(
 			rawKey.byteOffset,
@@ -86,8 +92,22 @@ async function computeSyntheticIV(
 		false,
 		["sign"],
 	);
-	const signature = await crypto.subtle.sign("HMAC", hmacKey, plaintext);
-	return new Uint8Array(signature, 0, IV_LENGTH);
+	const ivKeyBytes = await crypto.subtle.sign(
+		"HMAC",
+		masterHmacKey,
+		IV_DOMAIN_LABEL,
+	);
+
+	// 2. 用专属 IV 子密钥对明文签名，生成 32 字节摘要并截取前 12 字节 (96-bit)
+	const ivHmacKey = await crypto.subtle.importKey(
+		"raw",
+		ivKeyBytes,
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	const fullTag = await crypto.subtle.sign("HMAC", ivHmacKey, plaintext);
+	return new Uint8Array(fullTag, 0, IV_LENGTH);
 }
 
 /** 加密原始数据，返回完整的加密二进制（含 CENC Header） */
@@ -97,7 +117,7 @@ export async function encrypt(
 	plaintext: ArrayBuffer,
 	originalFormat: string,
 ): Promise<ArrayBuffer> {
-	// 使用合成 IV (Synthetic IV)，实现 CAS 场景下的确定性加密
+	// 使用带密钥域隔离的合成 IV (Synthetic IV)，实现 CAS 场景下的安全确定性加密
 	const iv = await computeSyntheticIV(key, plaintext);
 
 	const encrypted = await crypto.subtle.encrypt(
