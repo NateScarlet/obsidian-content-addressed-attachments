@@ -7,13 +7,11 @@
 	import defineLocales from "#src/utils/defineLocales";
 	import { DEFAULT_KEYS_STORAGE_ID, type KeyManager } from "./encryption/KeyManager";
 	import { onMount } from "svelte";
-	import { RenameKeyModal } from "#src/ui/modals/RenameKeyModal";
 
 	const { t } = defineLocales({
 		en: {
 			fingerprint: "Fingerprint",
 			createdAt: "Created at",
-			rename: "Rename",
 			delete: "Delete",
 			restore: "Restore",
 			setAsPrimary: "Set as primary",
@@ -55,7 +53,6 @@
 		zh: {
 			fingerprint: "指纹",
 			createdAt: "创建时间",
-			rename: "重命名",
 			delete: "删除",
 			restore: "恢复",
 			setAsPrimary: "设为主密钥",
@@ -222,19 +219,10 @@
 		}
 	}
 
-	function renameKey(fingerprint: string, oldName: string) {
-		const targetKey = keys.find((k) => k.fingerprint === fingerprint);
-		const defaultName = targetKey ? keyDefaultName(targetKey) : "";
-		new RenameKeyModal(
-			app,
-			keyManager,
-			fingerprint,
-			oldName,
-			defaultName,
-			async () => {
-				await loadKeys();
-			},
-		).open();
+	async function updateKeyName(fingerprint: string, newName: string) {
+		const nameToSave = newName.trim();
+		await keyManager.renameKey(fingerprint, nameToSave);
+		await loadKeys();
 	}
 
 	function openExportModal() {
@@ -330,25 +318,33 @@
 					<div
 						class="flex items-center justify-between rounded border border-theme-border bg-theme-bg-secondary p-3"
 					>
-						<div class="flex flex-col gap-0.5">
+						<div class="flex flex-col gap-0.5 flex-1 mr-4">
 							<div class="flex items-center gap-2">
-								<span class="text-xs font-medium text-theme-text">
-									{keyDisplayName(key)}
-								</span>
+								<input
+									type="text"
+									value={key.name}
+									placeholder={keyDefaultName(key)}
+									class="rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs font-medium text-theme-text hover:border-theme-border focus:border-accent focus:bg-theme-bg focus:outline-none transition-colors"
+									onchange={(e) =>
+										updateKeyName(
+											key.fingerprint,
+											(e.target as HTMLInputElement).value,
+										)}
+								/>
 								{#if i === 0}
 									<span
-										class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+										class="rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent shrink-0"
 									>
 										{t("primary")}
 									</span>
 								{/if}
 							</div>
-							<span class="font-mono text-[10px] text-theme-text-muted">
+							<span class="font-mono text-[10px] text-theme-text-muted px-1.5">
 								FP: {key.fingerprint}
 							</span>
 						</div>
 
-						<div class="flex items-center gap-2">
+						<div class="flex items-center gap-2 shrink-0">
 							{#if i !== 0}
 								<button
 									type="button"
@@ -358,13 +354,6 @@
 									{t("setAsPrimary")}
 								</button>
 							{/if}
-							<button
-								type="button"
-								class="text-xs text-theme-text-muted hover:text-theme-text"
-								onclick={() => renameKey(key.fingerprint, key.name)}
-							>
-								{t("rename")}
-							</button>
 							<button
 								type="button"
 								class="text-xs text-red-500 hover:text-red-600"
