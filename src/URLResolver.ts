@@ -144,8 +144,11 @@ export class URLResolver {
 		const match = await this.cas.load(data.cid);
 		if (match) {
 			if (data.format() === ENCRYPTED_FORMAT && this.encryptionService) {
-					return this.resolveEncryptedFile(match.normalizedPath, data.cid);
-				}
+				return this.resolveEncryptedFile(
+					match.normalizedPath,
+					data.cid,
+				);
+			}
 			return {
 				path: match.normalizedPath,
 				url: this.app.vault.adapter.getResourcePath(
@@ -360,33 +363,35 @@ export class URLResolver {
 	 * 调用者应在笔记关闭时调用此方法，传入所有当前打开笔记中引用的 CID 集合。
 	 * 内部使用 30 秒防抖，避免用户快速切换笔记时频繁清理。
 	 */
-	async cleanupDecryptedCache(activeCids: Set<string>): Promise<void> {
+	cleanupDecryptedCache(activeCids: Set<string>): void {
 		if (this.cleanupTimer) {
-			clearTimeout(this.cleanupTimer);
+			window.clearTimeout(this.cleanupTimer);
 		}
 
-		this.cleanupTimer = setTimeout(async () => {
-			this.cleanupTimer = undefined;
-			const cacheDir = this.settings().decryptedCacheDir;
-			if (!cacheDir) return;
+		this.cleanupTimer = window.setTimeout(() => {
+			void (async () => {
+				this.cleanupTimer = undefined;
+				const cacheDir = this.settings().decryptedCacheDir;
+				if (!cacheDir) return;
 
-			for (const [cid, cachePath] of this.decryptedCidToCachePath) {
-				if (!activeCids.has(cid)) {
-					try {
-						const exists =
-							await this.app.vault.adapter.exists(cachePath);
-						if (exists) {
-							await this.app.vault.adapter.remove(cachePath);
+				for (const [cid, cachePath] of this.decryptedCidToCachePath) {
+					if (!activeCids.has(cid)) {
+						try {
+							const exists =
+								await this.app.vault.adapter.exists(cachePath);
+							if (exists) {
+								await this.app.vault.adapter.remove(cachePath);
+							}
+						} catch (err) {
+							console.error(
+								`Failed to cleanup decrypted cache for CID ${cid}:`,
+								err,
+							);
 						}
-					} catch (err) {
-						console.error(
-							`Failed to cleanup decrypted cache for CID ${cid}:`,
-							err,
-						);
+						this.decryptedCidToCachePath.delete(cid);
 					}
-					this.decryptedCidToCachePath.delete(cid);
 				}
-			}
+			})();
 		}, 30_000);
 	}
 }

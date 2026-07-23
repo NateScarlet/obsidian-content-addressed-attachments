@@ -86,7 +86,8 @@ describe("CryptoService pure functions", () => {
 			// 找到 format 字符串在 Header 中的位置并篡改它
 			const bytes = new Uint8Array(encrypted);
 			const fmtString = "image/png";
-			const fmtPos = bytes.length - plaintext.byteLength - fmtString.length;
+			const fmtPos =
+				bytes.length - plaintext.byteLength - fmtString.length;
 			const tampered = new Uint8Array(encrypted.slice(0));
 			tampered[fmtPos] = "t".charCodeAt(0); // 将 "image/png" 改为 "tmage/png"
 

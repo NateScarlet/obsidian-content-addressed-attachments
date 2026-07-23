@@ -106,15 +106,15 @@ export async function encryptLink(
 	}
 
 	const rawFile = new File([new Blob([buffer])], parsed.filename, {
-			type: resolveMimeType(parsed.format, parsed.filename),
-		});
-		let encryptedFile: File;
-		try {
-			encryptedFile = await encryptionService.ensureEncrypted(
-				rawFile,
-				fingerprint,
-			);
-		} catch {
+		type: resolveMimeType(parsed.format, parsed.filename),
+	});
+	let encryptedFile: File;
+	try {
+		encryptedFile = await encryptionService.ensureEncrypted(
+			rawFile,
+			fingerprint,
+		);
+	} catch {
 		new Notice(t("noKeyAvailable"));
 		return;
 	}

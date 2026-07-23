@@ -308,32 +308,32 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				}
 			}),
 		);
-			//#endregion
+		//#endregion
 
-			// 解密缓存清理：当布局变化（笔记关闭/切换）时触发
-			this.registerEvent(
-				this.app.workspace.on("layout-change", () => {
-					const activeCids = new Set<string>();
-					for (const leaf of this.app.workspace.getLeavesOfType(
-						"markdown",
-					)) {
-						const view = leaf.view;
-						if (!(view instanceof MarkdownView) || !view.file) continue;
-						const content = view.editor.getValue();
-						for (const match of findIPFSLinks(content)) {
-							const parsed = IPFSLink.parse(match.url.toString());
-							if (parsed) {
-								activeCids.add(parsed.cid.toString());
-							}
+		// 解密缓存清理：当布局变化（笔记关闭/切换）时触发
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				const activeCids = new Set<string>();
+				for (const leaf of this.app.workspace.getLeavesOfType(
+					"markdown",
+				)) {
+					const view = leaf.view;
+					if (!(view instanceof MarkdownView) || !view.file) continue;
+					const content = view.editor.getValue();
+					for (const match of findIPFSLinks(content)) {
+						const parsed = IPFSLink.parse(match.url.toString());
+						if (parsed) {
+							activeCids.add(parsed.cid.toString());
 						}
 					}
-					this.urlResolver.cleanupDecryptedCache(activeCids);
-				}),
-			);
+				}
+				this.urlResolver.cleanupDecryptedCache(activeCids);
+			}),
+		);
 
-			this.addCommand({
-				id: "insert-attachment",
-				name: t("insertAttachment"),
+		this.addCommand({
+			id: "insert-attachment",
+			name: t("insertAttachment"),
 			callback: () => {
 				insertAttachment(
 					this.app,
