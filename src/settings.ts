@@ -56,15 +56,12 @@ export function settingsFromInput(
 	}
 
 	if (input.version === 1) {
-		const parsedGateways =
-			Array.isArray(input.gateways) && input.gateways.length > 0
-				? input.gateways
-				: defaults.gateways;
-
 		return {
 			...defaults,
 			...input,
-			gateways: parsedGateways,
+			gateways: Array.isArray(input.gateways)
+				? input.gateways
+				: defaults.gateways,
 			encryptPathRules: input.encryptPathRules ?? [],
 			maxBlobSize: input.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
 			decryptedCacheDir:
@@ -73,15 +70,14 @@ export function settingsFromInput(
 	}
 
 	const v0 = input;
-	const v0Gateways =
-		Array.isArray(v0.gatewayURLs) && v0.gatewayURLs.length > 0
-			? v0.gatewayURLs.map((g) => ({
-					urlTemplate: g.urlTemplate,
-					name: g.name,
-					headers: g.headers,
-					enabled: g.enabled,
-				}))
-			: defaults.gateways;
+	const v0Gateways = Array.isArray(v0.gatewayURLs)
+		? v0.gatewayURLs.map((g) => ({
+				urlTemplate: g.urlTemplate,
+				name: g.name,
+				headers: g.headers,
+				enabled: g.enabled,
+			}))
+		: defaults.gateways;
 
 	return {
 		...defaults,

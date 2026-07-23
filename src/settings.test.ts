@@ -27,16 +27,18 @@ describe("settingsFromInput", () => {
 		expect(result.gateways).toEqual(customGateways);
 	});
 
-	it("falls back to default gateways if gateways array is empty or missing in input", () => {
-		const defaults = getDefaultSettings();
+	it("respects user decision when gateways array is explicitly empty []", () => {
 		const resultEmpty = settingsFromInput({
 			version: 1,
 			primaryDir: ".attachments/cas",
 			downloadDir: "",
 			gateways: [],
 		});
-		expect(resultEmpty.gateways).toEqual(defaults.gateways);
+		expect(resultEmpty.gateways).toEqual([]);
+	});
 
+	it("falls back to default gateways when gateways field is missing (undefined)", () => {
+		const defaults = getDefaultSettings();
 		const resultMissing = settingsFromInput({
 			version: 1,
 			primaryDir: ".attachments/cas",
