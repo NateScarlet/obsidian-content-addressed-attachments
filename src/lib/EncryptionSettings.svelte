@@ -17,6 +17,7 @@
 			setAsPrimary: "Set as primary",
 			primary: "Primary",
 			createNewKey: "Create new key",
+			createNewKeyDesc: "Generate or name a new encryption key",
 			create: "Create",
 			keyNamePlaceholder: "Key name",
 			unnamedKey: "Unnamed key",
@@ -47,7 +48,12 @@
 			none: "None",
 			secretStorageId: "Secret Storage ID",
 			secretStorageIdDesc: "The ID used to store encryption keys in Obsidian Secret Storage",
+			decryptedCacheDir: "Decrypted cache directory",
+			decryptedCacheDirDesc:
+				"Directory for temporary decrypted attachment files (leave empty for default .decrypted folder)",
+			decryptedCacheDirPlaceholder: "Default (e.g. .attachments/decrypted)",
 			keySelectLabel: "Key",
+			keyManagement: "Key management",
 		},
 		zh: {
 			fingerprint: "指纹",
@@ -57,6 +63,7 @@
 			setAsPrimary: "设为主密钥",
 			primary: "主密钥",
 			createNewKey: "创建新密钥",
+			createNewKeyDesc: "生成或命名一个新的加密密钥",
 			create: "创建",
 			keyNamePlaceholder: "密钥名称",
 			unnamedKey: "未命名密钥",
@@ -87,7 +94,11 @@
 			none: "无",
 			secretStorageId: "密钥存储 ID",
 			secretStorageIdDesc: "在 Obsidian 密钥存储 (Secret Storage) 中保存加密密钥列表的 ID",
+			decryptedCacheDir: "解密缓存目录",
+			decryptedCacheDirDesc: "解密附件本地暂存目录（留空则默认存放在主存储目录同级的 .decrypted 目录下）",
+			decryptedCacheDirPlaceholder: "默认 (例如 .attachments/decrypted)",
 			keySelectLabel: "密钥",
+			keyManagement: "密钥管理",
 		},
 	});
 
@@ -223,6 +234,11 @@
 		await loadKeys();
 	}
 
+	function updateDecryptedCacheDir(dir: string) {
+		settings.decryptedCacheDir = dir.trim();
+		void saveSettings();
+	}
+
 	function openExportModal() {
 		new ExportKeysModal(app, keyManager).open();
 	}
@@ -263,27 +279,45 @@
 	}
 </script>
 
-<div class="space-y-6">
-	<!-- Secret Storage Key 选择配置区域 -->
+<div class="space-y-4">
+	<!-- 解密缓存目录设置项（标准 Obsidian Setting 布局） -->
+	<div class="setting-item">
+		<div class="setting-item-info">
+			<div class="setting-item-name">{t("decryptedCacheDir")}</div>
+			<div class="setting-item-description">{t("decryptedCacheDirDesc")}</div>
+		</div>
+		<div class="setting-item-control">
+			<input
+				type="text"
+				value={settings.decryptedCacheDir}
+				placeholder={t("decryptedCacheDirPlaceholder")}
+				class="w-64 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text"
+				onchange={(e) => updateDecryptedCacheDir((e.target as HTMLInputElement).value)}
+			/>
+		</div>
+	</div>
+
+	<!-- Secret Storage ID 选择配置区域 -->
 	<div bind:this={secretContainerEl}></div>
 
-	<!-- 密钥创建与管理面板 -->
-	<div class="rounded-lg border border-theme-border bg-theme-bg p-4 shadow-sm">
-		<div class="mb-4 flex items-center justify-between">
-			<h3 class="text-sm font-semibold text-theme-text">
-				{t("createNewKey")}
-			</h3>
+	<!-- 密钥创建与管理面板（遵从标准 Setting 风格） -->
+	<div class="setting-item flex-col items-start gap-3 border-none py-2">
+		<div class="flex w-full items-center justify-between">
+			<div class="setting-item-info">
+				<div class="setting-item-name">{t("createNewKey")}</div>
+				<div class="setting-item-description">{t("createNewKeyDesc")}</div>
+			</div>
 			<div class="flex gap-2">
 				<button
 					type="button"
-					class="rounded bg-theme-bg-secondary px-3 py-1.5 text-xs text-theme-text hover:bg-theme-border"
+					class="mod-cta rounded px-3 py-1.5 text-xs"
 					onclick={openImportModal}
 				>
 					{t("importKeys")}
 				</button>
 				<button
 					type="button"
-					class="rounded bg-theme-bg-secondary px-3 py-1.5 text-xs text-theme-text hover:bg-theme-border"
+					class="mod-cta rounded px-3 py-1.5 text-xs"
 					onclick={openExportModal}
 				>
 					{t("exportAllKeys")}
@@ -291,17 +325,17 @@
 			</div>
 		</div>
 
-		<div class="flex gap-2">
+		<div class="flex w-full gap-2 pt-1">
 			<input
 				type="text"
 				bind:value={newKeyName}
 				placeholder={t("keyNamePlaceholder")}
-				class="flex-1 rounded border border-theme-border bg-theme-bg-secondary px-3 py-1.5 text-xs text-theme-text"
+				class="flex-1 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1.5 text-xs text-theme-text"
 				onkeydown={(e) => e.key === "Enter" && createKey()}
 			/>
 			<button
 				type="button"
-				class="rounded bg-accent px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
+				class="mod-cta rounded px-4 py-1.5 text-xs font-medium"
 				onclick={createKey}
 			>
 				{t("create")}
@@ -309,7 +343,7 @@
 		</div>
 
 		<!-- 密钥列表 -->
-		<div class="mt-4 space-y-2">
+		<div class="w-full space-y-2 pt-2">
 			{#if keys.length === 0}
 				<div class="py-4 text-center text-xs text-theme-text-muted">
 					{t("noKeys")}
@@ -317,7 +351,7 @@
 			{:else}
 				{#each keys as key, i (key.fingerprint)}
 					<div
-						class="flex items-center justify-between rounded border border-theme-border bg-theme-bg-secondary p-3"
+						class="flex items-center justify-between rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3"
 					>
 						<div class="flex flex-col gap-0.5 flex-1 mr-4">
 							<div class="flex items-center gap-2">
@@ -325,7 +359,7 @@
 									type="text"
 									value={key.name}
 									placeholder={keyDefaultName(key)}
-									class="rounded border-b border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-theme-text hover:border-theme-border focus:border-accent focus:bg-theme-bg focus:outline-none transition-colors min-w-32 max-w-full"
+									class="rounded border-b border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-theme-text hover:border-[var(--background-modifier-border)] focus:border-accent focus:bg-[var(--background-primary)] focus:outline-none transition-colors min-w-32 max-w-full"
 									onchange={(e) =>
 										updateKeyName(
 											key.fingerprint,
@@ -368,8 +402,8 @@
 			{/if}
 		</div>
 
-		<!-- 已删除密钥折叠区域 -->
-		<div class="mt-6 border-t border-theme-border pt-4">
+		<!-- 已删除密钥折叠区域 (分隔线统一采用 var(--background-modifier-border)) -->
+		<div class="w-full border-t border-[var(--background-modifier-border)] pt-4 mt-2">
 			<button
 				type="button"
 				class="flex items-center gap-2 text-xs text-theme-text-muted hover:text-theme-text"
@@ -388,7 +422,7 @@
 					{:else}
 						{#each deletedKeys as key (key.fingerprint)}
 							<div
-								class="flex items-center justify-between rounded border border-theme-border/50 bg-theme-bg-secondary/50 p-2 text-xs"
+								class="flex items-center justify-between rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-2 text-xs"
 							>
 								<div class="flex flex-col">
 									<span class="text-theme-text-muted line-through">
@@ -417,7 +451,7 @@
 									type="number"
 									bind:value={permanentDeleteDays}
 									min="0"
-									class="w-14 rounded border border-theme-border bg-theme-bg px-2 py-0.5 text-xs text-theme-text text-center"
+									class="w-14 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-0.5 text-xs text-theme-text text-center"
 								/>
 								<span>{t("permanentlyDeleteSuffix")}</span>
 							</div>
@@ -436,34 +470,32 @@
 	</div>
 
 	<!-- 自动加密路径规则设置 -->
-	<div class="rounded-lg border border-theme-border bg-theme-bg p-4 shadow-sm">
-		<div class="mb-2 flex items-center justify-between">
-			<h3 class="text-sm font-semibold text-theme-text">
-				{t("encryptPathRules")}
-			</h3>
+	<div class="setting-item flex-col items-start gap-3 border-t border-[var(--background-modifier-border)] pt-4">
+		<div class="flex w-full items-center justify-between">
+			<div class="setting-item-info">
+				<div class="setting-item-name">{t("encryptPathRules")}</div>
+				<div class="setting-item-description">{t("encryptPathRulesDesc")}</div>
+			</div>
 			<button
 				type="button"
-				class="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover"
+				class="mod-cta rounded px-3 py-1 text-xs font-medium"
 				onclick={addRule}
 			>
 				{t("addEncryptPathRule")}
 			</button>
 		</div>
-		<p class="mb-4 text-xs text-theme-text-muted">
-			{t("encryptPathRulesDesc")}
-		</p>
 
-		<div class="space-y-3">
+		<div class="w-full space-y-3 pt-1">
 			{#each settings.encryptPathRules as rule, index (index)}
 				<div
-					class="flex flex-col gap-2 rounded-lg border border-theme-border bg-theme-bg-secondary p-3"
+					class="flex flex-col gap-2 rounded-lg border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3"
 				>
 					<!-- 第一区域：多行规则文本框 -->
 					<textarea
 						rows={3}
 						value={rule.pattern}
 						placeholder={t("encryptPathRulePatternPlaceholder")}
-						class="w-full rounded border border-theme-border bg-theme-bg px-3 py-2 text-xs font-mono text-theme-text resize-y"
+						class="w-full rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-2 text-xs font-mono text-theme-text resize-y"
 						oninput={(e) =>
 							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
 						onblur={() => handleRuleBlur(index)}
@@ -478,7 +510,7 @@
 							</span>
 							<select
 								value={rule.keyFingerprint}
-								class="rounded border border-theme-border bg-theme-bg px-2.5 py-1 text-xs text-theme-text"
+								class="rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2.5 py-1 text-xs text-theme-text"
 								onchange={(e) =>
 									updateRuleKey(index, (e.target as HTMLSelectElement).value)}
 							>
