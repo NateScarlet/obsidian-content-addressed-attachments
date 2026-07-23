@@ -279,17 +279,14 @@ export class URLResolver {
 				await this.app.vault.adapter.readBinary(encryptedPath);
 
 			const decrypted =
-				await this.encryptionService.decryptFile(encryptedData);
+				await this.encryptionService.decrypt(encryptedData);
 			if (!decrypted) return;
 
 			const size = decrypted.data.byteLength;
 			const maxBlob = this.settings().maxBlobSize ?? 20 * 1024 * 1024;
 
 			if (size <= maxBlob) {
-				const blob = new Blob([decrypted.data], {
-					type: decrypted.mimeType,
-				});
-				const url = URL.createObjectURL(blob);
+				const url = decrypted.toBlobURL();
 				this.decryptedBlobStore.set(encryptedPath, url);
 				return { url };
 			}

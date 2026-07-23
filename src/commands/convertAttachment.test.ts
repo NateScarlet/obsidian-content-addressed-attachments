@@ -44,16 +44,25 @@ describe("convertAttachment", () => {
 
 	const mockEncryptionService = {
 		keyManager: mockKeyManager,
-		encryptFile: vi.fn().mockImplementation((_fp, file: File) =>
+		resolveKeyForNotePath: vi.fn().mockResolvedValue("keyfp123"),
+		encrypt: vi.fn().mockImplementation((input: File) =>
 			Promise.resolve({
-				encryptedFile: new File([new Uint8Array(16)], file.name, {
-					type: ENCRYPTED_FORMAT,
-				}),
+				encryptedFile: new File(
+					[new Uint8Array(16)],
+					input.name ?? "file",
+					{
+						type: ENCRYPTED_FORMAT,
+					},
+				),
+				fingerprint: "keyfp123",
 			}),
 		),
-		decryptFile: vi.fn().mockResolvedValue({
+		decrypt: vi.fn().mockResolvedValue({
 			data: new Uint8Array([1, 2, 3]),
 			mimeType: "image/png",
+			toBlob: () =>
+				new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
+			toBlobURL: () => "blob:test",
 		}),
 	} as unknown as EncryptionService;
 

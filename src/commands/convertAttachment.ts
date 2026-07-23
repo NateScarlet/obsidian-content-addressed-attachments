@@ -8,6 +8,8 @@ import findIPFSLinks from "#src/utils/findIPFSLinks";
 import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
+import type { KeyManager } from "#src/lib/encryption/KeyManager";
+import type { EncryptPathRule } from "#src/settings";
 
 import type ReferenceManager from "#src/ReferenceManager";
 
@@ -48,33 +50,17 @@ async function trashIfUnreferenced(
 ): Promise<void> {
 	const referencingFiles: string[] = [];
 	for await (const path of referenceManager.findFilePath(cid, undefined)) {
-		if (currentNotePath && path === currentNotePath) continue;
-		referencingFiles.push(path);
+		if (path !== currentNotePath) {
+			referencingFiles.push(path);
+		}
 	}
 
 	if (referencingFiles.length > 0) {
 		new Notice(t("fileStillReferenced")(referencingFiles.join(", ")));
-	} else {
-		await cas.trash(cid);
+		return;
 	}
-}
 
-function findLinkAtOffset(
-	content: string,
-	offset: number,
-): LinkPos | undefined {
-	const links = Array.from(findIPFSLinks(content));
-	for (const link of links) {
-		const [start, end] = link.pos;
-		if (start <= offset && offset <= end) {
-			return {
-				start,
-				end,
-				text: content.slice(start, end),
-				isEmbed: link.isEmbed,
-			};
-		}
-	}
+	await cas.trash(cid);
 }
 
 async function loadFileContent(
@@ -87,15 +73,14 @@ async function loadFileContent(
 	{ buffer: ArrayBuffer; filename: string; format: string } | undefined
 > {
 	const cid = CID.parse(cidStr);
+
 	const match = await cas.load(cid);
 	if (match) {
 		const buffer = await app.vault.adapter.readBinary(match.normalizedPath);
-		// 使用调用者提供的回退文件名，而不是 CAS 路径（CAS 文件名是哈希值）
 		const filename = fallbackFilename ?? "";
 		return { buffer, filename, format: "" };
 	}
 
-	// 本地未找到时，通过 URLResolver 尝试从网关下载
 	const rawURL = `ipfs://${cidStr}`;
 	const resolved = await urlResolver.resolveURL(rawURL);
 	if (resolved?.path) {
@@ -104,10 +89,6 @@ async function loadFileContent(
 		return { buffer, filename, format: "" };
 	}
 }
-
-import { resolveKeyForNotePath } from "#src/lib/encryption/resolveKeyForNotePath";
-import type { KeyManager } from "#src/lib/encryption/KeyManager";
-import type { EncryptPathRule } from "#src/settings";
 
 export async function encryptLink(
 	app: App,
@@ -127,7 +108,7 @@ export async function encryptLink(
 	const km = keyManager ?? encryptionService.keyManager;
 	const fingerprint =
 		(notePath && rules
-			? await resolveKeyForNotePath(notePath, rules, km)
+			? await encryptionService.resolveKeyForNotePath(notePath)
 			: undefined) ?? (await km.getPrimaryKey())?.fingerprint;
 	if (!fingerprint) {
 		new Notice(t("noKeyAvailable"));
@@ -151,10 +132,15 @@ export async function encryptLink(
 	const file = new File([new Blob([content.buffer])], content.filename, {
 		type: parsed.format || content.format || "application/octet-stream",
 	});
-	const { encryptedFile } = await encryptionService.encryptFile(
-		fingerprint,
-		file,
-	);
+	const res = await encryptionService.encrypt(file, {
+		notePath,
+		keyFingerprint: fingerprint,
+	});
+	if (!res) {
+		new Notice(t("noKeyAvailable"));
+		return;
+	}
+	const { encryptedFile } = res;
 	const { cid: newCid } = await cas.save(dir, encryptedFile);
 	if (!newCid.equals(parsed.cid)) {
 		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
@@ -201,17 +187,15 @@ export async function decryptLink(
 		return;
 	}
 
-	const decrypted = await encryptionService.decryptFile(content.buffer);
+	const decrypted = await encryptionService.decrypt(content.buffer);
 	if (!decrypted) {
 		new Notice("Not an encrypted file");
 		return;
 	}
 
-	const file = new File(
-		[new Blob([decrypted.data])],
-		content.filename || "file",
-		{ type: decrypted.mimeType },
-	);
+	const file = new File([decrypted.toBlob()], content.filename || "file", {
+		type: decrypted.mimeType,
+	});
 	const { cid: newCid } = await cas.save(dir, file);
 	if (!newCid.equals(parsed.cid)) {
 		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
@@ -234,7 +218,16 @@ export function findLinkAtPos(
 	content: string,
 	offset: number,
 ): LinkPos | undefined {
-	return findLinkAtOffset(content, offset);
+	for (const match of findIPFSLinks(content)) {
+		if (offset >= match.pos[0] && offset <= match.pos[1]) {
+			return {
+				start: match.pos[0],
+				end: match.pos[1],
+				text: content.slice(match.pos[0], match.pos[1]),
+				isEmbed: match.isEmbed,
+			};
+		}
+	}
 }
 
 export function isEncryptedLink(linkText: string): boolean {
@@ -262,7 +255,7 @@ export async function encryptNote(
 					.then((k) => (k ? keyFingerprint : undefined))
 			: undefined) ??
 		(rules
-			? await resolveKeyForNotePath(file.path, rules, km)
+			? await encryptionService.resolveKeyForNotePath(file.path)
 			: undefined) ??
 		(await km.getPrimaryKey())?.fingerprint;
 
@@ -292,10 +285,13 @@ export async function encryptNote(
 					"application/octet-stream",
 			},
 		);
-		const { encryptedFile } = await encryptionService.encryptFile(
-			fp,
-			origFile,
-		);
+		const res = await encryptionService.encrypt(origFile, {
+			notePath: file.path,
+			keyFingerprint: fp,
+		});
+		if (!res) return undefined;
+
+		const { encryptedFile } = res;
 		const { cid: newCid } = await cas.save(dir, encryptedFile);
 		if (!newCid.equals(parsed.cid)) {
 			await trashIfUnreferenced(

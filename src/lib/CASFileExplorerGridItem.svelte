@@ -160,9 +160,9 @@
 					// 加密图片：支持解密并预览
 					if (fileBuffer) {
 						try {
-							return await encryptionService.createBlobURL(
-								fileBuffer,
-							);
+							return (
+								await encryptionService.decrypt(fileBuffer)
+							)?.toBlobURL();
 						} catch (err) {
 							console.debug(
 								"Failed to decrypt image preview for CAS item:",
