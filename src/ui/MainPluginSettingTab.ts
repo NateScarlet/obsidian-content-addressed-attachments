@@ -290,8 +290,8 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("lockAllNotes"))
 			.setDesc(t("lockAllNotesDesc"))
-			.addButton((btn) => {
-				btn.setButtonText(t("execute")).onClick(() => {
+			.addButton((button) => {
+				button.setButtonText(t("execute")).onClick(() => {
 					this.plugin.lockManager.execute("all").catch(showError);
 				});
 			});

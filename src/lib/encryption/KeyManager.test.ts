@@ -159,7 +159,6 @@ describe("KeyManager", () => {
 			const info = await km.createKey("to-delete");
 			await km.deleteKey(info.fingerprint);
 
-			expect(await km.exportKey(info.fingerprint)).toBeUndefined();
 			const activeKeys = await km.listKeys();
 			expect(
 				activeKeys.find((k) => k.fingerprint === info.fingerprint),
@@ -186,46 +185,6 @@ describe("KeyManager", () => {
 			await expect(
 				km.renameKey("nonexistent", "new-name"),
 			).rejects.toThrow("Key nonexistent not found");
-		});
-	});
-
-	describe("exportKey / importKey", () => {
-		it("exports key material for an existing key", async () => {
-			const info = await km.createKey("export-me");
-			const exported = await km.exportKey(info.fingerprint);
-
-			expect(exported).toBeTruthy();
-			expect(typeof exported).toBe("string");
-		});
-
-		it("returns undefined for nonexistent key", async () => {
-			const exported = await km.exportKey("nonexistent");
-			expect(exported).toBeUndefined();
-		});
-
-		it("imports exported key material", async () => {
-			const info = await km.createKey("source");
-			const exported = await km.exportKey(info.fingerprint);
-
-			const km2 = new KeyManager(
-				createMockStorage(),
-				createMockSettings,
-				async () => {},
-			);
-			const imported = await km2.importKey("imported", exported!);
-
-			expect(imported.fingerprint).toBe(info.fingerprint);
-			expect(imported.name).toBe("imported");
-			expect(await km2.exportKey(info.fingerprint)).toBeDefined();
-		});
-
-		it("rejects duplicate import", async () => {
-			const info = await km.createKey("original");
-			const exported = await km.exportKey(info.fingerprint);
-
-			await expect(km.importKey("duplicate", exported!)).rejects.toThrow(
-				`Key with fingerprint ${info.fingerprint} already exists`,
-			);
 		});
 	});
 

@@ -1,4 +1,4 @@
-import { inferMimeType } from "./inferMimeType";
+import mimeTypeByExtension from "./mimeTypeByExtension";
 
 /**
  * 解析 MIME 类型：若显式提供了 format 则使用它，否则尝试从文件名后缀推断。
@@ -9,5 +9,7 @@ export function resolveMimeType(
 	filename: string,
 ): string {
 	if (format) return format;
-	return inferMimeType(filename);
+	const dotIndex = filename.lastIndexOf(".");
+	if (dotIndex === -1) return "application/octet-stream";
+	return mimeTypeByExtension(filename.slice(dotIndex));
 }

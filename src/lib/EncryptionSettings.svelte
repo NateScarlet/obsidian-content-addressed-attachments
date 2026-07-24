@@ -176,8 +176,7 @@
 			new SecretComponent(app, setting.controlEl)
 				.setValue(keyManager.getKeysStorageId())
 				.onChange(async (newId) => {
-					const idToUse = newId.trim() || DEFAULT_KEYS_STORAGE_ID;
-					await keyManager.setKeysStorageId(idToUse);
+					await keyManager.setKeysStorageId(newId);
 					await loadKeys();
 				});
 		}

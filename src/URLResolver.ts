@@ -293,7 +293,7 @@ export class URLResolver {
 			const maxBlob = this.settings().maxBlobSize;
 
 			if (size <= maxBlob) {
-				const url = decrypted.toBlobURL();
+				const url = decrypted.toObjectURL();
 				this.decryptedBlobStore.set(encryptedPath, url);
 				return { url, path: encryptedPath };
 			}

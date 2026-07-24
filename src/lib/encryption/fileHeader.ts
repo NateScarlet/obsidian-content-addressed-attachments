@@ -85,5 +85,5 @@ export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
 	offset += fmtLen;
 	const originalFormat = new TextDecoder().decode(fmtBytes);
 
-	return { keyFingerprint, iv, authTag, originalFormat };
+	return { keyFingerprint, iv, authTag, originalFormat, ciphertextOffset: offset };
 }

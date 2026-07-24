@@ -25,7 +25,7 @@ export class KeyManager {
 	/** 获取当前存储密钥的 secret ID */
 	getKeysStorageId(): string {
 		return (
-			this.getSettings().encryptionKeysSecretId ?? DEFAULT_KEYS_STORAGE_ID
+			this.getSettings().encryptionKeysSecretId || DEFAULT_KEYS_STORAGE_ID
 		);
 	}
 
@@ -195,13 +195,6 @@ export class KeyManager {
 		return all[0];
 	}
 
-	async exportKey(fingerprint: string): Promise<string | undefined> {
-		const data = await this.loadKeysData();
-		const entry = data.keys[fingerprint];
-		if (!entry || entry.deletedAt) return;
-		return entry.key;
-	}
-
 	async renameKey(fingerprint: string, newName: string): Promise<void> {
 		const data = await this.loadKeysData();
 		const entry = data.keys[fingerprint];
@@ -263,34 +256,5 @@ export class KeyManager {
 		}
 		await this.saveKeysData(data);
 		return imported;
-	}
-
-	async importKey(
-		name: string,
-		keyMaterialBase64: string,
-	): Promise<EncryptionKeyInfo> {
-		const raw = new Uint8Array(
-			cryptoUtils.base64ToArrayBuffer(keyMaterialBase64),
-		);
-		const fingerprint = await cryptoUtils.computeFingerprint(raw);
-
-		const data = await this.loadKeysData();
-		if (data.keys[fingerprint]) {
-			throw new Error(
-				`Key with fingerprint ${fingerprint} already exists`,
-			);
-		}
-
-		await cryptoUtils.importKeyRawEncrypt(raw);
-
-		data.keys[fingerprint] = {
-			key: keyMaterialBase64,
-			name,
-			createdAt: new Date().toISOString(),
-			priority: 0,
-		};
-		await this.saveKeysData(data);
-
-		return { fingerprint, name, createdAt: new Date(), priority: 0 };
 	}
 }

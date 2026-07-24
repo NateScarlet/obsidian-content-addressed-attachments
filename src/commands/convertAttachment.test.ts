@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { encryptLink, decryptLink, findLinkAtPos } from "./convertAttachment";
 import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
+import { IPFSLink } from "#src/utils/IPFSLink";
+import type { IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import type { App, Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
@@ -12,6 +14,18 @@ describe("convertAttachment", () => {
 	const validCIDString =
 		"bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di";
 	const dummyCID = CID.parse(validCIDString);
+
+	function ipfsLinkMatch(
+		rawUrl: string,
+		urlStart: number,
+		urlEnd: number,
+	): IPFSLinkMatch {
+		return {
+			pos: [urlStart, urlEnd],
+			url: IPFSLink.parse(rawUrl)!,
+			isEmbed: false,
+		};
+	}
 
 	const mockApp = {
 		vault: {
@@ -57,7 +71,7 @@ describe("convertAttachment", () => {
 			layers: [{ header: {} as unknown }],
 			toBlob: () =>
 				new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
-			toBlobURL: () => "blob:test",
+			toObjectURL: () => "blob:test",
 		}),
 	} as unknown as EncryptionService;
 
@@ -146,9 +160,7 @@ describe("convertAttachment", () => {
 				mockReferenceManager,
 				"attachments",
 				editor,
-				urlStart,
-				urlEnd,
-				rawUrl,
+				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
 			);
 
 			const resultDoc = editor.getEditorContent();
@@ -180,9 +192,7 @@ describe("convertAttachment", () => {
 				mockReferenceManager,
 				"attachments",
 				editor,
-				urlStart,
-				urlEnd,
-				rawUrl,
+				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
 			);
 
 			const resultDoc = editor.getEditorContent();
@@ -228,9 +238,7 @@ describe("convertAttachment", () => {
 				refMgr,
 				"attachments",
 				editor,
-				urlStart,
-				urlEnd,
-				rawUrl,
+				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
 				"CurrentNote.md",
 			);
 

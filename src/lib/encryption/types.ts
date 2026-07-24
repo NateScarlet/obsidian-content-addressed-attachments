@@ -21,6 +21,8 @@ export interface EncryptedFileHeader {
 	iv: Uint8Array;
 	authTag: Uint8Array;
 	originalFormat: string;
+	/** 密文在文件中的起始字节偏移 */
+	ciphertextOffset: number;
 }
 
 /** 密钥持久化存储接口，用于依赖注入 */

@@ -245,9 +245,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										this.referenceManger,
 										this.settings.primaryDir,
 										editor,
-										ipfsLink.pos[0],
-										ipfsLink.pos[1],
-										rawText,
+										ipfsLink,
 										view.file?.path,
 									).catch(showError);
 								});
@@ -265,9 +263,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 										this.referenceManger,
 										this.settings.primaryDir,
 										editor,
-										ipfsLink.pos[0],
-										ipfsLink.pos[1],
-										rawText,
+										ipfsLink,
 										view.file?.path,
 										this.keyManager,
 										this.encryptPathPolicy,

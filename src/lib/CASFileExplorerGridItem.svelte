@@ -36,17 +36,16 @@
 	function generateMarkdownLink(
 		file: CASMetadataObject,
 		format: string,
-		isEncrypted?: boolean,
+		embed: boolean,
 	): string {
 		const url = new URL(`ipfs://${file.cid.toString()}`);
 		if (file.filename) {
 			url.searchParams.set("filename", file.filename);
 		}
-		const linkFormat = isEncrypted ? ENCRYPTED_FORMAT : format;
-		if (linkFormat && !linkFormat.includes("*")) {
-			url.searchParams.set("format", linkFormat);
+		if (format && !format.includes("*")) {
+			url.searchParams.set("format", format);
 		}
-		if (format.startsWith("image/")) {
+		if (embed) {
 			return `![${file.filename || "image"}](${url})`;
 		} else {
 			return `[${file.filename ?? "attachment"}](${url})`;
@@ -125,26 +124,21 @@
 			let isEncrypted = format === ENCRYPTED_FORMAT;
 			let fileBuffer: ArrayBuffer | undefined;
 
-			try {
-				fileBuffer = await app.vault.adapter.readBinary(match.path);
-				if (fileBuffer && isEncryptedData(fileBuffer)) {
-					isEncrypted = true;
-					try {
-						const header = parseHeader(fileBuffer);
-						format = header.originalFormat;
-					} catch {
-						// ignore parse header error
-					}
+			fileBuffer = await app.vault.adapter.readBinary(match.path);
+			if (fileBuffer && isEncryptedData(fileBuffer)) {
+				isEncrypted = true;
+				try {
+					const header = parseHeader(fileBuffer);
+					format = header.originalFormat;
+				} catch {
+					// ignore parse header error
 				}
-			} catch {
-				// ignore read error
 			}
 
 			const imgSrc = await (async () => {
 				if (
 					format &&
-					!format.startsWith("image/") &&
-					format !== "image/*"
+					!format.startsWith("image/")
 				) {
 					return undefined;
 				}
@@ -153,7 +147,7 @@
 					try {
 						const decrypted = await encryptionService.ensureDecrypted(fileBuffer);
 						if (decrypted && decrypted.mimeType.startsWith("image/")) {
-							return decrypted.toBlobURL();
+							return decrypted.toObjectURL();
 						}
 					} catch (err) {
 						console.debug("Failed to decrypt image preview for CAS item:", err);
@@ -166,13 +160,15 @@
 					return src;
 				}
 
-				return app.vault.adapter
-					.readBinary(match.path)
-					.then((data) => {
-						const blob = new Blob([data]);
-						return URL.createObjectURL(blob);
-					})
-					.catch(() => undefined);
+				const img = new Image();
+				img.src = src;
+				try {
+					await img.decode();
+					format = "image/*";
+					return src;
+				} catch {
+					return undefined;
+				}
 			})();
 
 			signal.throwIfAborted();
@@ -190,7 +186,7 @@
 
 	const format = $derived($detail?.format || file.format || "*/*");
 	const isEncrypted = $derived(
-		$detail?.isEncrypted ?? file.format === ENCRYPTED_FORMAT,
+		$detail?.isEncrypted ?? (file.format === ENCRYPTED_FORMAT),
 	);
 	const isDeleted = $derived(!!file.trashedAt || $detail?.ok === false);
 
@@ -265,10 +261,11 @@
 	const drag: Attachment<HTMLElement> = (node) => {
 		node.draggable = true;
 		const handleDragStart = (event: DragEvent) => {
+			const linkFormat = isEncrypted ? ENCRYPTED_FORMAT : format;
 			const markdownLink = generateMarkdownLink(
 				file,
-				format,
-				isEncrypted,
+				linkFormat,
+				format.startsWith("image/"),
 			);
 			event.dataTransfer?.setData("text/plain", markdownLink);
 		};
@@ -280,7 +277,12 @@
 	};
 
 	async function copyLink() {
-		const markdownLink = generateMarkdownLink(file, format, isEncrypted);
+		const linkFormat = isEncrypted ? ENCRYPTED_FORMAT : format;
+		const markdownLink = generateMarkdownLink(
+			file,
+			linkFormat,
+			format.startsWith("image/"),
+		);
 		await navigator.clipboard.writeText(markdownLink);
 		new Notice(t("copied"));
 	}
@@ -339,23 +341,21 @@
 
 	<!-- 引用文件列表 -->
 	<ul class="space-y-1 max-h-64 overflow-y-auto list-none m-1 p-0">
-		{#if $references}
-			{#each $references as i (i.file.path)}
-				<li class="break-all">
-					<a {...i.anchorAttrs}>
-						{i.file.path}
-					</a>
-					{#if i.name && i.name !== file.filename}
-						<span>|</span>
-						<span>{i.name}</span>
-					{/if}
-				</li>
-			{/each}
-			{#if $references.length == limit}
-				<button type="button" class="w-full" onclick={fetchMore}>
-					{t("fetchMore")}
-				</button>
-			{/if}
+		{#each $references ?? [] as i (i.file.path)}
+			<li class="break-all">
+				<a {...i.anchorAttrs}>
+					{i.file.path}
+				</a>
+				{#if i.name && i.name !== file.filename}
+					<span>|</span>
+					<span>{i.name}</span>
+				{/if}
+			</li>
+		{/each}
+		{#if ($references ?? []).length == limit}
+			<button type="button" class="w-full" onclick={fetchMore}>
+				{t("fetchMore")}
+			</button>
 		{/if}
 	</ul>
 

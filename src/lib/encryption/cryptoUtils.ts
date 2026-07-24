@@ -308,18 +308,7 @@ export async function decrypt(
 	const aad = buildHeaderAAD(header.keyFingerprint, header.originalFormat);
 
 	const data = new Uint8Array(encryptedData);
-	const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
-	let offset = 0;
-
-	offset += 4; // Magic
-	offset += 2; // Version
-	offset += FINGERPRINT_BYTES; // 8B Fingerprint
-	offset += IV_LENGTH; // 12B IV
-	offset += AUTH_TAG_LENGTH; // 16B AuthTag
-	const fmtLen = dv.getUint16(offset, true);
-	offset += 2 + fmtLen;
-
-	const ciphertext = data.slice(offset);
+	const ciphertext = data.slice(header.ciphertextOffset);
 
 	const combined = new Uint8Array(ciphertext.byteLength + AUTH_TAG_LENGTH);
 	combined.set(ciphertext, 0);

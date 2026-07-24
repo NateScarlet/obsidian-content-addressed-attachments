@@ -9,7 +9,7 @@ import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
-import { resolveMimeType } from "#src/utils/resolveMimeType";
+import mimeTypeByExtension from "#src/utils/mimeTypeByExtension";
 import type { KeyManager } from "#src/lib/encryption/KeyManager";
 
 import type ReferenceManager from "#src/ReferenceManager";
@@ -80,9 +80,7 @@ export async function encryptLink(
 	referenceManager: ReferenceManager,
 	dir: string,
 	editor: Editor,
-	linkStart: number,
-	linkEnd: number,
-	linkText: string,
+	match: IPFSLinkMatch,
 	notePath?: string,
 	keyManager?: KeyManager,
 	encryptPathPolicy?: EncryptPathPolicy,
@@ -96,6 +94,9 @@ export async function encryptLink(
 		new Notice(t("noKeyAvailable"));
 		return;
 	}
+	const linkText =
+		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
+	if (!linkText) return;
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
 
@@ -106,7 +107,9 @@ export async function encryptLink(
 	}
 
 	const rawFile = new File([new Blob([buffer])], parsed.filename, {
-		type: resolveMimeType(parsed.format, parsed.filename),
+		type: parsed.format || mimeTypeByExtension(
+			parsed.filename.slice(parsed.filename.lastIndexOf(".")),
+		),
 	});
 	let encryptedFile: File;
 	try {
@@ -131,8 +134,8 @@ export async function encryptLink(
 
 	editor.replaceRange(
 		newURL,
-		editor.offsetToPos(linkStart),
-		editor.offsetToPos(linkEnd),
+		editor.offsetToPos(match.pos[0]),
+		editor.offsetToPos(match.pos[1]),
 	);
 }
 
@@ -144,11 +147,12 @@ export async function decryptLink(
 	referenceManager: ReferenceManager,
 	dir: string,
 	editor: Editor,
-	linkStart: number,
-	linkEnd: number,
-	linkText: string,
+	match: IPFSLinkMatch,
 	notePath?: string,
 ): Promise<void> {
+	const linkText =
+		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
+	if (!linkText) return;
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
@@ -179,8 +183,8 @@ export async function decryptLink(
 
 	editor.replaceRange(
 		newURL,
-		editor.offsetToPos(linkStart),
-		editor.offsetToPos(linkEnd),
+		editor.offsetToPos(match.pos[0]),
+		editor.offsetToPos(match.pos[1]),
 	);
 }
 
@@ -235,7 +239,9 @@ export async function encryptNote(
 		if (!buffer) return undefined;
 
 		const origFile = new File([new Blob([buffer])], parsed.filename, {
-			type: resolveMimeType(parsed.format, parsed.filename),
+			type: parsed.format || mimeTypeByExtension(
+				parsed.filename.slice(parsed.filename.lastIndexOf(".")),
+			),
 		});
 		let encryptedFile: File;
 		try {

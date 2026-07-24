@@ -21,8 +21,9 @@ export class EncryptPathPolicy {
 	/** 根据笔记路径和规则解析应使用的 keyFingerprint */
 	async resolveKey(notePath: string): Promise<string | undefined> {
 		const rules = this.getRules();
+		const ig = ignore();
 		const rule = rules.find(
-			(r) => r.pattern && ignore().add(r.pattern).ignores(notePath),
+			(r) => r.pattern && ig.add(r.pattern).ignores(notePath),
 		);
 		if (!rule) return undefined;
 

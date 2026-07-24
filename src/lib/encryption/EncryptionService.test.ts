@@ -108,10 +108,27 @@ describe("EncryptionService", () => {
 			const buf2 = await encrypted2.arrayBuffer();
 			expect(Buffer.from(buf1).equals(Buffer.from(buf2))).toBe(true);
 		});
+
+		it("throws error if file is already encrypted with a different key", async () => {
+			const key1 = await km.createKey("key1");
+			const key2 = await km.createKey("key2");
+			const file = new File(["data"], "test.txt", { type: "text/plain" });
+
+			const encryptedWithKey1 = await es.ensureEncrypted(
+				file,
+				key1.fingerprint,
+			);
+
+			await expect(
+				es.ensureEncrypted(encryptedWithKey1, key2.fingerprint),
+			).rejects.toThrow(
+				`already encrypted with key "${key1.fingerprint}"`,
+			);
+		});
 	});
 
 	describe("ensureDecrypted", () => {
-		it("decrypts an encrypted file back to original with wasEncrypted = true", async () => {
+		it("decrypts an encrypted file back to original with layers.length = 1", async () => {
 			const keyInfo = await km.createKey("roundtrip");
 			const originalContent = "Secret message";
 			const file = new File([originalContent], "secret.txt", {
@@ -132,7 +149,7 @@ describe("EncryptionService", () => {
 			const blob = decrypted.toBlob();
 			expect(blob.type).toBe("text/plain");
 
-			const url = decrypted.toBlobURL();
+			const url = decrypted.toObjectURL();
 			expect(url).toMatch(/^blob:/);
 
 			// eslint-disable-next-line no-restricted-globals
