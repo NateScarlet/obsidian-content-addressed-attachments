@@ -55,7 +55,7 @@ export class URLResolver {
 		private app: App,
 		private cas: CAS,
 		private settings: () => Settings,
-		private encryptionService?: EncryptionService,
+		private encryptionService: EncryptionService,
 	) {}
 
 	/** 清理所有解密产生的 blob URL 和定时器 */
@@ -145,7 +145,7 @@ export class URLResolver {
 		using stack = new DisposableStack();
 		const match = await this.cas.load(data.cid);
 		if (match) {
-			if (data.format() === ENCRYPTED_FORMAT && this.encryptionService) {
+			if (data.format() === ENCRYPTED_FORMAT) {
 				return this.resolveEncryptedFile(
 					match.normalizedPath,
 					data.cid,
@@ -279,17 +279,16 @@ export class URLResolver {
 		encryptedPath: string,
 		cid: CID,
 	): Promise<ResolveURLResult | undefined> {
-		if (!this.encryptionService) return;
-
 		// 优先检查内存中已有的 blob URL 缓存
 		const cachedBlob = this.decryptedBlobStore.get(encryptedPath);
 		if (cachedBlob) return { url: cachedBlob, path: encryptedPath };
 
 		// 优先检查磁盘缓存
 		const cacheDir = this.settings().decryptedCacheDir;
-		if (cacheDir) {
-			const cacheFilename = `${cid.toString()}.decrypted`;
-			const cachePath = `${cacheDir}/${cacheFilename}`;
+		const cacheFilename = `${cid.toString()}.decrypted`;
+		const cachePath = cacheDir ? `${cacheDir}/${cacheFilename}` : undefined;
+
+		if (cachePath) {
 			const cacheExists = await this.app.vault.adapter.exists(cachePath);
 			if (cacheExists) {
 				return {
@@ -343,10 +342,6 @@ export class URLResolver {
 				}
 			}
 
-			// 以密文 CID 命名缓存文件，避免重复解密
-			const cacheFilename = `${cid.toString()}.decrypted`;
-			const cachePath = `${cacheDir}/${cacheFilename}`;
-
 			// 检查目录是否存在，不存在则创建
 			const cacheDirExists =
 				await this.app.vault.adapter.exists(cacheDir);
@@ -354,11 +349,11 @@ export class URLResolver {
 				await this.app.vault.adapter.mkdir(cacheDir);
 			}
 
-			await this.app.vault.adapter.writeBinary(cachePath, decrypted.data);
+			await this.app.vault.adapter.writeBinary(cachePath!, decrypted.data);
 
 			return {
-				path: cachePath,
-				url: this.app.vault.adapter.getResourcePath(cachePath),
+				path: cachePath!,
+				url: this.app.vault.adapter.getResourcePath(cachePath!),
 			};
 		} catch (err) {
 			console.error("Failed to decrypt file:", encryptedPath, err);
