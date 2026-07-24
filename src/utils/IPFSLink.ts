@@ -1,4 +1,5 @@
 import { CID } from "multiformats/cid";
+import mimeTypeByExtension from "./mimeTypeByExtension";
 
 export interface IPFSLinkOptions {
 	cid: CID;
@@ -60,5 +61,12 @@ export class IPFSLink {
 
 	toString(): string {
 		return this.toURL();
+	}
+
+	resolveMimeType(): string {
+		if (this.format) return this.format;
+		const dotIndex = this.filename.lastIndexOf(".");
+		if (dotIndex === -1) return "application/octet-stream";
+		return mimeTypeByExtension(this.filename.slice(dotIndex));
 	}
 }

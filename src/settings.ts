@@ -36,18 +36,20 @@ interface SettingsV0 {
 	}[];
 }
 
+interface SettingsV1Input {
+	version: number;
+	primaryDir?: string;
+	downloadDir?: string;
+	gateways?: GatewayConfig[];
+	encryptPathRules?: EncryptPathRule[];
+	maxBlobSize?: number;
+	decryptedCacheDir?: string;
+	encryptionKeysSecretId?: string;
+}
+
 export type SettingsInput =
 	| SettingsV0
-	| {
-			version: number;
-			primaryDir?: string;
-			downloadDir?: string;
-			gateways?: GatewayConfig[];
-			encryptPathRules?: EncryptPathRule[];
-			maxBlobSize?: number;
-			decryptedCacheDir?: string;
-			encryptionKeysSecretId?: string;
-	  };
+	| SettingsV1Input;
 
 export function settingsFromInput(
 	input: SettingsInput | null | undefined,

@@ -9,7 +9,6 @@ import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import { IPFSLink } from "#src/utils/IPFSLink";
 import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
-import mimeTypeByExtension from "#src/utils/mimeTypeByExtension";
 import type { KeyManager } from "#src/lib/encryption/KeyManager";
 
 import type ReferenceManager from "#src/ReferenceManager";
@@ -107,9 +106,7 @@ export async function encryptLink(
 	}
 
 	const rawFile = new File([new Blob([buffer])], parsed.filename, {
-		type: parsed.format || mimeTypeByExtension(
-			parsed.filename.slice(parsed.filename.lastIndexOf(".")),
-		),
+		type: parsed.resolveMimeType(),
 	});
 	let encryptedFile: File;
 	try {
@@ -239,9 +236,7 @@ export async function encryptNote(
 		if (!buffer) return undefined;
 
 		const origFile = new File([new Blob([buffer])], parsed.filename, {
-			type: parsed.format || mimeTypeByExtension(
-				parsed.filename.slice(parsed.filename.lastIndexOf(".")),
-			),
+			type: parsed.resolveMimeType(),
 		});
 		let encryptedFile: File;
 		try {
