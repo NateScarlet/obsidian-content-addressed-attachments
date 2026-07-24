@@ -281,6 +281,24 @@ export class URLResolver {
 	): Promise<ResolveURLResult | undefined> {
 		if (!this.encryptionService) return;
 
+		// 优先检查内存中已有的 blob URL 缓存
+		const cachedBlob = this.decryptedBlobStore.get(encryptedPath);
+		if (cachedBlob) return { url: cachedBlob, path: encryptedPath };
+
+		// 优先检查磁盘缓存
+		const cacheDir = this.settings().decryptedCacheDir;
+		if (cacheDir) {
+			const cacheFilename = `${cid.toString()}.decrypted`;
+			const cachePath = `${cacheDir}/${cacheFilename}`;
+			const cacheExists = await this.app.vault.adapter.exists(cachePath);
+			if (cacheExists) {
+				return {
+					path: cachePath,
+					url: this.app.vault.adapter.getResourcePath(cachePath),
+				};
+			}
+		}
+
 		try {
 			const encryptedData =
 				await this.app.vault.adapter.readBinary(encryptedPath);
@@ -293,15 +311,12 @@ export class URLResolver {
 			const maxBlob = this.settings().maxBlobSize;
 
 			if (size <= maxBlob) {
-				const cached = this.decryptedBlobStore.get(encryptedPath);
-				if (cached) return { url: cached, path: encryptedPath };
 				const url = URL.createObjectURL(decrypted.toBlob());
 				this.decryptedBlobStore.set(encryptedPath, url);
 				return { url, path: encryptedPath };
 			}
 
 			// 大文件：解密到缓存目录
-			const cacheDir = this.settings().decryptedCacheDir;
 			if (!cacheDir) {
 				console.error(
 					`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
@@ -332,15 +347,7 @@ export class URLResolver {
 			const cacheFilename = `${cid.toString()}.decrypted`;
 			const cachePath = `${cacheDir}/${cacheFilename}`;
 
-			// 如果缓存文件已存在，直接返回
-			const cacheExists = await this.app.vault.adapter.exists(cachePath);
-			if (cacheExists) {
-				return {
-					path: cachePath,
-					url: this.app.vault.adapter.getResourcePath(cachePath),
-				};
-			}
-
+			// 检查目录是否存在，不存在则创建
 			const cacheDirExists =
 				await this.app.vault.adapter.exists(cacheDir);
 			if (!cacheDirExists) {
