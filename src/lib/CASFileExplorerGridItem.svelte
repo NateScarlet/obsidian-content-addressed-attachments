@@ -147,7 +147,7 @@
 					try {
 						const decrypted = await encryptionService.ensureDecrypted(fileBuffer);
 						if (decrypted && decrypted.mimeType.startsWith("image/")) {
-							return decrypted.toObjectURL();
+							return URL.createObjectURL(decrypted.toBlob());
 						}
 					} catch (err) {
 						console.debug("Failed to decrypt image preview for CAS item:", err);

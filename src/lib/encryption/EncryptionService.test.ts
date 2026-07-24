@@ -149,7 +149,7 @@ describe("EncryptionService", () => {
 			const blob = decrypted.toBlob();
 			expect(blob.type).toBe("text/plain");
 
-			const url = decrypted.toObjectURL();
+			const url = URL.createObjectURL(decrypted.toBlob());
 			expect(url).toMatch(/^blob:/);
 
 			// eslint-disable-next-line no-restricted-globals

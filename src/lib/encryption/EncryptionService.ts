@@ -19,8 +19,6 @@ export interface DecryptedResult {
 	layers: EncryptionLayer[];
 	/** 转化为 Blob */
 	toBlob(): Blob;
-	/** 一键转化为 UI 预览用的 Object URL */
-	toObjectURL(): string;
 }
 
 /**
@@ -115,11 +113,6 @@ export class EncryptionService {
 			layers,
 			toBlob() {
 				return new Blob([finalData], { type: finalMimeType });
-			},
-			toObjectURL() {
-				return URL.createObjectURL(
-					new Blob([finalData], { type: finalMimeType }),
-				);
 			},
 		};
 	}

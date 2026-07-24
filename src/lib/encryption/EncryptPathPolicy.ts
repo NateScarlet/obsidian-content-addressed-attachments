@@ -4,14 +4,37 @@ import type { EncryptPathRule } from "#src/settings";
 import ignore from "ignore";
 
 /**
+ * 每个加密路径规则的匹配器，内部延迟初始化并缓存 ignore 实例。
+ */
+class EncryptPathRuleMatcher {
+	private ig?: ReturnType<typeof ignore>;
+
+	constructor(private readonly rule: EncryptPathRule) {}
+
+	match(notePath: string): boolean {
+		if (!this.rule.pattern) return false;
+		if (!this.ig) {
+			this.ig = ignore().add(this.rule.pattern);
+		}
+		return this.ig.ignores(notePath);
+	}
+
+	get keyFingerprint(): string {
+		return this.rule.keyFingerprint;
+	}
+}
+
+/**
  * # EncryptPathPolicy 笔记路径加密策略管理
  *
- * 专注将 Obsidian 笔记路径 `notePath` 映射到加密规则，决策“是否加密”与“选用哪个密钥”。
+ * 专注将 Obsidian 笔记路径 `notePath` 映射到加密规则，决策"是否加密"与"选用哪个密钥"。
  *
  * - **`resolveKey(notePath)`**: 根据笔记路径策略规则，解析应使用的 `keyFingerprint`；
  * - **`ensureEncrypted(input, notePath)`**: 策略层确保加密（匹配路径规则则调 `encryptionService.ensureEncrypted` 加密；未匹配规则则返回 `undefined`）。
  */
 export class EncryptPathPolicy {
+	private matcherCache = new WeakMap<EncryptPathRule, EncryptPathRuleMatcher>();
+
 	constructor(
 		private readonly keyManager: KeyManager,
 		private readonly encryptionService: EncryptionService,
@@ -21,17 +44,21 @@ export class EncryptPathPolicy {
 	/** 根据笔记路径和规则解析应使用的 keyFingerprint */
 	async resolveKey(notePath: string): Promise<string | undefined> {
 		const rules = this.getRules();
-		const ig = ignore();
-		const rule = rules.find(
-			(r) => r.pattern && ig.add(r.pattern).ignores(notePath),
-		);
-		if (!rule) return undefined;
+		const matcher = rules.find((r) => {
+			let m = this.matcherCache.get(r);
+			if (!m) {
+				m = new EncryptPathRuleMatcher(r);
+				this.matcherCache.set(r, m);
+			}
+			return m.match(notePath);
+		});
+		if (!matcher) return undefined;
 
-		if (rule.keyFingerprint) {
+		if (matcher.keyFingerprint) {
 			const key = await this.keyManager.getKeyForEncrypt(
-				rule.keyFingerprint,
+				matcher.keyFingerprint,
 			);
-			if (key) return rule.keyFingerprint;
+			if (key) return matcher.keyFingerprint;
 		}
 
 		return (await this.keyManager.getPrimaryKey())?.fingerprint;

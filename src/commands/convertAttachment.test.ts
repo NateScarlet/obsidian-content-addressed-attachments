@@ -71,7 +71,6 @@ describe("convertAttachment", () => {
 			layers: [{ header: {} as unknown }],
 			toBlob: () =>
 				new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }),
-			toObjectURL: () => "blob:test",
 		}),
 	} as unknown as EncryptionService;
 

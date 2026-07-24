@@ -293,7 +293,9 @@ export class URLResolver {
 			const maxBlob = this.settings().maxBlobSize;
 
 			if (size <= maxBlob) {
-				const url = decrypted.toObjectURL();
+				const cached = this.decryptedBlobStore.get(encryptedPath);
+				if (cached) return { url: cached, path: encryptedPath };
+				const url = URL.createObjectURL(decrypted.toBlob());
 				this.decryptedBlobStore.set(encryptedPath, url);
 				return { url, path: encryptedPath };
 			}
