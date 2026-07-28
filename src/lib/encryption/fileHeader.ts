@@ -34,30 +34,20 @@ export function bytesToHex(bytes: Uint8Array): string {
 	return hex;
 }
 
-/** 检查数据是否为加密文件格式 */
-export function isEncryptedData(data: ArrayBuffer): boolean {
+/** 从加密文件数据中解析头部信息，格式错误返回 undefined */
+export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader | undefined {
 	// 最小 Header 长度: 4(Magic) + 2(Version) + 8(FP) + 12(IV) + 16(Tag) + 2(FmtLen) = 44 字节
-	if (data.byteLength < 44) {
-		return false;
+	if (encryptedData.byteLength < 44) {
+		return undefined;
 	}
-	const bytes = new Uint8Array(data);
-	for (let i = 0; i < 4; i++) {
-		if (bytes[i] !== HEADER_MAGIC[i]) {
-			return false;
-		}
-	}
-	return true;
-}
 
-/** 从加密文件数据中解析头部信息 */
-export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
 	const data = new Uint8Array(encryptedData);
 	const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
 	let offset = 0;
 
 	for (let i = 0; i < 4; i++) {
 		if (data[offset + i] !== HEADER_MAGIC[i]) {
-			throw new Error("Invalid encrypted file: bad magic");
+			return undefined;
 		}
 	}
 	offset += 4;
@@ -65,7 +55,7 @@ export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader {
 	const version = dv.getUint16(offset, true);
 	offset += 2;
 	if (version !== HEADER_VERSION) {
-		throw new Error(`Unsupported encrypted file version: ${version}`);
+		return undefined;
 	}
 
 	// 8 字节固定 Raw Binary 密钥指纹

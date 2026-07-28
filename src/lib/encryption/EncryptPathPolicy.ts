@@ -7,15 +7,14 @@ import ignore from "ignore";
  * 每个加密路径规则的匹配器，内部延迟初始化并缓存 ignore 实例。
  */
 class EncryptPathRuleMatcher {
-	private ig?: ReturnType<typeof ignore>;
+	private readonly ig: ReturnType<typeof ignore>;
 
-	constructor(private readonly rule: EncryptPathRule) {}
+	constructor(private readonly rule: EncryptPathRule) {
+		this.ig = ignore().add(this.rule.pattern);
+	}
 
 	match(notePath: string): boolean {
 		if (!this.rule.pattern) return false;
-		if (!this.ig) {
-			this.ig = ignore().add(this.rule.pattern);
-		}
 		return this.ig.ignores(notePath);
 	}
 

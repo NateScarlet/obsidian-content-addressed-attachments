@@ -1,7 +1,7 @@
 import type { KeyManager } from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
-import { isEncryptedData, parseHeader } from "./fileHeader";
+import { parseHeader } from "./fileHeader";
 
 /** 支持的统一二进制输入载体 */
 export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
@@ -60,15 +60,8 @@ export class EncryptionService {
 	async inspect(
 		input: BinaryInput,
 	): Promise<EncryptedFileHeader | undefined> {
-		try {
-			const buffer = await toArrayBuffer(input);
-			if (!isEncryptedData(buffer)) {
-				return undefined;
-			}
-			return parseHeader(buffer);
-		} catch {
-			return undefined;
-		}
+		const buffer = await toArrayBuffer(input);
+		return parseHeader(buffer);
 	}
 
 	/**

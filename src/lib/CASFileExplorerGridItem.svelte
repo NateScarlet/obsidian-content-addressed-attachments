@@ -55,7 +55,7 @@
 
 <script lang="ts">
 	import { getContext } from "./CASFileExplorerContext";
-	import { isEncryptedData, parseHeader } from "./encryption/fileHeader";
+	import { parseHeader } from "./encryption/fileHeader";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
 	import { getAbortSignal } from "svelte";
@@ -125,15 +125,11 @@
 			let fileBuffer: ArrayBuffer | undefined;
 
 			fileBuffer = await app.vault.adapter.readBinary(match.path);
-			if (fileBuffer && isEncryptedData(fileBuffer)) {
-				isEncrypted = true;
-				try {
-					const header = parseHeader(fileBuffer);
+				const header = parseHeader(fileBuffer);
+				if (header) {
+					isEncrypted = true;
 					format = header.originalFormat;
-				} catch {
-					// ignore parse header error
 				}
-			}
 
 			const imgSrc = await (async () => {
 				if (

@@ -37,7 +37,7 @@ interface SettingsV0 {
 }
 
 interface SettingsV1Input {
-	version: number;
+		version: 1;
 	primaryDir?: string;
 	downloadDir?: string;
 	gateways?: GatewayConfig[];
@@ -89,7 +89,7 @@ export function settingsFromInput(
 	}
 
 	// 无 version 标识的早期旧版本 v0 数据迁移
-	const v0 = input as SettingsV0;
+		const v0 = input;
 	const v0Gateways = Array.isArray(v0.gatewayURLs)
 		? v0.gatewayURLs.map((g) => ({
 				urlTemplate: g.urlTemplate,

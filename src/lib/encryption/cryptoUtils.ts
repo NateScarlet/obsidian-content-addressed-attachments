@@ -297,6 +297,9 @@ export async function decrypt(
 	encryptedData: ArrayBuffer,
 ): Promise<{ plaintext: ArrayBuffer; header: EncryptedFileHeader }> {
 	const header = parseHeader(encryptedData);
+	if (!header) {
+		throw new Error("Invalid encrypted file: bad format");
+	}
 	const key = await keyResolver(header.keyFingerprint);
 
 	if (!key) {
