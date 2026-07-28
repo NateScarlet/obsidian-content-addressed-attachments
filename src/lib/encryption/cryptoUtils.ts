@@ -8,6 +8,7 @@ import {
 	hexToBytes,
 	parseHeader,
 } from "./fileHeader";
+import { toArrayBuffer } from "#src/utils/toArrayBuffer";
 
 export const CURRENT_SETTINGS_VERSION = 1;
 
@@ -83,12 +84,9 @@ export function buildPassphraseAAD(
 
 export async function computeFingerprint(keyData: Uint8Array): Promise<string> {
 	const digestResult = await crypto.subtle.digest(
-		"SHA-256",
-		keyData.buffer.slice(
-			keyData.byteOffset,
-			keyData.byteOffset + keyData.byteLength,
-		) as ArrayBuffer,
-	);
+			"SHA-256",
+			toArrayBuffer(keyData),
+		);
 	const sha256Bytes = new Uint8Array(digestResult);
 	const fpBytes = sha256Bytes.slice(0, FINGERPRINT_BYTES);
 	return Array.from(fpBytes)
@@ -114,22 +112,22 @@ export async function exportKeyRaw(key: CryptoKey): Promise<Uint8Array> {
 
 export async function importKeyRaw(raw: Uint8Array): Promise<CryptoKey> {
 	return crypto.subtle.importKey(
-		"raw",
-		raw.buffer as ArrayBuffer,
-		{ name: KEY_ALGORITHM, length: KEY_LENGTH },
-		false,
-		["decrypt"],
-	);
+			"raw",
+			toArrayBuffer(raw),
+			{ name: KEY_ALGORITHM, length: KEY_LENGTH },
+			false,
+			["decrypt"],
+		);
 }
 
 export async function importKeyRawEncrypt(raw: Uint8Array): Promise<CryptoKey> {
 	return crypto.subtle.importKey(
-		"raw",
-		raw.buffer as ArrayBuffer,
-		{ name: KEY_ALGORITHM, length: KEY_LENGTH },
-		true,
-		["encrypt", "decrypt"],
-	);
+			"raw",
+			toArrayBuffer(raw),
+			{ name: KEY_ALGORITHM, length: KEY_LENGTH },
+			true,
+			["encrypt", "decrypt"],
+		);
 }
 
 /** 缓存从主密钥派生的专属 IV HMAC 子密钥，避免每次加密重复执行 exportKey/importKey 派生开销 */
@@ -141,15 +139,12 @@ async function getOrDeriveIVHmacKey(key: CryptoKey): Promise<CryptoKey> {
 		cachedPromise = (async () => {
 			const rawKey = await exportKeyRaw(key);
 			const masterHmacKey = await crypto.subtle.importKey(
-				"raw",
-				rawKey.buffer.slice(
-					rawKey.byteOffset,
-					rawKey.byteOffset + rawKey.byteLength,
-				) as ArrayBuffer,
-				{ name: "HMAC", hash: "SHA-256" },
-				false,
-				["sign"],
-			);
+					"raw",
+					toArrayBuffer(rawKey),
+					{ name: "HMAC", hash: "SHA-256" },
+					false,
+					["sign"],
+				);
 			const ivKeyBytes = await crypto.subtle.sign(
 				"HMAC",
 				masterHmacKey,
@@ -216,18 +211,12 @@ export async function encrypt(
 	const iv = await computeSyntheticIV(key, plaintext, aad);
 
 	const encrypted = await crypto.subtle.encrypt(
-		{
-			name: KEY_ALGORITHM,
-			iv: (iv.buffer as ArrayBuffer).slice(
-				iv.byteOffset,
-				iv.byteOffset + iv.byteLength,
-			),
-			additionalData: (aad.buffer as ArrayBuffer).slice(
-				aad.byteOffset,
-				aad.byteOffset + aad.byteLength,
-			),
-			tagLength: AUTH_TAG_LENGTH * 8,
-		},
+			{
+				name: KEY_ALGORITHM,
+				iv: toArrayBuffer(iv),
+				additionalData: toArrayBuffer(aad),
+				tagLength: AUTH_TAG_LENGTH * 8,
+			},
 		key,
 		plaintext,
 	);
@@ -318,24 +307,15 @@ export async function decrypt(
 	combined.set(header.authTag, ciphertext.byteLength);
 
 	const plaintext = await crypto.subtle.decrypt(
-		{
-			name: KEY_ALGORITHM,
-			iv: header.iv.buffer.slice(
-				header.iv.byteOffset,
-				header.iv.byteOffset + header.iv.byteLength,
-			) as ArrayBuffer,
-			additionalData: (aad.buffer as ArrayBuffer).slice(
-				aad.byteOffset,
-				aad.byteOffset + aad.byteLength,
-			),
-			tagLength: AUTH_TAG_LENGTH * 8,
-		},
-		key,
-		combined.buffer.slice(
-			combined.byteOffset,
-			combined.byteOffset + combined.byteLength,
-		),
-	);
+			{
+				name: KEY_ALGORITHM,
+				iv: toArrayBuffer(header.iv),
+				additionalData: toArrayBuffer(aad),
+				tagLength: AUTH_TAG_LENGTH * 8,
+			},
+			key,
+			toArrayBuffer(combined),
+		);
 
 	return { plaintext, header };
 }
@@ -400,15 +380,12 @@ export async function encryptWithPassphrase(
 	);
 
 	const encrypted = await crypto.subtle.encrypt(
-		{
-			name: KEY_ALGORITHM,
-			iv,
-			additionalData: (aad.buffer as ArrayBuffer).slice(
-				aad.byteOffset,
-				aad.byteOffset + aad.byteLength,
-			),
-			tagLength: AUTH_TAG_LENGTH * 8,
-		},
+			{
+				name: KEY_ALGORITHM,
+				iv,
+				additionalData: toArrayBuffer(aad),
+				tagLength: AUTH_TAG_LENGTH * 8,
+			},
 		key,
 		new TextEncoder().encode(plaintext),
 	);
@@ -538,15 +515,12 @@ export async function decryptWithPassphrase(
 	}
 
 	const decrypted = await crypto.subtle.decrypt(
-		{
-			name: algorithm,
-			iv: base64ToArrayBuffer(parsed.iv),
-			additionalData: (aad.buffer as ArrayBuffer).slice(
-				aad.byteOffset,
-				aad.byteOffset + aad.byteLength,
-			),
-			tagLength: AUTH_TAG_LENGTH * 8,
-		},
+			{
+				name: algorithm,
+				iv: base64ToArrayBuffer(parsed.iv),
+				additionalData: toArrayBuffer(aad),
+				tagLength: AUTH_TAG_LENGTH * 8,
+			},
 		key,
 		ciphertextBuffer,
 	);

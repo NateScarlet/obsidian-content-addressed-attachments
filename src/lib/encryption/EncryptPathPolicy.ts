@@ -14,12 +14,7 @@ class EncryptPathRuleMatcher {
 	}
 
 	match(notePath: string): boolean {
-		if (!this.rule.pattern) return false;
 		return this.ig.ignores(notePath);
-	}
-
-	get keyFingerprint(): string {
-		return this.rule.keyFingerprint;
 	}
 }
 
@@ -43,22 +38,22 @@ export class EncryptPathPolicy {
 	/** 根据笔记路径和规则解析应使用的 keyFingerprint */
 	async resolveKey(notePath: string): Promise<string | undefined> {
 		const rules = this.getRules();
-		const matcher = rules.find((r) => {
-			let m = this.matcherCache.get(r);
-			if (!m) {
-				m = new EncryptPathRuleMatcher(r);
-				this.matcherCache.set(r, m);
-			}
-			return m.match(notePath);
-		});
-		if (!matcher) return undefined;
+		const matchedRule = rules.find((r) => {
+				let m = this.matcherCache.get(r);
+				if (!m) {
+					m = new EncryptPathRuleMatcher(r);
+					this.matcherCache.set(r, m);
+				}
+				return m.match(notePath);
+			});
+			if (!matchedRule) return undefined;
 
-		if (matcher.keyFingerprint) {
-			const key = await this.keyManager.getKeyForEncrypt(
-				matcher.keyFingerprint,
-			);
-			if (key) return matcher.keyFingerprint;
-		}
+			if (matchedRule.keyFingerprint) {
+				const key = await this.keyManager.getKeyForEncrypt(
+					matchedRule.keyFingerprint,
+				);
+				if (key) return matchedRule.keyFingerprint;
+			}
 
 		return (await this.keyManager.getPrimaryKey())?.fingerprint;
 	}

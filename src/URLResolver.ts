@@ -327,19 +327,16 @@ export class URLResolver {
 				const isImage = mimeType.startsWith("image/");
 
 				if (isImage) {
-					const svg = createImagePlaceholderSVG(
-						t("decryptedCacheDirNotSetPlaceholder"),
-						"error",
-					);
-					return {
-						url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-					};
-				} else {
-					// 非图片类型返回简单文本提示
-					return {
-						url: `data:text/plain;charset=utf-8,${encodeURIComponent(t("decryptedCacheDirNotSetSimple"))}`,
-					};
-				}
+						const svg = createImagePlaceholderSVG(
+							t("decryptedCacheDirNotSetPlaceholder"),
+							"error",
+						);
+						return {
+							url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+						};
+					}
+
+					throw new Error(t("decryptedCacheDirNotSetSimple"));
 			}
 
 			// 检查目录是否存在，不存在则创建
@@ -362,23 +359,32 @@ export class URLResolver {
 
 	/**
 	 * 清理不再被任何活跃笔记引用的解密缓存文件和 blob URL。
-	 * 调用者应在笔记关闭时调用此方法，传入所有当前打开笔记中引用的 CID 集合。
+	 * 调用者应在笔记关闭时调用此方法，传入一个生成器函数以惰性产生活跃 CID。
 	 * 内部使用 30 秒防抖，避免用户快速切换笔记时频繁清理。
 	 *
 	 * 缓存文件命名格式为 `<cid>.decrypted`，直接扫描缓存目录匹配此模式，
 	 * 而非维护内存映射，确保应用中途崩溃后残留文件也能被正确清理。
 	 */
-	cleanupDecryptedCache(activeCids: Set<string>): void {
+	cleanupDecryptedCache(getActiveCids: () => AsyncIterable<string>): void {
 		if (this.cleanupTimer) {
 			window.clearTimeout(this.cleanupTimer);
 		}
 
 		this.cleanupTimer = window.setTimeout(() => {
-			void (async () => {
-				this.cleanupTimer = undefined;
-				const cacheDir = this.settings().decryptedCacheDir;
+				void (async () => {
+					this.cleanupTimer = undefined;
+					const cacheDir = this.settings().decryptedCacheDir;
 
-				// 清理磁盘缓存文件
+					// 早期返回：无缓存可清理
+					if (this.decryptedBlobStore.size === 0 && !cacheDir) return;
+
+					// 收集活跃 CID
+					const activeCids = new Set<string>();
+					for await (const cid of getActiveCids()) {
+						activeCids.add(cid);
+					}
+
+					// 清理磁盘缓存文件
 				if (cacheDir) {
 					try {
 						const cacheDirExists =

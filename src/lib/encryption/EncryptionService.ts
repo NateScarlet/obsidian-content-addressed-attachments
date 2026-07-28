@@ -2,6 +2,7 @@ import type { KeyManager } from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
 import { parseHeader } from "./fileHeader";
+import { toArrayBuffer as toArrayBufferFromView } from "#src/utils/toArrayBuffer";
 
 /** 支持的统一二进制输入载体 */
 export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
@@ -25,20 +26,17 @@ export interface DecryptedResult {
  * 辅助函数：将任意 BinaryInput 转换为 ArrayBuffer
  */
 async function toArrayBuffer(input: BinaryInput): Promise<ArrayBuffer> {
-	if (input instanceof ArrayBuffer) {
-		return input;
+		if (input instanceof ArrayBuffer) {
+			return input;
+		}
+		if (ArrayBuffer.isView(input)) {
+			return toArrayBufferFromView(input);
+		}
+		if (input instanceof Blob) {
+			return input.arrayBuffer();
+		}
+		throw new Error("Unsupported binary input format");
 	}
-	if (ArrayBuffer.isView(input)) {
-		return input.buffer.slice(
-			input.byteOffset,
-			input.byteOffset + input.byteLength,
-		) as ArrayBuffer;
-	}
-	if (input instanceof Blob) {
-		return input.arrayBuffer();
-	}
-	throw new Error("Unsupported binary input format");
-}
 
 /**
  * # EncryptionService 物理加解密服务
@@ -97,17 +95,14 @@ export class EncryptionService {
 			}
 		}
 
-		const finalData = currentBuffer;
-		const finalMimeType = mimeType;
-
 		return {
-			data: finalData,
-			mimeType: finalMimeType,
-			layers,
-			toBlob() {
-				return new Blob([finalData], { type: finalMimeType });
-			},
-		};
+				data: currentBuffer,
+				mimeType,
+				layers,
+				toBlob() {
+					return new Blob([currentBuffer], { type: mimeType });
+				},
+			};
 	}
 
 	/**
@@ -121,20 +116,25 @@ export class EncryptionService {
 		input: BinaryInput,
 		keyFingerprint?: string,
 	): Promise<File> {
-		const fingerprint =
-			(keyFingerprint
-				? await this.keyManager
-						.getKeyForEncrypt(keyFingerprint)
-						.then((k) => (k ? keyFingerprint : undefined))
-				: undefined) ??
-			(await this.keyManager.getPrimaryKey())?.fingerprint;
+		let key: CryptoKey | undefined;
+			let fingerprint: string | undefined;
 
-		if (!fingerprint) {
-			throw new Error("No encryption key available for encryption");
-		}
+			if (keyFingerprint) {
+				key = await this.keyManager.getKeyForEncrypt(keyFingerprint);
+				if (key) fingerprint = keyFingerprint;
+			}
 
-		const key = await this.keyManager.getKeyForEncrypt(fingerprint);
-		if (!key) throw new Error(`Encryption key ${fingerprint} not found`);
+			if (!key) {
+				const primary = await this.keyManager.getPrimaryKey();
+				if (primary) {
+					fingerprint = primary.fingerprint;
+					key = await this.keyManager.getKeyForEncrypt(fingerprint);
+				}
+			}
+
+			if (!key || !fingerprint) {
+				throw new Error("No encryption key available for encryption");
+			}
 
 		const buffer = await toArrayBuffer(input);
 		const filename = input instanceof File ? input.name : "attachment";

@@ -31,9 +31,7 @@ describe("settingsFromInput", () => {
 			expect(() =>
 				settingsFromInput({
 					version: 2,
-					primaryDir: ".attachments/cas",
-					downloadDir: "",
-				} as any),
+				}),
 			).toThrow("Unsupported settings version 2");
 		});
 

@@ -49,7 +49,8 @@ interface SettingsV1Input {
 
 export type SettingsInput =
 	| SettingsV0
-	| SettingsV1Input;
+	| SettingsV1Input
+	| { version: number };
 
 export function settingsFromInput(
 	input: SettingsInput | null | undefined,
@@ -74,22 +75,23 @@ export function settingsFromInput(
 
 	// 当前版本 version === 1
 	if (input.version === CURRENT_SETTINGS_VERSION) {
+		const v1 = input as SettingsV1Input;
 		return {
 			...defaults,
-			...input,
+			...v1,
 			version: 1,
-			gateways: Array.isArray(input.gateways)
-				? input.gateways
+			gateways: Array.isArray(v1.gateways)
+				? v1.gateways
 				: defaults.gateways,
-			encryptPathRules: input.encryptPathRules ?? [],
-			maxBlobSize: input.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
+			encryptPathRules: v1.encryptPathRules ?? [],
+			maxBlobSize: v1.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
 			decryptedCacheDir:
-				input.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR,
+				v1.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR,
 		};
 	}
 
 	// 无 version 标识的早期旧版本 v0 数据迁移
-		const v0 = input;
+	const v0 = input as SettingsV0;
 	const v0Gateways = Array.isArray(v0.gatewayURLs)
 		? v0.gatewayURLs.map((g) => ({
 				urlTemplate: g.urlTemplate,

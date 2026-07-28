@@ -122,13 +122,14 @@
 			}
 
 			let isEncrypted = format === ENCRYPTED_FORMAT;
-			let fileBuffer: ArrayBuffer | undefined;
+				let fileBuffer: ArrayBuffer | undefined;
 
-			fileBuffer = await app.vault.adapter.readBinary(match.path);
-				const header = parseHeader(fileBuffer);
-				if (header) {
-					isEncrypted = true;
-					format = header.originalFormat;
+				if (isEncrypted) {
+					fileBuffer = await app.vault.adapter.readBinary(match.path);
+					const header = parseHeader(fileBuffer);
+					if (header) {
+						format = header.originalFormat;
+					}
 				}
 
 			const imgSrc = await (async () => {
@@ -169,21 +170,18 @@
 
 			signal.throwIfAborted();
 			return {
-				ok: true,
-				match,
-				imgSrc,
-				format,
-				filename,
-				isEncrypted,
-			};
+					ok: true,
+					match,
+					imgSrc,
+					format,
+					filename,
+				};
 		}
 		return { ok: false };
 	});
 
 	const format = $derived($detail?.format || file.format || "*/*");
-	const isEncrypted = $derived(
-		$detail?.isEncrypted ?? (file.format === ENCRYPTED_FORMAT),
-	);
+	const isEncrypted = $derived(file.format === ENCRYPTED_FORMAT);
 	const isDeleted = $derived(!!file.trashedAt || $detail?.ok === false);
 
 	let limit = $state(20);
