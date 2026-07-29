@@ -13,13 +13,14 @@ export const IV_LENGTH = 12;
 export const AUTH_TAG_LENGTH = 16; // 128 bits
 export const FINGERPRINT_BYTES = 8; // 64 bits 固定 Raw Binary 长度
 
-/** 将 16 字符 Hex 字符串解析为 8 字节原生二进制 */
+/** 将 Hex 字符串解析为 Uint8Array，字节数由 hex 长度决定 */
 export function hexToBytes(hex: string): Uint8Array {
-	if (hex.length !== 16) {
-		throw new Error(`Invalid fingerprint hex length: ${hex.length}`);
+	if (hex.length % 2 !== 0) {
+		throw new Error(`Invalid hex string length: ${hex.length}`);
 	}
-	const bytes = new Uint8Array(FINGERPRINT_BYTES);
-	for (let i = 0; i < FINGERPRINT_BYTES; i++) {
+	const byteLen = hex.length / 2;
+	const bytes = new Uint8Array(byteLen);
+	for (let i = 0; i < byteLen; i++) {
 		bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
 	}
 	return bytes;

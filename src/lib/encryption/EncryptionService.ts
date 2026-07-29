@@ -2,10 +2,7 @@ import type { KeyManager } from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
 import { parseHeader } from "./fileHeader";
-import { toArrayBuffer as toArrayBufferFromView } from "#src/utils/toArrayBuffer";
-
-/** 支持的统一二进制输入载体 */
-export type BinaryInput = Blob | File | ArrayBuffer | Uint8Array;
+import { toArrayBufferFromBinary, type BinaryInput } from "#src/utils/toArrayBuffer";
 
 /** 加密层信息 */
 export type EncryptionLayer = { header: EncryptedFileHeader };
@@ -23,22 +20,6 @@ export interface DecryptedResult {
 }
 
 /**
- * 辅助函数：将任意 BinaryInput 转换为 ArrayBuffer
- */
-async function toArrayBuffer(input: BinaryInput): Promise<ArrayBuffer> {
-		if (input instanceof ArrayBuffer) {
-			return input;
-		}
-		if (ArrayBuffer.isView(input)) {
-			return toArrayBufferFromView(input);
-		}
-		if (input instanceof Blob) {
-			return input.arrayBuffer();
-		}
-		throw new Error("Unsupported binary input format");
-	}
-
-/**
  * # EncryptionService 物理加解密服务
  *
  * 专注物理二进制数据的加解密算术与 CENC Header 解析，不包含任何 Obsidian 笔记路径或规则的概念。
@@ -47,7 +28,7 @@ async function toArrayBuffer(input: BinaryInput): Promise<ArrayBuffer> {
  * - **`ensureDecrypted(input)`**: 确保得到明文（持续解密直至得到纯明文；绝对返回 `DecryptedResult`，非 `undefined`）。
  * - **`ensureEncrypted(input, keyFingerprint?)`**: 物理层强力确保加密（使用指定 Key 或主 Key 加密；具备防二次加密幂等性）。
  */
-export class EncryptionService {
+export default class EncryptionService {
 	constructor(readonly keyManager: KeyManager) {}
 
 	/**
@@ -58,7 +39,7 @@ export class EncryptionService {
 	async inspect(
 		input: BinaryInput,
 	): Promise<EncryptedFileHeader | undefined> {
-		const buffer = await toArrayBuffer(input);
+		const buffer = await toArrayBufferFromBinary(input);
 		return parseHeader(buffer);
 	}
 
@@ -68,7 +49,7 @@ export class EncryptionService {
 	 * 绝对返回 `DecryptedResult`，绝不返回 `undefined`。
 	 */
 	async ensureDecrypted(input: BinaryInput): Promise<DecryptedResult> {
-		let currentBuffer = await toArrayBuffer(input);
+		let currentBuffer = await toArrayBufferFromBinary(input);
 		const layers: EncryptionLayer[] = [];
 		let mimeType =
 			input instanceof Blob &&
@@ -136,7 +117,7 @@ export class EncryptionService {
 				throw new Error("No encryption key available for encryption");
 			}
 
-		const buffer = await toArrayBuffer(input);
+		const buffer = await toArrayBufferFromBinary(input);
 		const filename = input instanceof File ? input.name : "attachment";
 		const mimeType =
 			input instanceof Blob && input.type

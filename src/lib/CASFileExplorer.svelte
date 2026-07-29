@@ -22,7 +22,7 @@
 	import findIPFSLinks from "#src/utils/findIPFSLinks";
 	import staleWithRevalidate from "./stores/staleWhileRevalidate.svelte";
 
-	import type { EncryptionService } from "./encryption/EncryptionService";
+	import type EncryptionService from "./encryption/EncryptionService";
 
 	// Props
 	let {

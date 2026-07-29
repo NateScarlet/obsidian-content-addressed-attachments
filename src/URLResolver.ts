@@ -8,7 +8,7 @@ import type { CAS } from "./types/CAS";
 import showError from "./utils/showError";
 import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
-import type { EncryptionService } from "./lib/encryption/EncryptionService";
+import type EncryptionService from "./lib/encryption/EncryptionService";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import defineLocales from "./utils/defineLocales";
 

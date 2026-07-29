@@ -6,7 +6,7 @@ import { IPFSLink } from "#src/utils/IPFSLink";
 import type { IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import type { App, Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
-import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
+import type EncryptionService from "#src/lib/encryption/EncryptionService";
 import type { URLResolver } from "#src/URLResolver";
 import type ReferenceManager from "#src/ReferenceManager";
 

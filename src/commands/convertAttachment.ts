@@ -1,8 +1,8 @@
 import { Notice, type App, type TFile, type Editor } from "obsidian";
 import { CID } from "multiformats/cid";
 import type { CAS } from "#src/types/CAS";
-import type { EncryptionService } from "#src/lib/encryption/EncryptionService";
-import type { EncryptPathPolicy } from "#src/lib/encryption/EncryptPathPolicy";
+import type EncryptionService from "#src/lib/encryption/EncryptionService";
+import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type { URLResolver } from "#src/URLResolver";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";

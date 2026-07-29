@@ -11,11 +11,11 @@ describe("CryptoService pure functions", () => {
 			expect(bytesToHex(bytes)).toBe(hex);
 		});
 
-		it("throws error when hex string is not 16 characters", () => {
-			expect(() => hexToBytes("1234")).toThrow(
-				"Invalid fingerprint hex length",
-			);
-		});
+		it("throws error when hex string has odd length", () => {
+				expect(() => hexToBytes("123")).toThrow(
+					"Invalid hex string length",
+				);
+			});
 	});
 
 	describe("generateKey", () => {

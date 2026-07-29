@@ -1,5 +1,6 @@
 import type { KeyManager } from "./KeyManager";
-import type { EncryptionService, BinaryInput } from "./EncryptionService";
+import type EncryptionService from "./EncryptionService";
+import type { BinaryInput } from "#src/utils/toArrayBuffer";
 import type { EncryptPathRule } from "#src/settings";
 import ignore from "ignore";
 
@@ -26,7 +27,7 @@ class EncryptPathRuleMatcher {
  * - **`resolveKey(notePath)`**: 根据笔记路径策略规则，解析应使用的 `keyFingerprint`；
  * - **`ensureEncrypted(input, notePath)`**: 策略层确保加密（匹配路径规则则调 `encryptionService.ensureEncrypted` 加密；未匹配规则则返回 `undefined`）。
  */
-export class EncryptPathPolicy {
+export default class EncryptPathPolicy {
 	private matcherCache = new WeakMap<EncryptPathRule, EncryptPathRuleMatcher>();
 
 	constructor(

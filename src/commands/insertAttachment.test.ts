@@ -4,7 +4,7 @@ import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import type { Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
-import type { EncryptPathPolicy } from "#src/lib/encryption/EncryptPathPolicy";
+import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 
 describe("processFileAndInsertLink", () => {
 	const validCIDString =

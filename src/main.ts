@@ -38,8 +38,8 @@ import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import { IPFSLink } from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
 import { KeyManager } from "./lib/encryption/KeyManager";
-import { EncryptionService } from "./lib/encryption/EncryptionService";
-import { EncryptPathPolicy } from "./lib/encryption/EncryptPathPolicy";
+import EncryptionService from "./lib/encryption/EncryptionService";
+import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
