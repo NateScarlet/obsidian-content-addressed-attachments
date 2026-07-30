@@ -1,14 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { encryptLink, decryptLink, findLinkAtPos } from "./convertAttachment";
+import { encryptLink, decryptLink, findLinkAtPos, type EncryptContext } from "./convertAttachment";
 import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
-import { IPFSLink } from "#src/utils/IPFSLink";
+import IPFSLink from "#src/utils/IPFSLink";
 import type { IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import type { App, Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptionService from "#src/lib/encryption/EncryptionService";
 import type { URLResolver } from "#src/URLResolver";
 import type ReferenceManager from "#src/ReferenceManager";
+import type KeyManager from "#src/lib/encryption/KeyManager";
 
 describe("convertAttachment", () => {
 	const validCIDString =
@@ -54,7 +55,7 @@ describe("convertAttachment", () => {
 		getKeyForEncrypt: vi
 			.fn()
 			.mockResolvedValue({ fingerprint: "keyfp123" }),
-	};
+	} as unknown as KeyManager;
 
 	const mockEncryptionService = {
 		keyManager: mockKeyManager,
@@ -81,6 +82,16 @@ describe("convertAttachment", () => {
 	const mockReferenceManager = {
 		findFilePath: vi.fn().mockImplementation(function* () {}),
 	} as unknown as ReferenceManager;
+
+	const mockEncryptContext: EncryptContext = {
+		app: mockApp,
+		cas: mockCas,
+		encryptionService: mockEncryptionService,
+		urlResolver: mockUrlResolver,
+		referenceManager: mockReferenceManager,
+		dir: "attachments",
+		keyManager: mockKeyManager,
+	};
 
 	function createMockEditor(initialDoc: string) {
 		let doc = initialDoc;
@@ -152,15 +163,10 @@ describe("convertAttachment", () => {
 			const editor = createMockEditor(markdown);
 
 			await encryptLink(
-				mockApp,
-				mockCas,
-				mockEncryptionService,
-				mockUrlResolver,
-				mockReferenceManager,
-				"attachments",
-				editor,
-				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
-			);
+					mockEncryptContext,
+					editor,
+					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+				);
 
 			const resultDoc = editor.getEditorContent();
 			expect(resultDoc.startsWith("Intro ![photo.png|200](ipfs://")).toBe(
@@ -184,15 +190,10 @@ describe("convertAttachment", () => {
 			const editor = createMockEditor(markdown);
 
 			await decryptLink(
-				mockApp,
-				mockCas,
-				mockEncryptionService,
-				mockUrlResolver,
-				mockReferenceManager,
-				"attachments",
-				editor,
-				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
-			);
+					mockEncryptContext,
+					editor,
+					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+				);
 
 			const resultDoc = editor.getEditorContent();
 			expect(resultDoc.startsWith("Intro ![photo.png|200](ipfs://")).toBe(
@@ -229,17 +230,18 @@ describe("convertAttachment", () => {
 
 			const editor = createMockEditor(markdown);
 
-			await encryptLink(
-				mockApp,
-				cas,
-				mockEncryptionService,
-				mockUrlResolver,
-				refMgr,
-				"attachments",
-				editor,
-				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
-				"CurrentNote.md",
-			);
+				const ctx: EncryptContext = {
+					...mockEncryptContext,
+					cas,
+					referenceManager: refMgr,
+				};
+
+				await encryptLink(
+					ctx,
+					editor,
+					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+					"CurrentNote.md",
+				);
 
 			expect(localTrash).not.toHaveBeenCalled();
 		});

@@ -1,5 +1,5 @@
 import { Modal, Setting, Notice, type App } from "obsidian";
-import type { KeyManager } from "#src/lib/encryption/KeyManager";
+import type KeyManager from "#src/lib/encryption/KeyManager";
 import showError from "#src/utils/showError";
 import defineLocales from "#src/utils/defineLocales";
 
@@ -26,7 +26,7 @@ const { t } = defineLocales({
 	},
 });
 
-export class ExportKeysModal extends Modal {
+export default class ExportKeysModal extends Modal {
 	private passphraseInput!: HTMLInputElement;
 
 	constructor(

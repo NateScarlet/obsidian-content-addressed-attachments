@@ -7,7 +7,7 @@ export interface IPFSLinkOptions {
 	format?: string;
 }
 
-export class IPFSLink {
+export default class IPFSLink {
 	readonly cid: CID;
 	readonly filename: string;
 	readonly format: string;

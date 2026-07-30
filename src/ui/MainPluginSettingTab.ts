@@ -2,8 +2,8 @@ import { PluginSettingTab, Setting, Notice } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
-import { ExportKeysModal } from "./modals/ExportKeysModal";
-import { ImportKeysModal } from "./modals/ImportKeysModal";
+import ExportKeysModal from "./modals/ExportKeysModal";
+import ImportKeysModal from "./modals/ImportKeysModal";
 import clsx from "clsx";
 import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
@@ -239,26 +239,31 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							}
 
 							const { encryptNote } = await import(
-								"#src/commands/convertAttachment"
-							);
-							const files = this.app.vault.getMarkdownFiles();
-							let total = 0;
-							const ig = ignore().add(patterns);
-							for (const file of files) {
-								if (ig.ignores(file.path)) {
-									const count = await encryptNote(
-										this.app,
-										this.plugin.cas,
-										this.plugin.encryptionService,
-										this.plugin.urlResolver,
-										this.plugin.referenceManger,
-										file,
-										keyFingerprint,
-										this.plugin.settings.primaryDir,
-									);
-									total += count;
+									"#src/commands/convertAttachment"
+								);
+								const files = this.app.vault.getMarkdownFiles();
+								let total = 0;
+								const ig = ignore().add(patterns);
+								const ctx = {
+									app: this.app,
+									cas: this.plugin.cas,
+									encryptionService: this.plugin.encryptionService,
+									urlResolver: this.plugin.urlResolver,
+									referenceManager: this.plugin.referenceManger,
+									dir: this.plugin.settings.primaryDir,
+									keyManager: this.plugin.keyManager,
+									encryptPathPolicy: this.plugin.encryptPathPolicy,
+								};
+								for (const file of files) {
+									if (ig.ignores(file.path)) {
+										const count = await encryptNote(
+											ctx,
+											file,
+											keyFingerprint,
+										);
+										total += count;
+									}
 								}
-							}
 							new Notice(t("encryptMatchingNotesSuccess")(total));
 						},
 					},

@@ -1,5 +1,5 @@
 import type { Editor } from "obsidian";
-import { IPFSLink } from "#src/utils/IPFSLink";
+import IPFSLink from "#src/utils/IPFSLink";
 
 export default function insertIPFSLinkAtCursor(
 	editor: Editor,

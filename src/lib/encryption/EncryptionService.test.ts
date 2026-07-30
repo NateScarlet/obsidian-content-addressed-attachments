@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import EncryptionService from "./EncryptionService";
 import EncryptPathPolicy from "./EncryptPathPolicy";
-import { KeyManager } from "./KeyManager";
+import KeyManager from "./KeyManager";
 import { ENCRYPTED_FORMAT, type KeyStorage } from "./types";
 import * as cryptoUtils from "./cryptoUtils";
 

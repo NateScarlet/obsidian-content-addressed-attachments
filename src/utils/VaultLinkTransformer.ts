@@ -6,7 +6,7 @@ export type LinkReplacer = (
 	linkText: string,
 ) => Promise<string | undefined> | string | undefined;
 
-export class VaultLinkTransformer {
+export default class VaultLinkTransformer {
 	constructor(private app: App) {}
 
 	/**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { IPFSLink } from "./IPFSLink";
+import IPFSLink from "./IPFSLink";
 import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 

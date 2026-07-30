@@ -1,6 +1,6 @@
 import type { CID } from "multiformats";
 import type { Editor } from "obsidian";
-import { IPFSLink } from "#src/utils/IPFSLink";
+import IPFSLink from "#src/utils/IPFSLink";
 
 /**
  * @deprecated Use `insertIPFSLinkAtCursor` instead.

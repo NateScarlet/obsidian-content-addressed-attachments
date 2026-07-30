@@ -1,4 +1,4 @@
-import type { KeyManager } from "./KeyManager";
+import type KeyManager from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
 import { parseHeader } from "./fileHeader";

@@ -1,4 +1,4 @@
-import { IPFSLink } from "./IPFSLink";
+import IPFSLink from "./IPFSLink";
 import parseIPFSLockedURL, { type IPFSLockedURL } from "./parseIPFSLockedURL";
 
 export type IPFSLinkMatch = {

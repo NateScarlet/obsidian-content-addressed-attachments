@@ -2,7 +2,7 @@ import { MarkdownView, type App, type Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import insertIPFSLinkAtCursor from "./insertIPFSLinkAtCursor";
-import { IPFSLink } from "#src/utils/IPFSLink";
+import IPFSLink from "#src/utils/IPFSLink";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 
 export async function processFileAndInsertLink(

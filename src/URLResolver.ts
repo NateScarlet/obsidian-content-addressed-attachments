@@ -45,9 +45,71 @@ export interface ResolveURLResult {
 	url: string;
 }
 
+// #region DecryptedCacheManager
+
+/** Manages in-memory blob URLs and on-disk decrypted file caches, decoupled from URL resolution. */
+class DecryptedCacheManager {
+	private blobStore = new Map<string, string>();
+
+	constructor(
+		private adapter: App["vault"]["adapter"],
+		private getCacheDir: () => string | undefined,
+	) {}
+
+	getBlobUrl(key: string): string | undefined {
+		return this.blobStore.get(key);
+	}
+
+	createBlobUrl(key: string, blob: Blob): string {
+		const url = URL.createObjectURL(blob);
+		this.blobStore.set(key, url);
+		return url;
+	}
+
+	async readDiskCache(filename: string): Promise<string | undefined> {
+		const cacheDir = this.getCacheDir();
+		if (!cacheDir) return undefined;
+		const cachePath = `${cacheDir}/${filename}`;
+		const exists = await this.adapter.exists(cachePath);
+		return exists ? cachePath : undefined;
+	}
+
+	async writeDiskCache(cachePath: string, data: ArrayBuffer): Promise<void> {
+		const cacheDir = this.getCacheDir();
+		if (!cacheDir) throw new Error("Cache dir not set");
+		const cacheDirExists = await this.adapter.exists(cacheDir);
+		if (!cacheDirExists) {
+			await this.adapter.mkdir(cacheDir);
+		}
+		await this.adapter.writeBinary(cachePath, data);
+	}
+
+	revokeStaleBlobs(activeKeys: Set<string>): void {
+		for (const [key, url] of this.blobStore) {
+			if (!activeKeys.has(key)) {
+				URL.revokeObjectURL(url);
+				this.blobStore.delete(key);
+			}
+		}
+	}
+
+	dispose(): void {
+		for (const url of this.blobStore.values()) {
+			URL.revokeObjectURL(url);
+		}
+		this.blobStore.clear();
+	}
+
+	get blobCount(): number {
+		return this.blobStore.size;
+	}
+}
+
+// #endregion
+
 export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
-	private decryptedBlobStore = new Map<string, string>();
+	private cacheManager: DecryptedCacheManager;
 	// 防抖 cleanup 的 timer ID
 	private cleanupTimer: number | undefined;
 
@@ -56,7 +118,12 @@ export class URLResolver {
 		private cas: CAS,
 		private settings: () => Settings,
 		private encryptionService: EncryptionService,
-	) {}
+	) {
+		this.cacheManager = new DecryptedCacheManager(
+			this.app.vault.adapter,
+			() => this.settings().decryptedCacheDir,
+		);
+	}
 
 	/** 清理所有解密产生的 blob URL 和定时器 */
 	[Symbol.dispose](): void {
@@ -64,10 +131,7 @@ export class URLResolver {
 			window.clearTimeout(this.cleanupTimer);
 			this.cleanupTimer = undefined;
 		}
-		for (const url of this.decryptedBlobStore.values()) {
-			URL.revokeObjectURL(url);
-		}
-		this.decryptedBlobStore.clear();
+		this.cacheManager.dispose();
 	}
 
 	async resolveURL(rawURL: string): Promise<ResolveURLResult | undefined> {
@@ -280,22 +344,18 @@ export class URLResolver {
 		cid: CID,
 	): Promise<ResolveURLResult | undefined> {
 		// 优先检查内存中已有的 blob URL 缓存
-		const cachedBlob = this.decryptedBlobStore.get(encryptedPath);
+		const cachedBlob = this.cacheManager.getBlobUrl(encryptedPath);
 		if (cachedBlob) return { url: cachedBlob, path: encryptedPath };
 
 		// 优先检查磁盘缓存
-		const cacheDir = this.settings().decryptedCacheDir;
 		const cacheFilename = `${cid.toString()}.decrypted`;
-		const cachePath = cacheDir ? `${cacheDir}/${cacheFilename}` : undefined;
+		const cachePath = await this.cacheManager.readDiskCache(cacheFilename);
 
 		if (cachePath) {
-			const cacheExists = await this.app.vault.adapter.exists(cachePath);
-			if (cacheExists) {
-				return {
-					path: cachePath,
-					url: this.app.vault.adapter.getResourcePath(cachePath),
-				};
-			}
+			return {
+				path: cachePath,
+				url: this.app.vault.adapter.getResourcePath(cachePath),
+			};
 		}
 
 		try {
@@ -310,12 +370,12 @@ export class URLResolver {
 			const maxBlob = this.settings().maxBlobSize;
 
 			if (size <= maxBlob) {
-				const url = URL.createObjectURL(decrypted.toBlob());
-				this.decryptedBlobStore.set(encryptedPath, url);
+				const url = this.cacheManager.createBlobUrl(encryptedPath, decrypted.toBlob());
 				return { url, path: encryptedPath };
 			}
 
 			// 大文件：解密到缓存目录
+			const cacheDir = this.settings().decryptedCacheDir;
 			if (!cacheDir) {
 				console.error(
 					`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
@@ -327,26 +387,19 @@ export class URLResolver {
 				const isImage = mimeType.startsWith("image/");
 
 				if (isImage) {
-						const svg = createImagePlaceholderSVG(
-							t("decryptedCacheDirNotSetPlaceholder"),
-							"error",
-						);
-						return {
-							url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-						};
-					}
+					const svg = createImagePlaceholderSVG(
+						t("decryptedCacheDirNotSetPlaceholder"),
+						"error",
+					);
+					return {
+						url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+					};
+				}
 
-					throw new Error(t("decryptedCacheDirNotSetSimple"));
+				throw new Error(t("decryptedCacheDirNotSetSimple"));
 			}
 
-			// 检查目录是否存在，不存在则创建
-			const cacheDirExists =
-				await this.app.vault.adapter.exists(cacheDir);
-			if (!cacheDirExists) {
-				await this.app.vault.adapter.mkdir(cacheDir);
-			}
-
-			await this.app.vault.adapter.writeBinary(cachePath!, decrypted.data);
+			await this.cacheManager.writeDiskCache(cachePath!, decrypted.data);
 
 			return {
 				path: cachePath!,
@@ -376,7 +429,7 @@ export class URLResolver {
 					const cacheDir = this.settings().decryptedCacheDir;
 
 					// 早期返回：无缓存可清理
-					if (this.decryptedBlobStore.size === 0 && !cacheDir) return;
+						if (this.cacheManager.blobCount === 0 && !cacheDir) return;
 
 					// 收集活跃 CID
 					const activeCids = new Set<string>();
@@ -424,12 +477,7 @@ export class URLResolver {
 				}
 
 				// 清理不再引用的 blob URL
-				for (const [cid, url] of this.decryptedBlobStore) {
-					if (!activeCids.has(cid)) {
-						URL.revokeObjectURL(url);
-						this.decryptedBlobStore.delete(cid);
-					}
-				}
+					this.cacheManager.revokeStaleBlobs(activeCids);
 			})();
 		}, 30_000);
 	}

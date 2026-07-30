@@ -5,7 +5,7 @@
 	import { SecretComponent, Setting, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
 	import defineLocales from "#src/utils/defineLocales";
-	import { DEFAULT_KEYS_STORAGE_ID, type KeyManager } from "./encryption/KeyManager";
+	import KeyManager, { DEFAULT_KEYS_STORAGE_ID } from "./encryption/KeyManager";
 	import { onMount } from "svelte";
 
 	const { t } = defineLocales({
@@ -462,7 +462,7 @@
 									<span class="text-theme-text-muted line-through">
 										{keyDisplayName(key)}
 									</span>
-									<span class="font-mono text-[10px] text-theme-text-muted">
+									<span class="font-mono text-xs text-theme-text-muted">
 										FP: {key.fingerprint}
 									</span>
 								</div>

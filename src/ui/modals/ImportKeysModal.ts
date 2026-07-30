@@ -1,5 +1,5 @@
 import { Modal, Setting, Notice, type App } from "obsidian";
-import type { KeyManager } from "#src/lib/encryption/KeyManager";
+import type KeyManager from "#src/lib/encryption/KeyManager";
 import defineLocales from "#src/utils/defineLocales";
 
 const { t } = defineLocales({
@@ -39,7 +39,7 @@ const { t } = defineLocales({
 	},
 });
 
-export class ImportKeysModal extends Modal {
+export default class ImportKeysModal extends Modal {
 	private passphraseInput!: HTMLInputElement;
 	private statusEl!: HTMLElement;
 	private encryptedData = "";

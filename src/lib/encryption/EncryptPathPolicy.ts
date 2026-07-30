@@ -1,4 +1,4 @@
-import type { KeyManager } from "./KeyManager";
+import type KeyManager from "./KeyManager";
 import type EncryptionService from "./EncryptionService";
 import type { BinaryInput } from "#src/utils/toArrayBuffer";
 import type { EncryptPathRule } from "#src/settings";
@@ -39,7 +39,13 @@ export default class EncryptPathPolicy {
 	/** 根据笔记路径和规则解析应使用的 keyFingerprint */
 	async resolveKey(notePath: string): Promise<string | undefined> {
 		const rules = this.getRules();
-		const matchedRule = rules.find((r) => {
+		// 排序：空密钥规则优先，保持其余原有顺序
+		const sorted = [...rules].sort((a, b) => {
+			if (!a.keyFingerprint && b.keyFingerprint) return -1;
+			if (a.keyFingerprint && !b.keyFingerprint) return 1;
+			return 0;
+		});
+		const matchedRule = sorted.find((r) => {
 				let m = this.matcherCache.get(r);
 				if (!m) {
 					m = new EncryptPathRuleMatcher(r);

@@ -6,10 +6,10 @@ import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type { URLResolver } from "#src/URLResolver";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
-import { IPFSLink } from "#src/utils/IPFSLink";
-import { VaultLinkTransformer } from "#src/utils/VaultLinkTransformer";
+import IPFSLink from "#src/utils/IPFSLink";
+import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
-import type { KeyManager } from "#src/lib/encryption/KeyManager";
+import type KeyManager from "#src/lib/encryption/KeyManager";
 
 import type ReferenceManager from "#src/ReferenceManager";
 
@@ -26,6 +26,20 @@ const { t } = defineLocales({
 		noKeyAvailable: "没有可用加密密钥。请在设置中先创建密钥。",
 	},
 });
+
+// #region shared helpers
+
+/** Shared encryption context bundling all common dependencies */
+export interface EncryptContext {
+	app: App;
+	cas: CAS;
+	encryptionService: EncryptionService;
+	urlResolver: URLResolver;
+	referenceManager: ReferenceManager;
+	dir: string;
+	keyManager: KeyManager;
+	encryptPathPolicy?: EncryptPathPolicy;
+}
 
 async function trashIfUnreferenced(
 	cas: CAS,
@@ -71,63 +85,83 @@ async function loadFileContent(
 	}
 }
 
-export async function encryptLink(
-	app: App,
-	cas: CAS,
-	encryptionService: EncryptionService,
-	urlResolver: URLResolver,
-	referenceManager: ReferenceManager,
-	dir: string,
-	editor: Editor,
-	match: IPFSLinkMatch,
-	notePath?: string,
-	keyManager?: KeyManager,
-	encryptPathPolicy?: EncryptPathPolicy,
-): Promise<void> {
-	const km = keyManager ?? encryptionService.keyManager;
-	const fingerprint =
-		(notePath && encryptPathPolicy
-			? await encryptPathPolicy.resolveKey(notePath)
-			: undefined) ?? (await km.getPrimaryKey())?.fingerprint;
-	if (!fingerprint) {
-		new Notice(t("noKeyAvailable"));
-		return;
+/**
+ * Resolve the encryption key fingerprint for a given note path.
+ * Priority: explicit fingerprint → path policy → primary key.
+ */
+async function resolveEncryptFingerprint(
+	ctx: EncryptContext,
+	notePath: string,
+	explicitFingerprint?: string,
+): Promise<string | undefined> {
+	if (explicitFingerprint) {
+		const key = await ctx.keyManager.getKeyForEncrypt(explicitFingerprint);
+		if (key) return explicitFingerprint;
 	}
-	const linkText =
-		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
-	if (!linkText) return;
-	const parsed = IPFSLink.parse(linkText);
-	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return;
+	return (await ctx.encryptPathPolicy?.resolveKey(notePath)) ??
+		(await ctx.keyManager.getPrimaryKey())?.fingerprint;
+}
 
-	const buffer = await loadFileContent(app, cas, urlResolver, linkText);
-	if (!buffer) {
-		new Notice("File not found");
-		return;
-	}
+/**
+ * Core encryption logic for a single IPFS link.
+ * Returns the new encrypted URL, or undefined if encryption is not needed/possible.
+ */
+async function encryptSingleLink(
+	ctx: EncryptContext,
+	linkText: string,
+	notePath: string,
+	explicitFingerprint?: string,
+): Promise<string | undefined> {
+	const parsed = IPFSLink.parse(linkText);
+	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
+
+	const buffer = await loadFileContent(ctx.app, ctx.cas, ctx.urlResolver, linkText);
+	if (!buffer) return undefined;
+
+	const fingerprint = await resolveEncryptFingerprint(ctx, notePath, explicitFingerprint);
+	if (!fingerprint) return undefined;
 
 	const rawFile = new File([new Blob([buffer])], parsed.filename, {
 		type: parsed.resolveMimeType(),
 	});
 	let encryptedFile: File;
 	try {
-		encryptedFile = await encryptionService.ensureEncrypted(
-			rawFile,
-			fingerprint,
-		);
+		encryptedFile = await ctx.encryptionService.ensureEncrypted(rawFile, fingerprint);
 	} catch {
-		new Notice(t("noKeyAvailable"));
-		return;
+		return undefined;
 	}
 
-	const { cid: newCid } = await cas.save(dir, encryptedFile);
+	const { cid: newCid } = await ctx.cas.save(ctx.dir, encryptedFile);
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid, notePath);
 	}
-	const newURL = new IPFSLink({
+
+	return new IPFSLink({
 		cid: newCid,
 		filename: encryptedFile.name,
 		format: ENCRYPTED_FORMAT,
 	}).toURL();
+}
+
+// #endregion
+
+// #region public commands
+
+export async function encryptLink(
+	ctx: EncryptContext,
+	editor: Editor,
+	match: IPFSLinkMatch,
+	notePath?: string,
+): Promise<void> {
+	const linkText =
+		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
+	if (!linkText) return;
+
+	const newURL = await encryptSingleLink(ctx, linkText, notePath ?? "");
+	if (!newURL) {
+		new Notice(t("noKeyAvailable"));
+		return;
+	}
 
 	editor.replaceRange(
 		newURL,
@@ -137,12 +171,7 @@ export async function encryptLink(
 }
 
 export async function decryptLink(
-	app: App,
-	cas: CAS,
-	encryptionService: EncryptionService,
-	urlResolver: URLResolver,
-	referenceManager: ReferenceManager,
-	dir: string,
+	ctx: EncryptContext,
 	editor: Editor,
 	match: IPFSLinkMatch,
 	notePath?: string,
@@ -153,13 +182,13 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const buffer = await loadFileContent(app, cas, urlResolver, linkText);
+	const buffer = await loadFileContent(ctx.app, ctx.cas, ctx.urlResolver, linkText);
 	if (!buffer) {
 		new Notice("File not found");
 		return;
 	}
 
-	const decrypted = await encryptionService.ensureDecrypted(buffer);
+	const decrypted = await ctx.encryptionService.ensureDecrypted(buffer);
 	if (decrypted.layers.length === 0) {
 		new Notice("Not an encrypted file");
 		return;
@@ -168,9 +197,9 @@ export async function decryptLink(
 	const file = new File([decrypted.toBlob()], parsed.filename || "file", {
 		type: decrypted.mimeType,
 	});
-	const { cid: newCid } = await cas.save(dir, file);
+	const { cid: newCid } = await ctx.cas.save(ctx.dir, file);
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(cas, referenceManager, parsed.cid, notePath);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid, notePath);
 	}
 	const newURL = new IPFSLink({
 		cid: newCid,
@@ -202,66 +231,17 @@ export function isEncryptedLink(linkText: string): boolean {
 }
 
 export async function encryptNote(
-	app: App,
-	cas: CAS,
-	encryptionService: EncryptionService,
-	urlResolver: URLResolver,
-	referenceManager: ReferenceManager,
+	ctx: EncryptContext,
 	file: TFile,
-	keyFingerprint: string,
-	dir: string,
-	keyManager?: KeyManager,
-	encryptPathPolicy?: EncryptPathPolicy,
+	explicitFingerprint?: string,
 ): Promise<number> {
-	const km = keyManager ?? encryptionService.keyManager;
-	const fp =
-		(keyFingerprint
-			? await km
-					.getKeyForEncrypt(keyFingerprint)
-					.then((k) => (k ? keyFingerprint : undefined))
-			: undefined) ??
-		(encryptPathPolicy
-			? await encryptPathPolicy.resolveKey(file.path)
-			: undefined) ??
-		(await km.getPrimaryKey())?.fingerprint;
-
+	const fp = await resolveEncryptFingerprint(ctx, file.path, explicitFingerprint);
 	if (!fp) return 0;
 
-	const transformer = new VaultLinkTransformer(app);
+	const transformer = new VaultLinkTransformer(ctx.app);
 	return transformer.transformFile(file, async (_match, linkText) => {
-		const parsed = IPFSLink.parse(linkText);
-		if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
-
-		const buffer = await loadFileContent(app, cas, urlResolver, linkText);
-		if (!buffer) return undefined;
-
-		const origFile = new File([new Blob([buffer])], parsed.filename, {
-			type: parsed.resolveMimeType(),
-		});
-		let encryptedFile: File;
-		try {
-			encryptedFile = await encryptionService.ensureEncrypted(
-				origFile,
-				fp,
-			);
-		} catch {
-			return undefined;
-		}
-
-		const { cid: newCid } = await cas.save(dir, encryptedFile);
-		if (!newCid.equals(parsed.cid)) {
-			await trashIfUnreferenced(
-				cas,
-				referenceManager,
-				parsed.cid,
-				file.path,
-			);
-		}
-
-		return new IPFSLink({
-			cid: newCid,
-			filename: encryptedFile.name,
-			format: ENCRYPTED_FORMAT,
-		}).toURL();
+		return encryptSingleLink(ctx, linkText, file.path, fp);
 	});
 }
+
+// #endregion

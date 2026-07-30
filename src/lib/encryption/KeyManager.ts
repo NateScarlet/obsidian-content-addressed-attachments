@@ -15,7 +15,7 @@ interface KeysStorageData {
 	keys: Record<string, SecretEntry>;
 }
 
-export class KeyManager {
+export default class KeyManager {
 	constructor(
 		private storage: KeyStorage,
 		private getSettings: () => Pick<Settings, "encryptionKeysSecretId">,
@@ -29,8 +29,23 @@ export class KeyManager {
 		);
 	}
 
-	/** 设置存储密钥的 secret ID */
+	/** 设置存储密钥的 secret ID，切换时校验新 ID 下已有数据确保格式兼容 */
 	async setKeysStorageId(id: string): Promise<void> {
+		// 校验新 ID 下的已有数据，避免意外覆盖其他密钥
+		const stored = await this.storage.getSecret(id);
+		if (stored) {
+			try {
+				const data = JSON.parse(stored) as { version?: unknown; keys?: unknown };
+				if (data.version !== 1 || !data.keys || typeof data.keys !== "object") {
+					throw new Error("Invalid keys storage format");
+				}
+			} catch (err) {
+				throw new Error(
+					`Secret "${id}" already contains data that is not a valid keys storage. ` +
+					`Choose a different ID to avoid overwriting existing secrets.`,
+				);
+			}
+		}
 		const settings = this.getSettings();
 		settings.encryptionKeysSecretId = id;
 		await this.saveSettings();

@@ -31,13 +31,14 @@ import {
 	decryptLink,
 	isEncryptedLink,
 	findLinkAtPos,
+	type EncryptContext,
 } from "./commands/convertAttachment";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
-import { IPFSLink } from "./utils/IPFSLink";
+import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
-import { KeyManager } from "./lib/encryption/KeyManager";
+import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
@@ -231,46 +232,44 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							? ipfsLink.url.toURL()
 							: undefined;
 					if (!rawText) return;
-					const isEncrypted = isEncryptedLink(rawText);
-					if (isEncrypted) {
-						menu.addItem((item) => {
-							item.setTitle(t("decryptLink"))
-								.setIcon("lock-open")
-								.onClick(() => {
-									decryptLink(
-										this.app,
-										this.cas,
-										this.encryptionService,
-										this.urlResolver,
-										this.referenceManger,
-										this.settings.primaryDir,
-										editor,
-										ipfsLink,
-										view.file?.path,
-									).catch(showError);
-								});
-						});
-					} else {
-						menu.addItem((item) => {
-							item.setTitle(t("encryptLink"))
-								.setIcon("lock")
-								.onClick(() => {
-									encryptLink(
-										this.app,
-										this.cas,
-										this.encryptionService,
-										this.urlResolver,
-										this.referenceManger,
-										this.settings.primaryDir,
-										editor,
-										ipfsLink,
-										view.file?.path,
-										this.keyManager,
-										this.encryptPathPolicy,
-									).catch(showError);
-								});
-						});
-					}
+						const ctx: EncryptContext = {
+							app: this.app,
+							cas: this.cas,
+							encryptionService: this.encryptionService,
+							urlResolver: this.urlResolver,
+							referenceManager: this.referenceManger,
+							dir: this.settings.primaryDir,
+							keyManager: this.keyManager,
+							encryptPathPolicy: this.encryptPathPolicy,
+						};
+						const isEncrypted = isEncryptedLink(rawText);
+						if (isEncrypted) {
+							menu.addItem((item) => {
+								item.setTitle(t("decryptLink"))
+									.setIcon("lock-open")
+									.onClick(() => {
+										decryptLink(
+											ctx,
+											editor,
+											ipfsLink,
+											view.file?.path,
+										).catch(showError);
+									});
+							});
+						} else {
+							menu.addItem((item) => {
+								item.setTitle(t("encryptLink"))
+									.setIcon("lock")
+									.onClick(() => {
+										encryptLink(
+											ctx,
+											editor,
+											ipfsLink,
+											view.file?.path,
+										).catch(showError);
+									});
+							});
+						}
 					return;
 				}
 

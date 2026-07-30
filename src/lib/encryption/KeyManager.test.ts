@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { KeyManager } from "./KeyManager";
+import KeyManager from "./KeyManager";
 import type { KeyStorage, SecretEntry } from "./types";
 import * as cryptoUtils from "./cryptoUtils";
 
