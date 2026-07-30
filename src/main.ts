@@ -232,45 +232,45 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							? ipfsLink.url.toURL()
 							: undefined;
 					if (!rawText) return;
-						const ctx: EncryptContext = {
-								app: this.app,
-								cas: this.cas,
-								encryptionService: this.encryptionService,
-								urlResolver: this.urlResolver,
-								referenceManager: this.referenceManger,
-								keyManager: this.keyManager,
-								encryptPathPolicy: this.encryptPathPolicy,
-							};
-							const isEncrypted = isEncryptedLink(rawText);
-							if (isEncrypted) {
-								menu.addItem((item) => {
-									item.setTitle(t("decryptLink"))
-										.setIcon("lock-open")
-										.onClick(() => {
-											decryptLink(
-												ctx,
-												editor,
-												ipfsLink,
-												view.file?.path,
-												this.settings.primaryDir,
-											).catch(showError);
-										});
+					const ctx: EncryptContext = {
+						app: this.app,
+						cas: this.cas,
+						encryptionService: this.encryptionService,
+						urlResolver: this.urlResolver,
+						referenceManager: this.referenceManger,
+						keyManager: this.keyManager,
+						encryptPathPolicy: this.encryptPathPolicy,
+					};
+					const isEncrypted = isEncryptedLink(rawText);
+					if (isEncrypted) {
+						menu.addItem((item) => {
+							item.setTitle(t("decryptLink"))
+								.setIcon("lock-open")
+								.onClick(() => {
+									decryptLink(
+										ctx,
+										editor,
+										ipfsLink,
+										view.file?.path,
+										this.settings.primaryDir,
+									).catch(showError);
 								});
-							} else {
-								menu.addItem((item) => {
-									item.setTitle(t("encryptLink"))
-										.setIcon("lock")
-										.onClick(() => {
-											encryptLink(
-												ctx,
-												editor,
-												ipfsLink,
-												view.file?.path,
-												this.settings.primaryDir,
-											).catch(showError);
-										});
+						});
+					} else {
+						menu.addItem((item) => {
+							item.setTitle(t("encryptLink"))
+								.setIcon("lock")
+								.onClick(() => {
+									encryptLink(
+										ctx,
+										editor,
+										ipfsLink,
+										view.file?.path,
+										this.settings.primaryDir,
+									).catch(showError);
 								});
-							}
+						});
+					}
 					return;
 				}
 
@@ -309,26 +309,27 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		//#endregion
 
 		// 解密缓存清理：当布局变化（笔记关闭/切换）时触发
-			this.registerEvent(
-				this.app.workspace.on("layout-change", () => {
-					const plugin = this;
-					this.urlResolver.cleanupDecryptedCache(async function* () {
-						for (const leaf of plugin.app.workspace.getLeavesOfType(
-							"markdown",
-						)) {
-							const view = leaf.view;
-							if (!(view instanceof MarkdownView) || !view.file) continue;
-							const content = view.editor.getValue();
-							for (const match of findIPFSLinks(content)) {
-								const parsed = IPFSLink.parse(match.url.toString());
-								if (parsed) {
-									yield parsed.cid.toString();
-								}
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				const { app } = this;
+				this.urlResolver.cleanupDecryptedCache(function* () {
+					for (const leaf of app.workspace.getLeavesOfType(
+						"markdown",
+					)) {
+						const view = leaf.view;
+						if (!(view instanceof MarkdownView) || !view.file)
+							continue;
+						const content = view.editor.getValue();
+						for (const match of findIPFSLinks(content)) {
+							const parsed = IPFSLink.parse(match.url.toString());
+							if (parsed) {
+								yield parsed.cid.toString();
 							}
 						}
-					});
-				}),
-			);
+					}
+				});
+			}),
+		);
 
 		this.addCommand({
 			id: "insert-attachment",

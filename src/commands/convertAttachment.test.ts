@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { encryptLink, decryptLink, findLinkAtPos, type EncryptContext } from "./convertAttachment";
+import {
+	encryptLink,
+	decryptLink,
+	findLinkAtPos,
+	type EncryptContext,
+} from "./convertAttachment";
 import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import IPFSLink from "#src/utils/IPFSLink";
@@ -162,12 +167,12 @@ describe("convertAttachment", () => {
 			const editor = createMockEditor(markdown);
 
 			await encryptLink(
-					mockEncryptContext,
-					editor,
-					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
-					undefined,
-					"attachments",
-				);
+				mockEncryptContext,
+				editor,
+				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+				undefined,
+				"attachments",
+			);
 
 			const resultDoc = editor.getEditorContent();
 			expect(resultDoc.startsWith("Intro ![photo.png|200](ipfs://")).toBe(
@@ -191,12 +196,12 @@ describe("convertAttachment", () => {
 			const editor = createMockEditor(markdown);
 
 			await decryptLink(
-					mockEncryptContext,
-					editor,
-					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
-					undefined,
-					"attachments",
-				);
+				mockEncryptContext,
+				editor,
+				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+				undefined,
+				"attachments",
+			);
 
 			const resultDoc = editor.getEditorContent();
 			expect(resultDoc.startsWith("Intro ![photo.png|200](ipfs://")).toBe(
@@ -233,19 +238,19 @@ describe("convertAttachment", () => {
 
 			const editor = createMockEditor(markdown);
 
-				const ctx: EncryptContext = {
-					...mockEncryptContext,
-					cas,
-					referenceManager: refMgr,
-				};
+			const ctx: EncryptContext = {
+				...mockEncryptContext,
+				cas,
+				referenceManager: refMgr,
+			};
 
-				await encryptLink(
-					ctx,
-					editor,
-					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
-					"CurrentNote.md",
-					"attachments",
-				);
+			await encryptLink(
+				ctx,
+				editor,
+				ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+				"CurrentNote.md",
+				"attachments",
+			);
 
 			expect(localTrash).not.toHaveBeenCalled();
 		});

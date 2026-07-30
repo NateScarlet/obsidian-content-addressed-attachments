@@ -370,7 +370,10 @@ export class URLResolver {
 			const maxBlob = this.settings().maxBlobSize;
 
 			if (size <= maxBlob) {
-				const url = this.cacheManager.createBlobUrl(encryptedPath, decrypted.toBlob());
+				const url = this.cacheManager.createBlobUrl(
+					encryptedPath,
+					decrypted.toBlob(),
+				);
 				return { url, path: encryptedPath };
 			}
 
@@ -418,21 +421,23 @@ export class URLResolver {
 	 * 缓存文件命名格式为 `<cid>.decrypted`，直接扫描缓存目录匹配此模式，
 	 * 而非维护内存映射，确保应用中途崩溃后残留文件也能被正确清理。
 	 */
-	cleanupDecryptedCache(getActiveCids: () => AsyncIterable<string>): void {
+	cleanupDecryptedCache(
+		getActiveCids: () => Iterable<string> | AsyncIterable<string>,
+	): void {
 		if (this.cleanupTimer) {
 			window.clearTimeout(this.cleanupTimer);
 		}
 
 		this.cleanupTimer = window.setTimeout(() => {
-				void (async () => {
-					this.cleanupTimer = undefined;
-					const cacheDir = this.settings().decryptedCacheDir;
+			void (async () => {
+				this.cleanupTimer = undefined;
+				const cacheDir = this.settings().decryptedCacheDir;
 
-					// 早期返回：无缓存可清理
-						if (this.cacheManager.blobCount === 0 && !cacheDir) return;
+				// 早期返回：无缓存可清理
+				if (this.cacheManager.blobCount === 0 && !cacheDir) return;
 
-					// 清理磁盘缓存文件：逐个检查缓存文件，对每个文件用生成器惰性查找活跃 CID，
-					// 利用生成器的提前中止特性，找到匹配即停止扫描，避免不必要的全量收集。
+				// 清理磁盘缓存文件：逐个检查缓存文件，对每个文件用生成器惰性查找活跃 CID，
+				// 利用生成器的提前中止特性，找到匹配即停止扫描，避免不必要的全量收集。
 				if (cacheDir) {
 					try {
 						const cacheDirExists =
@@ -480,11 +485,11 @@ export class URLResolver {
 				}
 
 				// 清理不再引用的 blob URL：收集活跃 CID 用于 Set 查找
-					const activeCids = new Set<string>();
-					for await (const cid of getActiveCids()) {
-						activeCids.add(cid);
-					}
-					this.cacheManager.revokeStaleBlobs(activeCids);
+				const activeCids = new Set<string>();
+				for await (const cid of getActiveCids()) {
+					activeCids.add(cid);
+				}
+				this.cacheManager.revokeStaleBlobs(activeCids);
 			})();
 		}, 30_000);
 	}

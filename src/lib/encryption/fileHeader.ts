@@ -36,7 +36,9 @@ export function bytesToHex(bytes: Uint8Array): string {
 }
 
 /** 从加密文件数据中解析头部信息，格式错误返回 undefined */
-export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader | undefined {
+export function parseHeader(
+	encryptedData: ArrayBuffer,
+): EncryptedFileHeader | undefined {
 	// 最小 Header 长度: 4(Magic) + 2(Version) + 8(FP) + 12(IV) + 16(Tag) + 2(FmtLen) = 44 字节
 	if (encryptedData.byteLength < 44) {
 		return undefined;
@@ -76,5 +78,11 @@ export function parseHeader(encryptedData: ArrayBuffer): EncryptedFileHeader | u
 	offset += fmtLen;
 	const originalFormat = new TextDecoder().decode(fmtBytes);
 
-	return { keyFingerprint, iv, authTag, originalFormat, ciphertextOffset: offset };
+	return {
+		keyFingerprint,
+		iv,
+		authTag,
+		originalFormat,
+		ciphertextOffset: offset,
+	};
 }

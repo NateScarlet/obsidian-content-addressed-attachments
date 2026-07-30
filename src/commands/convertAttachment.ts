@@ -97,8 +97,10 @@ async function resolveEncryptFingerprint(
 		const key = await ctx.keyManager.getKeyForEncrypt(explicitFingerprint);
 		if (key) return explicitFingerprint;
 	}
-	return (await ctx.encryptPathPolicy?.resolveKey(notePath)) ??
-		(await ctx.keyManager.getPrimaryKey())?.fingerprint;
+	return (
+		(await ctx.encryptPathPolicy?.resolveKey(notePath)) ??
+		(await ctx.keyManager.getPrimaryKey())?.fingerprint
+	);
 }
 
 /**
@@ -115,10 +117,19 @@ async function encryptSingleLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
-	const buffer = await loadFileContent(ctx.app, ctx.cas, ctx.urlResolver, linkText);
+	const buffer = await loadFileContent(
+		ctx.app,
+		ctx.cas,
+		ctx.urlResolver,
+		linkText,
+	);
 	if (!buffer) return undefined;
 
-	const fingerprint = await resolveEncryptFingerprint(ctx, notePath, explicitFingerprint);
+	const fingerprint = await resolveEncryptFingerprint(
+		ctx,
+		notePath,
+		explicitFingerprint,
+	);
 	if (!fingerprint) return undefined;
 
 	const rawFile = new File([new Blob([buffer])], parsed.filename, {
@@ -126,14 +137,22 @@ async function encryptSingleLink(
 	});
 	let encryptedFile: File;
 	try {
-		encryptedFile = await ctx.encryptionService.ensureEncrypted(rawFile, fingerprint);
+		encryptedFile = await ctx.encryptionService.ensureEncrypted(
+			rawFile,
+			fingerprint,
+		);
 	} catch {
 		return undefined;
 	}
 
 	const { cid: newCid } = await ctx.cas.save(dir, encryptedFile);
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid, notePath);
+		await trashIfUnreferenced(
+			ctx.cas,
+			ctx.referenceManager,
+			parsed.cid,
+			notePath,
+		);
 	}
 
 	return new IPFSLink({
@@ -184,7 +203,12 @@ export async function decryptLink(
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format !== ENCRYPTED_FORMAT) return;
 
-	const buffer = await loadFileContent(ctx.app, ctx.cas, ctx.urlResolver, linkText);
+	const buffer = await loadFileContent(
+		ctx.app,
+		ctx.cas,
+		ctx.urlResolver,
+		linkText,
+	);
 	if (!buffer) {
 		new Notice("File not found");
 		return;
@@ -201,7 +225,12 @@ export async function decryptLink(
 	});
 	const { cid: newCid } = await ctx.cas.save(dir, file);
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid, notePath);
+		await trashIfUnreferenced(
+			ctx.cas,
+			ctx.referenceManager,
+			parsed.cid,
+			notePath,
+		);
 	}
 	const newURL = new IPFSLink({
 		cid: newCid,
@@ -238,7 +267,11 @@ export async function encryptNote(
 	dir: string,
 	explicitFingerprint?: string,
 ): Promise<number> {
-	const fp = await resolveEncryptFingerprint(ctx, file.path, explicitFingerprint);
+	const fp = await resolveEncryptFingerprint(
+		ctx,
+		file.path,
+		explicitFingerprint,
+	);
 	if (!fp) return 0;
 
 	const transformer = new VaultLinkTransformer(ctx.app);

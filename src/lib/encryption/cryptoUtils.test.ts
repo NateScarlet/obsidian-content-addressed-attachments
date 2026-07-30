@@ -12,10 +12,10 @@ describe("CryptoService pure functions", () => {
 		});
 
 		it("throws error when hex string has odd length", () => {
-				expect(() => hexToBytes("123")).toThrow(
-					"Invalid hex string length",
-				);
-			});
+			expect(() => hexToBytes("123")).toThrow(
+				"Invalid hex string length",
+			);
+		});
 	});
 
 	describe("generateKey", () => {

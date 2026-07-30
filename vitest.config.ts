@@ -1,3 +1,4 @@
+/* eslint-disable import/no-nodejs-modules -- vitest config requires Node.js builtins */
 import { defineConfig } from "vitest/config";
 import path from "path";
 

@@ -5,7 +5,7 @@
 	import { SecretComponent, Setting, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
 	import defineLocales from "#src/utils/defineLocales";
-	import KeyManager, { DEFAULT_KEYS_STORAGE_ID } from "./encryption/KeyManager";
+	import KeyManager from "./encryption/KeyManager";
 	import { onMount } from "svelte";
 
 	const { t } = defineLocales({

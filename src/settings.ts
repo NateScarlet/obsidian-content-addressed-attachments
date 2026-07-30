@@ -37,7 +37,7 @@ interface SettingsV0 {
 }
 
 interface SettingsV1Input {
-		version: 1;
+	version: 1;
 	primaryDir?: string;
 	downloadDir?: string;
 	gateways?: GatewayConfig[];
@@ -47,10 +47,7 @@ interface SettingsV1Input {
 	encryptionKeysSecretId?: string;
 }
 
-export type SettingsInput =
-	| SettingsV0
-	| SettingsV1Input
-	| { version: number };
+export type SettingsInput = SettingsV0 | SettingsV1Input | { version: number };
 
 export function settingsFromInput(
 	input: SettingsInput | null | undefined,

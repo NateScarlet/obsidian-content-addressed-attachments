@@ -28,7 +28,10 @@ class EncryptPathRuleMatcher {
  * - **`ensureEncrypted(input, notePath)`**: 策略层确保加密（匹配路径规则则调 `encryptionService.ensureEncrypted` 加密；未匹配规则则返回 `undefined`）。
  */
 export default class EncryptPathPolicy {
-	private matcherCache = new WeakMap<EncryptPathRule, EncryptPathRuleMatcher>();
+	private matcherCache = new WeakMap<
+		EncryptPathRule,
+		EncryptPathRuleMatcher
+	>();
 
 	constructor(
 		private readonly keyManager: KeyManager,
@@ -41,28 +44,34 @@ export default class EncryptPathPolicy {
 		const rules = this.getRules();
 		// 按密钥 priority 排序：空密钥视为负无穷 priority，其余按密钥 priority 降序
 		const allKeys = await this.keyManager.listKeys();
-		const priorityMap = new Map(allKeys.map((k) => [k.fingerprint, k.priority]));
+		const priorityMap = new Map(
+			allKeys.map((k) => [k.fingerprint, k.priority]),
+		);
 		const sorted = [...rules].sort((a, b) => {
-			const pa = a.keyFingerprint ? (priorityMap.get(a.keyFingerprint) ?? -Infinity) : -Infinity;
-			const pb = b.keyFingerprint ? (priorityMap.get(b.keyFingerprint) ?? -Infinity) : -Infinity;
+			const pa = a.keyFingerprint
+				? (priorityMap.get(a.keyFingerprint) ?? -Infinity)
+				: -Infinity;
+			const pb = b.keyFingerprint
+				? (priorityMap.get(b.keyFingerprint) ?? -Infinity)
+				: -Infinity;
 			return pb - pa;
 		});
 		const matchedRule = sorted.find((r) => {
-				let m = this.matcherCache.get(r);
-				if (!m) {
-					m = new EncryptPathRuleMatcher(r);
-					this.matcherCache.set(r, m);
-				}
-				return m.match(notePath);
-			});
-			if (!matchedRule) return undefined;
-
-			if (matchedRule.keyFingerprint) {
-				const key = await this.keyManager.getKeyForEncrypt(
-					matchedRule.keyFingerprint,
-				);
-				if (key) return matchedRule.keyFingerprint;
+			let m = this.matcherCache.get(r);
+			if (!m) {
+				m = new EncryptPathRuleMatcher(r);
+				this.matcherCache.set(r, m);
 			}
+			return m.match(notePath);
+		});
+		if (!matchedRule) return undefined;
+
+		if (matchedRule.keyFingerprint) {
+			const key = await this.keyManager.getKeyForEncrypt(
+				matchedRule.keyFingerprint,
+			);
+			if (key) return matchedRule.keyFingerprint;
+		}
 
 		return (await this.keyManager.getPrimaryKey())?.fingerprint;
 	}

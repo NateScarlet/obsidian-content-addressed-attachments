@@ -28,12 +28,12 @@ describe("settingsFromInput", () => {
 	});
 
 	it("throws error when encountering unsupported future settings version (> 1)", () => {
-			expect(() =>
-				settingsFromInput({
-					version: 2,
-				}),
-			).toThrow("Unsupported settings version 2");
-		});
+		expect(() =>
+			settingsFromInput({
+				version: 2,
+			}),
+		).toThrow("Unsupported settings version 2");
+	});
 
 	it("respects user decision when gateways array is explicitly empty []", () => {
 		const resultEmpty = settingsFromInput({

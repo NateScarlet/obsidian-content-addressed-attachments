@@ -2,7 +2,9 @@ import type KeyManager from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
 import { parseHeader } from "./fileHeader";
-import toArrayBufferFromBinary, { type BinaryInput } from "#src/utils/toArrayBuffer";
+import toArrayBufferFromBinary, {
+	type BinaryInput,
+} from "#src/utils/toArrayBuffer";
 
 /** 加密层信息 */
 export type EncryptionLayer = { header: EncryptedFileHeader };
@@ -77,13 +79,13 @@ export default class EncryptionService {
 		}
 
 		return {
-				data: currentBuffer,
-				mimeType,
-				layers,
-				toBlob() {
-					return new Blob([currentBuffer], { type: mimeType });
-				},
-			};
+			data: currentBuffer,
+			mimeType,
+			layers,
+			toBlob() {
+				return new Blob([currentBuffer], { type: mimeType });
+			},
+		};
 	}
 
 	/**
@@ -98,24 +100,24 @@ export default class EncryptionService {
 		keyFingerprint?: string,
 	): Promise<File> {
 		let key: CryptoKey | undefined;
-			let fingerprint: string | undefined;
+		let fingerprint: string | undefined;
 
-			if (keyFingerprint) {
-				key = await this.keyManager.getKeyForEncrypt(keyFingerprint);
-				if (key) fingerprint = keyFingerprint;
-			}
+		if (keyFingerprint) {
+			key = await this.keyManager.getKeyForEncrypt(keyFingerprint);
+			if (key) fingerprint = keyFingerprint;
+		}
 
-			if (!key) {
-				const primary = await this.keyManager.getPrimaryKey();
-				if (primary) {
-					fingerprint = primary.fingerprint;
-					key = await this.keyManager.getKeyForEncrypt(fingerprint);
-				}
+		if (!key) {
+			const primary = await this.keyManager.getPrimaryKey();
+			if (primary) {
+				fingerprint = primary.fingerprint;
+				key = await this.keyManager.getKeyForEncrypt(fingerprint);
 			}
+		}
 
-			if (!key || !fingerprint) {
-				throw new Error("No encryption key available for encryption");
-			}
+		if (!key || !fingerprint) {
+			throw new Error("No encryption key available for encryption");
+		}
 
 		const buffer = await toArrayBufferFromBinary(input);
 		const filename = input instanceof File ? input.name : "attachment";

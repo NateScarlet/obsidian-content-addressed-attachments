@@ -35,14 +35,21 @@ export default class KeyManager {
 		const stored = await this.storage.getSecret(id);
 		if (stored) {
 			try {
-				const data = JSON.parse(stored) as { version?: unknown; keys?: unknown };
-				if (data.version !== 1 || !data.keys || typeof data.keys !== "object") {
+				const data = JSON.parse(stored) as {
+					version?: unknown;
+					keys?: unknown;
+				};
+				if (
+					data.version !== 1 ||
+					!data.keys ||
+					typeof data.keys !== "object"
+				) {
 					throw new Error("Invalid keys storage format");
 				}
-			} catch (err) {
+			} catch {
 				throw new Error(
 					`Secret "${id}" already contains data that is not a valid keys storage. ` +
-					`Choose a different ID to avoid overwriting existing secrets.`,
+						`Choose a different ID to avoid overwriting existing secrets.`,
 				);
 			}
 		}
