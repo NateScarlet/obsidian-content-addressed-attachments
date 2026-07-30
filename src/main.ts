@@ -233,43 +233,44 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							: undefined;
 					if (!rawText) return;
 						const ctx: EncryptContext = {
-							app: this.app,
-							cas: this.cas,
-							encryptionService: this.encryptionService,
-							urlResolver: this.urlResolver,
-							referenceManager: this.referenceManger,
-							dir: this.settings.primaryDir,
-							keyManager: this.keyManager,
-							encryptPathPolicy: this.encryptPathPolicy,
-						};
-						const isEncrypted = isEncryptedLink(rawText);
-						if (isEncrypted) {
-							menu.addItem((item) => {
-								item.setTitle(t("decryptLink"))
-									.setIcon("lock-open")
-									.onClick(() => {
-										decryptLink(
-											ctx,
-											editor,
-											ipfsLink,
-											view.file?.path,
-										).catch(showError);
-									});
-							});
-						} else {
-							menu.addItem((item) => {
-								item.setTitle(t("encryptLink"))
-									.setIcon("lock")
-									.onClick(() => {
-										encryptLink(
-											ctx,
-											editor,
-											ipfsLink,
-											view.file?.path,
-										).catch(showError);
-									});
-							});
-						}
+								app: this.app,
+								cas: this.cas,
+								encryptionService: this.encryptionService,
+								urlResolver: this.urlResolver,
+								referenceManager: this.referenceManger,
+								keyManager: this.keyManager,
+								encryptPathPolicy: this.encryptPathPolicy,
+							};
+							const isEncrypted = isEncryptedLink(rawText);
+							if (isEncrypted) {
+								menu.addItem((item) => {
+									item.setTitle(t("decryptLink"))
+										.setIcon("lock-open")
+										.onClick(() => {
+											decryptLink(
+												ctx,
+												editor,
+												ipfsLink,
+												view.file?.path,
+												this.settings.primaryDir,
+											).catch(showError);
+										});
+								});
+							} else {
+								menu.addItem((item) => {
+									item.setTitle(t("encryptLink"))
+										.setIcon("lock")
+										.onClick(() => {
+											encryptLink(
+												ctx,
+												editor,
+												ipfsLink,
+												view.file?.path,
+												this.settings.primaryDir,
+											).catch(showError);
+										});
+								});
+							}
 					return;
 				}
 

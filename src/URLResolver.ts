@@ -431,13 +431,8 @@ export class URLResolver {
 					// 早期返回：无缓存可清理
 						if (this.cacheManager.blobCount === 0 && !cacheDir) return;
 
-					// 收集活跃 CID
-					const activeCids = new Set<string>();
-					for await (const cid of getActiveCids()) {
-						activeCids.add(cid);
-					}
-
-					// 清理磁盘缓存文件
+					// 清理磁盘缓存文件：逐个检查缓存文件，对每个文件用生成器惰性查找活跃 CID，
+					// 利用生成器的提前中止特性，找到匹配即停止扫描，避免不必要的全量收集。
 				if (cacheDir) {
 					try {
 						const cacheDirExists =
@@ -454,7 +449,15 @@ export class URLResolver {
 									0,
 									-".decrypted".length,
 								);
-								if (!activeCids.has(cid)) {
+								// 惰性检查：遍历活跃 CID 生成器，找到匹配即提前中止
+								let isActive = false;
+								for await (const activeCid of getActiveCids()) {
+									if (activeCid === cid) {
+										isActive = true;
+										break;
+									}
+								}
+								if (!isActive) {
 									try {
 										await this.app.vault.adapter.remove(
 											filePath,
@@ -476,7 +479,11 @@ export class URLResolver {
 					}
 				}
 
-				// 清理不再引用的 blob URL
+				// 清理不再引用的 blob URL：收集活跃 CID 用于 Set 查找
+					const activeCids = new Set<string>();
+					for await (const cid of getActiveCids()) {
+						activeCids.add(cid);
+					}
 					this.cacheManager.revokeStaleBlobs(activeCids);
 			})();
 		}, 30_000);

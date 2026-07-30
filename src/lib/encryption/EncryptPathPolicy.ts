@@ -39,11 +39,13 @@ export default class EncryptPathPolicy {
 	/** 根据笔记路径和规则解析应使用的 keyFingerprint */
 	async resolveKey(notePath: string): Promise<string | undefined> {
 		const rules = this.getRules();
-		// 排序：空密钥规则优先，保持其余原有顺序
+		// 按密钥 priority 排序：空密钥视为负无穷 priority，其余按密钥 priority 降序
+		const allKeys = await this.keyManager.listKeys();
+		const priorityMap = new Map(allKeys.map((k) => [k.fingerprint, k.priority]));
 		const sorted = [...rules].sort((a, b) => {
-			if (!a.keyFingerprint && b.keyFingerprint) return -1;
-			if (a.keyFingerprint && !b.keyFingerprint) return 1;
-			return 0;
+			const pa = a.keyFingerprint ? (priorityMap.get(a.keyFingerprint) ?? -Infinity) : -Infinity;
+			const pb = b.keyFingerprint ? (priorityMap.get(b.keyFingerprint) ?? -Infinity) : -Infinity;
+			return pb - pa;
 		});
 		const matchedRule = sorted.find((r) => {
 				let m = this.matcherCache.get(r);

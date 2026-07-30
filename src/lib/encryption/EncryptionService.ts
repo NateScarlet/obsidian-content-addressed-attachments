@@ -2,7 +2,7 @@ import type KeyManager from "./KeyManager";
 import * as cryptoUtils from "./cryptoUtils";
 import { ENCRYPTED_FORMAT, type EncryptedFileHeader } from "./types";
 import { parseHeader } from "./fileHeader";
-import { toArrayBufferFromBinary, type BinaryInput } from "#src/utils/toArrayBuffer";
+import toArrayBufferFromBinary, { type BinaryInput } from "#src/utils/toArrayBuffer";
 
 /** 加密层信息 */
 export type EncryptionLayer = { header: EncryptedFileHeader };

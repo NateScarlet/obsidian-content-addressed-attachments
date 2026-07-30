@@ -8,7 +8,7 @@ import {
 	hexToBytes,
 	parseHeader,
 } from "./fileHeader";
-import toArrayBuffer from "#src/utils/toArrayBuffer";
+import { toArrayBuffer } from "#src/utils/toArrayBuffer";
 
 export const CURRENT_SETTINGS_VERSION = 1;
 

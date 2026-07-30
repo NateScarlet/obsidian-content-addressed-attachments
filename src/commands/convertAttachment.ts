@@ -36,7 +36,6 @@ export interface EncryptContext {
 	encryptionService: EncryptionService;
 	urlResolver: URLResolver;
 	referenceManager: ReferenceManager;
-	dir: string;
 	keyManager: KeyManager;
 	encryptPathPolicy?: EncryptPathPolicy;
 }
@@ -110,6 +109,7 @@ async function encryptSingleLink(
 	ctx: EncryptContext,
 	linkText: string,
 	notePath: string,
+	dir: string,
 	explicitFingerprint?: string,
 ): Promise<string | undefined> {
 	const parsed = IPFSLink.parse(linkText);
@@ -131,7 +131,7 @@ async function encryptSingleLink(
 		return undefined;
 	}
 
-	const { cid: newCid } = await ctx.cas.save(ctx.dir, encryptedFile);
+	const { cid: newCid } = await ctx.cas.save(dir, encryptedFile);
 	if (!newCid.equals(parsed.cid)) {
 		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid, notePath);
 	}
@@ -151,13 +151,14 @@ export async function encryptLink(
 	ctx: EncryptContext,
 	editor: Editor,
 	match: IPFSLinkMatch,
-	notePath?: string,
+	notePath: string | undefined,
+	dir: string,
 ): Promise<void> {
 	const linkText =
 		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
 	if (!linkText) return;
 
-	const newURL = await encryptSingleLink(ctx, linkText, notePath ?? "");
+	const newURL = await encryptSingleLink(ctx, linkText, notePath ?? "", dir);
 	if (!newURL) {
 		new Notice(t("noKeyAvailable"));
 		return;
@@ -174,7 +175,8 @@ export async function decryptLink(
 	ctx: EncryptContext,
 	editor: Editor,
 	match: IPFSLinkMatch,
-	notePath?: string,
+	notePath: string | undefined,
+	dir: string,
 ): Promise<void> {
 	const linkText =
 		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
@@ -197,7 +199,7 @@ export async function decryptLink(
 	const file = new File([decrypted.toBlob()], parsed.filename || "file", {
 		type: decrypted.mimeType,
 	});
-	const { cid: newCid } = await ctx.cas.save(ctx.dir, file);
+	const { cid: newCid } = await ctx.cas.save(dir, file);
 	if (!newCid.equals(parsed.cid)) {
 		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid, notePath);
 	}
@@ -233,6 +235,7 @@ export function isEncryptedLink(linkText: string): boolean {
 export async function encryptNote(
 	ctx: EncryptContext,
 	file: TFile,
+	dir: string,
 	explicitFingerprint?: string,
 ): Promise<number> {
 	const fp = await resolveEncryptFingerprint(ctx, file.path, explicitFingerprint);
@@ -240,7 +243,7 @@ export async function encryptNote(
 
 	const transformer = new VaultLinkTransformer(ctx.app);
 	return transformer.transformFile(file, async (_match, linkText) => {
-		return encryptSingleLink(ctx, linkText, file.path, fp);
+		return encryptSingleLink(ctx, linkText, file.path, dir, fp);
 	});
 }
 

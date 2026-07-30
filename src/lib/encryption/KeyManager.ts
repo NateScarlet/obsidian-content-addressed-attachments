@@ -49,6 +49,8 @@ export default class KeyManager {
 		const settings = this.getSettings();
 		settings.encryptionKeysSecretId = id;
 		await this.saveSettings();
+		// 重新加载新 ID 下的密钥数据，确保数据一致性
+		await this.loadKeysData();
 	}
 
 	/** 读取并解析密钥存储数据 */

@@ -89,7 +89,6 @@ describe("convertAttachment", () => {
 		encryptionService: mockEncryptionService,
 		urlResolver: mockUrlResolver,
 		referenceManager: mockReferenceManager,
-		dir: "attachments",
 		keyManager: mockKeyManager,
 	};
 
@@ -166,6 +165,8 @@ describe("convertAttachment", () => {
 					mockEncryptContext,
 					editor,
 					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+					undefined,
+					"attachments",
 				);
 
 			const resultDoc = editor.getEditorContent();
@@ -193,6 +194,8 @@ describe("convertAttachment", () => {
 					mockEncryptContext,
 					editor,
 					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
+					undefined,
+					"attachments",
 				);
 
 			const resultDoc = editor.getEditorContent();
@@ -241,6 +244,7 @@ describe("convertAttachment", () => {
 					editor,
 					ipfsLinkMatch(rawUrl, urlStart, urlEnd),
 					"CurrentNote.md",
+					"attachments",
 				);
 
 			expect(localTrash).not.toHaveBeenCalled();
