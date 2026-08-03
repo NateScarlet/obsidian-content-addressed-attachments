@@ -124,7 +124,7 @@
 		app: App;
 		ExportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
 		ImportKeysModal: new (app: App, keyManager: KeyManager) => { open(): void };
-		onEncryptMatchingNotes: (keyFingerprint: string, pattern: string) => Promise<void>;
+		onEncryptMatchingNotes: (pattern: string) => Promise<void>;
 	} = $props();
 
 	let secretContainerEl: HTMLDivElement | undefined = $state();
@@ -606,7 +606,7 @@
 								class="text-xs text-accent hover:underline font-medium"
 								title={t("encryptMatchingNotesHint")}
 								onclick={() =>
-									onEncryptMatchingNotes(rule.keyFingerprint, rule.pattern)}
+									onEncryptMatchingNotes(rule.pattern)}
 							>
 								{t("encryptMatchingNotes")}
 							</button>

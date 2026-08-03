@@ -220,10 +220,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						app: this.app,
 						ExportKeysModal,
 						ImportKeysModal,
-						onEncryptMatchingNotes: async (
-							keyFingerprint: string,
-							pattern: string,
-						) => {
+						onEncryptMatchingNotes: async (pattern: string) => {
 							const trimmedPattern = pattern.trim();
 							if (!trimmedPattern) {
 								new Notice(t("noMatchingFiles"));
@@ -259,7 +256,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 									const count = await encryptNote(
 										ctx,
 										file,
-										keyFingerprint,
+										this.plugin.settings.primaryDir,
 									);
 									total += count;
 								}

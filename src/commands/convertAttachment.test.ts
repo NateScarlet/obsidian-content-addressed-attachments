@@ -3,6 +3,7 @@ import {
 	encryptLink,
 	decryptLink,
 	findLinkAtPos,
+	encryptNote,
 	type EncryptContext,
 } from "./convertAttachment";
 import { CID } from "multiformats/cid";
@@ -253,6 +254,55 @@ describe("convertAttachment", () => {
 			);
 
 			expect(localTrash).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("encryptNote", () => {
+		it("saves encrypted file into primaryDir instead of root or key fingerprint", async () => {
+			const rawUrl = `ipfs://${validCIDString}?filename=photo.png&format=image%2Fpng`;
+			const noteContent = `Intro ![photo.png](${rawUrl}) outro`;
+
+			const saveMock = vi.fn().mockResolvedValue({
+				cid: CID.parse(
+					"bafkreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku",
+				),
+			});
+
+			const customCas = {
+				...mockCas,
+				save: saveMock,
+			} as unknown as CAS;
+
+			const mockVault = {
+				read: vi.fn().mockResolvedValue(noteContent),
+				modify: vi.fn().mockResolvedValue(undefined),
+				adapter: {
+					readBinary: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+				},
+			};
+
+			const mockFile = {
+				path: "Secret/Note.md",
+			} as unknown as import("obsidian").TFile;
+
+			const customApp = {
+				...mockApp,
+				vault: mockVault,
+			} as unknown as App;
+
+			const ctx: EncryptContext = {
+				...mockEncryptContext,
+				app: customApp,
+				cas: customCas,
+			};
+
+			const primaryDir = ".attachments/cas";
+
+			const count = await encryptNote(ctx, mockFile, primaryDir);
+
+			expect(count).toBe(1);
+			expect(saveMock).toHaveBeenCalledWith(primaryDir, expect.anything());
+			expect(mockVault.modify).toHaveBeenCalled();
 		});
 	});
 });

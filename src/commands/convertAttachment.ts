@@ -44,7 +44,7 @@ async function trashIfUnreferenced(
 	cas: CAS,
 	referenceManager: ReferenceManager,
 	cid: CID,
-	currentNotePath?: string,
+	currentNotePath: string | undefined,
 ): Promise<void> {
 	const referencingFiles: string[] = [];
 	for await (const path of referenceManager.findFilePath(cid, undefined)) {
@@ -86,17 +86,12 @@ async function loadFileContent(
 
 /**
  * Resolve the encryption key fingerprint for a given note path.
- * Priority: explicit fingerprint → path policy → primary key.
+ * Priority: path policy → primary key.
  */
 async function resolveEncryptFingerprint(
 	ctx: EncryptContext,
 	notePath: string,
-	explicitFingerprint?: string,
 ): Promise<string | undefined> {
-	if (explicitFingerprint) {
-		const key = await ctx.keyManager.getKeyForEncrypt(explicitFingerprint);
-		if (key) return explicitFingerprint;
-	}
 	return (
 		(await ctx.encryptPathPolicy?.resolveKey(notePath)) ??
 		(await ctx.keyManager.getPrimaryKey())?.fingerprint
@@ -112,7 +107,6 @@ async function encryptSingleLink(
 	linkText: string,
 	notePath: string,
 	dir: string,
-	explicitFingerprint?: string,
 ): Promise<string | undefined> {
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
@@ -125,11 +119,7 @@ async function encryptSingleLink(
 	);
 	if (!buffer) return undefined;
 
-	const fingerprint = await resolveEncryptFingerprint(
-		ctx,
-		notePath,
-		explicitFingerprint,
-	);
+	const fingerprint = await resolveEncryptFingerprint(ctx, notePath);
 	if (!fingerprint) return undefined;
 
 	const rawFile = new File([new Blob([buffer])], parsed.filename, {
@@ -265,18 +255,13 @@ export async function encryptNote(
 	ctx: EncryptContext,
 	file: TFile,
 	dir: string,
-	explicitFingerprint?: string,
 ): Promise<number> {
-	const fp = await resolveEncryptFingerprint(
-		ctx,
-		file.path,
-		explicitFingerprint,
-	);
+	const fp = await resolveEncryptFingerprint(ctx, file.path);
 	if (!fp) return 0;
 
 	const transformer = new VaultLinkTransformer(ctx.app);
 	return transformer.transformFile(file, async (_match, linkText) => {
-		return encryptSingleLink(ctx, linkText, file.path, dir, fp);
+		return encryptSingleLink(ctx, linkText, file.path, dir);
 	});
 }
 
