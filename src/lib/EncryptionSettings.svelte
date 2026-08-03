@@ -176,14 +176,20 @@
 				.setName(t("secretStorageId"))
 				.setDesc(t("secretStorageIdDesc"));
 
-			 
 			new SecretComponent(app, setting.controlEl)
 				.setValue(keyManager.getKeysStorageId())
 				.onChange(async (newId) => {
 					await keyManager.setKeysStorageId(newId);
-					await loadKeys();
 				});
 		}
+
+		const unsubscribe = keyManager.onChange(() => {
+			void loadKeys();
+		});
+
+		return () => {
+			unsubscribe();
+		};
 	});
 
 	$effect(() => {

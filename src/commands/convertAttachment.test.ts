@@ -301,7 +301,10 @@ describe("convertAttachment", () => {
 			const count = await encryptNote(ctx, mockFile, primaryDir);
 
 			expect(count).toBe(1);
-			expect(saveMock).toHaveBeenCalledWith(primaryDir, expect.anything());
+			expect(saveMock).toHaveBeenCalledWith(
+				primaryDir,
+				expect.anything(),
+			);
 			expect(mockVault.modify).toHaveBeenCalled();
 		});
 	});

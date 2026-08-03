@@ -16,11 +16,32 @@ interface KeysStorageData {
 }
 
 export default class KeyManager {
+	private listeners = new Set<() => void>();
+
 	constructor(
 		private storage: KeyStorage,
 		private getSettings: () => Pick<Settings, "encryptionKeysSecretId">,
 		private saveSettings: () => Promise<void>,
 	) {}
+
+	/** 订阅密钥存储变更通知 */
+	onChange(cb: () => void): () => void {
+		this.listeners.add(cb);
+		return () => {
+			this.listeners.delete(cb);
+		};
+	}
+
+	/** 广播通知所有订阅者 */
+	private notify(): void {
+		for (const cb of this.listeners) {
+			try {
+				cb();
+			} catch (err) {
+				console.error("Error in KeyManager listener:", err);
+			}
+		}
+	}
 
 	/** 获取当前存储密钥的 secret ID */
 	getKeysStorageId(): string {
@@ -58,6 +79,7 @@ export default class KeyManager {
 		await this.saveSettings();
 		// 重新加载新 ID 下的密钥数据，确保数据一致性
 		await this.loadKeysData();
+		this.notify();
 	}
 
 	/** 读取并解析密钥存储数据 */
@@ -85,6 +107,7 @@ export default class KeyManager {
 			this.getKeysStorageId(),
 			JSON.stringify(data, null, 2),
 		);
+		this.notify();
 	}
 
 	async createKey(name: string): Promise<EncryptionKeyInfo> {
@@ -275,6 +298,7 @@ export default class KeyManager {
 				name: entry.name,
 				createdAt: entry.createdAt,
 				priority: entry.priority ?? 0,
+				...(entry.deletedAt ? { deletedAt: entry.deletedAt } : {}),
 			};
 			imported++;
 		}

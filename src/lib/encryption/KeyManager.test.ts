@@ -232,5 +232,74 @@ describe("KeyManager", () => {
 			const count = await km.importAllKeys(backup, "backup-pass");
 			expect(count).toBe(0);
 		});
+
+		it("preserves deleted state when importing keys from backup", async () => {
+			const activeKey = await km.createKey("active-key");
+			const deletedKey = await km.createKey("deleted-key");
+			await km.deleteKey(deletedKey.fingerprint);
+
+			const backup = await km.exportAllKeys("backup-pass");
+
+			const km2 = new KeyManager(
+				createMockStorage(),
+				createMockSettings,
+				async () => {},
+			);
+			const count = await km2.importAllKeys(backup, "backup-pass");
+
+			expect(count).toBe(2);
+			const activeKeys = await km2.listKeys();
+			expect(activeKeys.length).toBe(1);
+			expect(activeKeys[0].fingerprint).toBe(activeKey.fingerprint);
+
+			const deletedKeys = await km2.listDeletedKeys();
+			expect(deletedKeys.length).toBe(1);
+			expect(deletedKeys[0].fingerprint).toBe(deletedKey.fingerprint);
+		});
+	});
+
+	describe("onChange listeners", () => {
+		it("notifies subscribers when a key is created", async () => {
+			let called = 0;
+			km.onChange(() => {
+				called++;
+			});
+
+			await km.createKey("k1");
+			expect(called).toBe(1);
+		});
+
+		it("notifies subscribers when keys are imported", async () => {
+			await km.createKey("k1");
+			const backup = await km.exportAllKeys("pass");
+
+			const km2 = new KeyManager(
+				createMockStorage(),
+				createMockSettings,
+				async () => {},
+			);
+
+			let called = 0;
+			km2.onChange(() => {
+				called++;
+			});
+
+			await km2.importAllKeys(backup, "pass");
+			expect(called).toBe(1);
+		});
+
+		it("allows unsubscribing from change events", async () => {
+			let called = 0;
+			const unsubscribe = km.onChange(() => {
+				called++;
+			});
+
+			await km.createKey("k1");
+			expect(called).toBe(1);
+
+			unsubscribe();
+			await km.createKey("k2");
+			expect(called).toBe(1);
+		});
 	});
 });
