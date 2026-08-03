@@ -35,19 +35,32 @@
 
 - Obsidian 插件需要保证热重载的干净卸载。所有注册的 DOM 监听器、事件监听器、定时器必须在 `onunload` 或通过 `this.registerEvent` / `this.registerDomEvent` 辅助工具进行注册，确保插件卸载时资源能够被 100% 自动安全回收。
 
+### 6. 禁止专门为了测试添加运行时代码分支
+
+- 禁止专门为了测试而在生产/业务代码中添加运行时分支逻辑（例如判断测试环境或允许额外重载参数绕过业务校验）。
+- 测试友好性应当通过接口设计、依赖注入（DI）或 Mock/Stub 实现，确保业务逻辑代码保持纯粹且高内聚。
+
+### 7. Tailwind 样式规范
+
+没有特殊理由，不得使用带有 `.5`（如 `gap-1.5`、`p-2.5` 等）的间距/尺寸值或非标准的 `X50` 色彩数值（如 `bg-primary-750`、`bg-primary-850` 等）。同时，不得在没有特殊理由的情况下使用任意值语法，尤其是用像素指定尺寸（如 `text-[10px]`、`w-[100px]` 等）。应该默认使用基本单位的整数倍数（如 `gap-2`、`p-3`、`bg-primary-700` 等），保持样式尺度的统一。
+
+### 8. 默认导出命名规范
+
+所有与文件名一致的导出应使用 `export default`。例如，`EncryptionService.ts` 中的 `EncryptionService` 类应使用 `export default class EncryptionService`，`toArrayBuffer.ts` 中的 `toArrayBuffer` 函数应使用 `export default function toArrayBuffer`。同一文件中可有其他命名导出，但主导出必须与文件名一致且使用默认导出。
+
 ## 国际化多语言支持
 
-- 使用 `defineLocales` 定义中英文提示：
+使用 `defineLocales` 定义中英文提示：
 
-  ```ts
-  const { t } = defineLocales({
-      en: {
-          loading: "Loading",
-      },
-      zh: {
-          loading: "正在加载",
-      }
-  });
-  ```
+```ts
+const { t } = defineLocales({
+	en: {
+		loading: "Loading",
+	},
+	zh: {
+		loading: "正在加载",
+	},
+});
+```
 
-- 提示文本如果需要支持动态变量，可在 Locale 中定义函数参数并在执行时调用，如 `t("myMsg")(count)`。
+提示文本如果需要支持动态变量，可在 Locale 中定义函数参数并在执行时调用，如 `t("myMsg")(count)`。

@@ -7,7 +7,11 @@ const cachedResult = (() => {
 		return getLanguage();
 	}
 	// moment 由 Obsidian 注入，能直接反映用户设置的界面语言
-	if (moment.locale().startsWith("zh")) {
+	if (
+		typeof moment !== "undefined" &&
+		typeof moment?.locale === "function" &&
+		moment.locale().startsWith("zh")
+	) {
 		return "zh";
 	}
 	return "en";

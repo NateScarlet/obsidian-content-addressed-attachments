@@ -1,12 +1,17 @@
-import { PluginSettingTab, Setting } from "obsidian";
+import { PluginSettingTab, Setting, Notice } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
+import ExportKeysModal from "./modals/ExportKeysModal";
+import ImportKeysModal from "./modals/ImportKeysModal";
 import clsx from "clsx";
 import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
+import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
+import { encryptNote } from "#src/commands/convertAttachment";
+import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
 
@@ -197,6 +202,79 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			(i) => void unmount(i),
 		);
 
+		//#region 加密设置
+		if (this.plugin.hasSecretStorage) {
+			new Setting(containerEl).setName(t("encryption")).setHeading();
+
+			const target = containerEl.createDiv();
+			this.stack.adopt(
+				mount(EncryptionSettingsComponent, {
+					target,
+					props: {
+						keyManager: this.plugin.keyManager,
+						encryptionService: this.plugin.encryptionService,
+						settings: this.plugin.settings,
+						saveSettings: () => this.plugin.saveSettings(),
+						// eslint-disable-next-line @typescript-eslint/no-deprecated
+						display: () => this.display(),
+						app: this.app,
+						ExportKeysModal,
+						ImportKeysModal,
+						onEncryptMatchingNotes: async (pattern: string) => {
+							const trimmedPattern = pattern.trim();
+							if (!trimmedPattern) {
+								new Notice(t("noMatchingFiles"));
+								return;
+							}
+							const patterns = trimmedPattern
+								.split("\n")
+								.map((s) => s.trim())
+								.filter((s) => s && !s.startsWith("#"));
+
+							if (patterns.length === 0) {
+								new Notice(t("noMatchingFiles"));
+								return;
+							}
+
+							const files = this.app.vault.getMarkdownFiles();
+							let total = 0;
+							const ig = ignore().add(patterns);
+							const ctx = {
+								app: this.app,
+								cas: this.plugin.cas,
+								encryptionService:
+									this.plugin.encryptionService,
+								urlResolver: this.plugin.urlResolver,
+								referenceManager: this.plugin.referenceManger,
+								dir: this.plugin.settings.primaryDir,
+								keyManager: this.plugin.keyManager,
+								encryptPathPolicy:
+									this.plugin.encryptPathPolicy,
+							};
+							for (const file of files) {
+								if (ig.ignores(file.path)) {
+									const count = await encryptNote(
+										ctx,
+										file,
+										this.plugin.settings.primaryDir,
+									);
+									total += count;
+								}
+							}
+							new Notice(t("encryptMatchingNotesSuccess")(total));
+						},
+					},
+				}),
+				(instance) => void unmount(instance),
+			);
+		} else {
+			new Setting(containerEl).setName(t("encryption")).setHeading();
+			new Setting(containerEl)
+				.setName(t("encryptionUnavailable"))
+				.setDesc(t("encryptionUnavailableDesc"));
+		}
+		//#endregion
+
 		// 全库操作区域
 		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
 
@@ -214,11 +292,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName(t("lockAllNotes"))
 			.setDesc(t("lockAllNotesDesc"))
-			.addButton((button) =>
+			.addButton((button) => {
 				button.setButtonText(t("execute")).onClick(() => {
 					this.plugin.lockManager.execute("all").catch(showError);
-				}),
-			);
+				});
+			});
 	}
 
 	onClose(): void {
@@ -230,14 +308,12 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 const { t } = defineLocales({
 	en: {
 		primaryStorageDirectory: "Primary storage directory",
-		primaryStorageDirectoryDesc:
-			"Newly added attachments will be stored in this directory",
+		primaryStorageDirectoryDesc: "Directory for new attachments",
 		downloadDirectory: "Download directory",
-		downloadDirectoryDesc:
-			"Downloaded file will be stored in this directory",
+		downloadDirectoryDesc: "Directory for files downloaded from the web",
 		gateways: "Gateways",
 		gatewaysDesc:
-			"Used to fetch files not available locally, defined using Mustache template syntax. If the URL is empty, only read existing files from the download directory (set in options)",
+			"Used to fetch missing local files, using Mustache template syntax. If empty, only existing files from the download directory will be read.",
 		addGateway: "Add gateway",
 		gatewayOptions: "Gateway options",
 		willDeleteGateway: (name: string) => `Will delete gateway '${name}'`,
@@ -253,12 +329,14 @@ const { t } = defineLocales({
 		lockAllNotes: "Lock web files (all notes)",
 		lockAllNotesDesc:
 			"Download and lock all external web file links in all notes",
-		restoreReferencedFiles: "Restore referenced files",
-		restoreReferencedFilesDesc:
-			"Restore files that are still referenced but were deleted to the recycle bin",
 		execute: "Execute",
-		noReferencedFilesToRestore:
-			"No referenced files to restore from the recycle bin.",
+		encryption: "Encryption",
+		encryptionUnavailable: "Encryption unavailable",
+		encryptionUnavailableDesc:
+			"Encryption requires Obsidian v1.11.4+. Please upgrade Obsidian to use this feature.",
+		encryptMatchingNotesSuccess: (count: number) =>
+			`Encrypted ${count} link(s)`,
+		noMatchingFiles: "No matching notes found for rule",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -281,10 +359,14 @@ const { t } = defineLocales({
 		migrateAllNotesDesc: "将所有笔记中的本地文件链接迁移为 IPFS 链接",
 		lockAllNotes: "锁定网络文件（所有笔记）",
 		lockAllNotesDesc: "下载并锁定所有笔记中的外部网络文件链接",
-		restoreReferencedFiles: "恢复被引用的文件",
-		restoreReferencedFilesDesc: "恢复仍在被引用但已被删除到回收站的文件",
 		execute: "执行",
-		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
+		encryption: "加密",
+		encryptionUnavailable: "加密不可用",
+		encryptionUnavailableDesc:
+			"加密功能需要 Obsidian v1.11.4+。请升级 Obsidian 以使用此功能。",
+		encryptMatchingNotesSuccess: (count: number) =>
+			`已加密 ${count} 个链接`,
+		noMatchingFiles: "未找到符合路径规则的笔记",
 	},
 });
 //#endregion

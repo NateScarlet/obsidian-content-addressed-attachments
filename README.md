@@ -10,6 +10,9 @@ Implements content-addressed storage for attachments, providing IPFS-like functi
 - **IPFS-style Links**: Generate and resolve `ipfs://` links with support for filename and format parameters
 - **Web File Locking**: Download and cache external web images with checksum verification, creating resilient links that work offline
 - **Multi-Gateway Support**: Configurable external gateways with customizable URL templates and request headers
+- **Encryption Support**: AES-256-GCM encryption for attachments with transparent encrypt-on-save and decrypt-on-read
+- **Key Management**: Create, delete, export, and import encryption keys via Obsidian SecretStorage
+- **Auto-Encrypt Rules**: Gitignore-style path rules to automatically encrypt attachments in specific notes
 - **Migration Tools**:
     - Bulk migration of existing local attachments to IPFS links
     - Web file locking for external images in current note or entire vault
@@ -58,6 +61,26 @@ The "lock" feature allows you to securely cache external web images (HTTP/HTTPS 
     - Saves to configured download directory
     - Replaces original links with internal format: `internal.ipfs-locked:<cid>,<original-url>`
 
+### Encrypting Attachments
+
+You can encrypt attachments to protect sensitive files:
+
+1. **Create Encryption Keys**: Go to Settings → Content-Addressed Attachments → Key Management
+   - Create a new encryption key with an optional name
+   - Set a primary key for encryption
+   - Export keys for backup (password-protected)
+   - Import previously exported keys
+
+2. **Auto-Encrypt by Path**: Configure gitignore-style path rules to automatically encrypt attachments in matching notes
+   - Each rule can optionally specify which key to use
+   - If no key is specified, the primary key is used
+
+3. **Manual Encrypt/Decrypt**: Right-click on any `ipfs://` link to encrypt or decrypt the attachment
+
+4. **Transparent Decryption**: Encrypted attachments are automatically decrypted when viewed
+   - Small files are decrypted in memory
+   - Large files require a decrypted cache directory (configure in settings)
+
 ### Commands and Settings
 
 Use the command palette for common operations:
@@ -91,6 +114,10 @@ These operations are placed in settings to prevent accidental execution, as they
 # Locked Web Images (after locking)
 
 ![Alt text](internal.ipfs-locked:bafybei...,https://example.com/image.jpg "Optional title")
+
+# Encrypted Attachments
+
+![filename](ipfs://bafybei...?filename=photo.jpg&format=application%2Fx.w1kxt3qz.encrypted)
 ```
 
 ## Configuration
@@ -102,6 +129,9 @@ Configure via Settings → Content-Addressed Attachments:
 - **External Gateways**: Add and configure multiple gateways for file retrieval
 - **URL Templates**: Customize gateway URLs using Mustache template syntax
 - **Request Headers**: Set custom headers for each gateway
+- **Max Memory Decryption Limit**: Maximum file size for in-memory decryption (larger files require decrypted cache directory)
+- **Decrypted Cache Directory**: Directory for temporary decrypted files (ensure excluded from sync tools)
+- **Secret Storage ID**: Obsidian SecretStorage key for encryption key storage
 
 ## Migration and Locking Tools
 

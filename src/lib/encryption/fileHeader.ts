@@ -1,0 +1,88 @@
+import type { EncryptedFileHeader } from "./types";
+
+/**
+ * 加密文件头魔数 "\xfdENC" (0xFD, 'E', 'N', 'C')
+ * - 0xFD 具有非 ASCII / 非合法 UTF-8 文本开头特征，彻底排除纯文本误判；
+ * - "ENC" 保持终端 hexdump 可读的加密文件特征。
+ */
+export const HEADER_MAGIC = new Uint8Array([0xfd, 0x45, 0x4e, 0x43]);
+export const HEADER_VERSION = 1;
+
+/** AES-256-GCM 参数 */
+export const IV_LENGTH = 12;
+export const AUTH_TAG_LENGTH = 16; // 128 bits
+export const FINGERPRINT_BYTES = 8; // 64 bits 固定 Raw Binary 长度
+
+/** 将 Hex 字符串解析为 Uint8Array，字节数由 hex 长度决定 */
+export function hexToBytes(hex: string): Uint8Array {
+	if (hex.length % 2 !== 0) {
+		throw new Error(`Invalid hex string length: ${hex.length}`);
+	}
+	const byteLen = hex.length / 2;
+	const bytes = new Uint8Array(byteLen);
+	for (let i = 0; i < byteLen; i++) {
+		bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+	}
+	return bytes;
+}
+
+/** 将 8 字节原生二进制格式化为 16 字符 Hex 字符串 */
+export function bytesToHex(bytes: Uint8Array): string {
+	let hex = "";
+	for (let i = 0; i < bytes.byteLength; i++) {
+		hex += bytes[i].toString(16).padStart(2, "0");
+	}
+	return hex;
+}
+
+/** 从加密文件数据中解析头部信息，格式错误返回 undefined */
+export function parseHeader(
+	encryptedData: ArrayBuffer,
+): EncryptedFileHeader | undefined {
+	// 最小 Header 长度: 4(Magic) + 2(Version) + 8(FP) + 12(IV) + 16(Tag) + 2(FmtLen) = 44 字节
+	if (encryptedData.byteLength < 44) {
+		return undefined;
+	}
+
+	const data = new Uint8Array(encryptedData);
+	const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+	let offset = 0;
+
+	for (let i = 0; i < 4; i++) {
+		if (data[offset + i] !== HEADER_MAGIC[i]) {
+			return undefined;
+		}
+	}
+	offset += 4;
+
+	const version = dv.getUint16(offset, true);
+	offset += 2;
+	if (version !== HEADER_VERSION) {
+		return undefined;
+	}
+
+	// 8 字节固定 Raw Binary 密钥指纹
+	const fpBytes = data.slice(offset, offset + FINGERPRINT_BYTES);
+	offset += FINGERPRINT_BYTES;
+	const keyFingerprint = bytesToHex(fpBytes);
+
+	const iv = data.slice(offset, offset + IV_LENGTH);
+	offset += IV_LENGTH;
+
+	const authTag = data.slice(offset, offset + AUTH_TAG_LENGTH);
+	offset += AUTH_TAG_LENGTH;
+
+	const fmtLen = dv.getUint16(offset, true);
+	offset += 2;
+	const fmtBytes = data.slice(offset, offset + fmtLen);
+	offset += fmtLen;
+	const originalFormat = new TextDecoder().decode(fmtBytes);
+
+	return {
+		keyFingerprint,
+		iv,
+		authTag,
+		originalFormat,
+		ciphertextOffset: offset,
+	};
+}

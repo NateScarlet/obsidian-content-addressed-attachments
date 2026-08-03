@@ -19,7 +19,10 @@ interface Window {
 		id?: string;
 		multiple?: boolean;
 		startIn?: FileSystemFileHandle | WellKnownDirectory;
-		types?: { accept: Record<string, string[]>; description?: string }[];
+		types?: {
+			accept: Record<string, string[]>;
+			description?: string;
+		}[];
 	}): Promise<FileSystemFileHandle[]>;
 	/** https://developer.mozilla.org/en-US/docs/Web/API/Window/showSaveFilePicker */
 	showSaveFilePicker(options?: {
@@ -27,6 +30,9 @@ interface Window {
 		id?: string;
 		startIn?: FileSystemFileHandle | WellKnownDirectory;
 		suggestedName?: string;
-		types?: { accept: Record<string, string[]>; description?: string }[];
+		types?: {
+			accept: Record<string, string[]>;
+			description?: string;
+		}[];
 	}): Promise<FileSystemFileHandle>;
 }

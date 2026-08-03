@@ -1,6 +1,8 @@
 <script module lang="ts">
 	import formatFileSize from "#src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
+	import type { CASMetadataObject } from "#src/types/CASMetadata";
+	import { ENCRYPTED_FORMAT } from "./encryption/constants";
 
 	const { t } = defineLocales({
 		en: {
@@ -34,6 +36,7 @@
 	function generateMarkdownLink(
 		file: CASMetadataObject,
 		format: string,
+		embed: boolean,
 	): string {
 		const url = new URL(`ipfs://${file.cid.toString()}`);
 		if (file.filename) {
@@ -42,7 +45,7 @@
 		if (format && !format.includes("*")) {
 			url.searchParams.set("format", format);
 		}
-		if (format.startsWith("image/")) {
+		if (embed) {
 			return `![${file.filename || "image"}](${url})`;
 		} else {
 			return `[${file.filename ?? "attachment"}](${url})`;
@@ -52,21 +55,22 @@
 
 <script lang="ts">
 	import { getContext } from "./CASFileExplorerContext";
+	import { parseHeader } from "./encryption/fileHeader";
 	import { MarkdownView, Notice } from "obsidian";
 	import showError from "#src/utils/showError";
 	import { getAbortSignal } from "svelte";
 	import {
 		mdiDeleteAlertOutline,
 		mdiLinkVariant,
+		mdiLock,
 		mdiRestore,
 		mdiTrashCanOutline,
 	} from "@mdi/js";
 	import { referenceChange } from "#src/events";
 	import staleWithRevalidate from "#src/lib/stores/staleWhileRevalidate.svelte";
 	import type { Attachment } from "svelte/attachments";
-	import type { CASMetadataObject } from "#src/types/CASMetadata";
 
-	const { cas, app, referenceManager } = getContext();
+	const { cas, app, referenceManager, encryptionService } = getContext();
 
 	let {
 		file,
@@ -117,53 +121,81 @@
 				}
 			}
 
-			const imgSrc = await (async () => {
-				if (format && !format.startsWith("image/")) {
-					// 已知不是图片
-					return;
+			let isEncrypted = format === ENCRYPTED_FORMAT;
+				let fileBuffer: ArrayBuffer | undefined;
+
+				if (isEncrypted) {
+					fileBuffer = await app.vault.adapter.readBinary(match.path);
+					const header = parseHeader(fileBuffer);
+					if (header) {
+						format = header.originalFormat;
+					}
 				}
-				const { path } = match;
-				const src = app.vault.adapter.getResourcePath(path);
+
+			const imgSrc = await (async () => {
+				if (
+					format &&
+					!format.startsWith("image/")
+				) {
+					return undefined;
+				}
+
+				if (isEncrypted && fileBuffer) {
+					try {
+						const decrypted = await encryptionService.ensureDecrypted(fileBuffer);
+						if (decrypted && decrypted.mimeType.startsWith("image/")) {
+							return URL.createObjectURL(decrypted.toBlob());
+						}
+					} catch (err) {
+						console.debug("Failed to decrypt image preview for CAS item:", err);
+					}
+					return undefined;
+				}
+
+				const src = app.vault.adapter.getResourcePath(match.path);
 				if (format) {
 					return src;
 				}
-				// 尝试加载未知格式为图片
+
 				const img = new Image();
 				img.src = src;
-				return img
-					.decode()
-					.then(() => {
-						format = "image/*";
-						return src;
-					})
-					.catch(() => undefined);
+				try {
+					await img.decode();
+					format = "image/*";
+					return src;
+				} catch {
+					return undefined;
+				}
 			})();
+
 			signal.throwIfAborted();
 			return {
-				ok: true,
-				match,
-				imgSrc,
-				format,
-				filename,
-			};
+					ok: true,
+					match,
+					imgSrc,
+					format,
+					filename,
+				};
 		}
 		return { ok: false };
 	});
 
 	const format = $derived($detail?.format || file.format || "*/*");
+	const isEncrypted = $derived(file.format === ENCRYPTED_FORMAT);
 	const isDeleted = $derived(!!file.trashedAt || $detail?.ok === false);
 
 	let limit = $state(20);
+
 	function fetchMore() {
 		limit += 20;
 	}
 
 	let version = $state(0);
+
 	const { result: references } = staleWithRevalidate(async () => {
 		void version;
-		void limit;
-		const cid = file.cid;
 		const signal = getAbortSignal();
+		const cid = file.cid;
 		return Array.fromAsync(
 			(async function* () {
 				let count = 0;
@@ -172,7 +204,7 @@
 					url,
 					title,
 					pos,
-				} of referenceManager.findReference(cid)) {
+				} of referenceManager.findReference(cid, signal)) {
 					if (signal.aborted) {
 						return;
 					}
@@ -211,6 +243,7 @@
 			})(),
 		);
 	});
+
 	$effect(() => {
 		return referenceChange.subscribe((e) => {
 			if (e.detail.cid.equals(file.cid)) {
@@ -222,7 +255,12 @@
 	const drag: Attachment<HTMLElement> = (node) => {
 		node.draggable = true;
 		const handleDragStart = (event: DragEvent) => {
-			const markdownLink = generateMarkdownLink(file, format);
+			const linkFormat = isEncrypted ? ENCRYPTED_FORMAT : format;
+			const markdownLink = generateMarkdownLink(
+				file,
+				linkFormat,
+				format.startsWith("image/"),
+			);
 			event.dataTransfer?.setData("text/plain", markdownLink);
 		};
 
@@ -233,7 +271,12 @@
 	};
 
 	async function copyLink() {
-		const markdownLink = generateMarkdownLink(file, format);
+		const linkFormat = isEncrypted ? ENCRYPTED_FORMAT : format;
+		const markdownLink = generateMarkdownLink(
+			file,
+			linkFormat,
+			format.startsWith("image/"),
+		);
 		await navigator.clipboard.writeText(markdownLink);
 		new Notice(t("copied"));
 	}
@@ -260,7 +303,7 @@
 	<!-- 文件名 -->
 	<div
 		class={[
-			"font-semibold truncate text-center",
+			"font-semibold truncate text-center flex items-center justify-center gap-1",
 			{
 				"text-muted": file.trashedAt && $detail?.ok,
 				"text-error": $detail?.ok === false,
@@ -270,7 +313,15 @@
 		]}
 		title={file.filename}
 	>
-		{file.filename}
+		{#if isEncrypted}
+			<svg
+				class="inline fill-current h-[1.1em] text-accent shrink-0"
+				viewBox="0 0 24 24"
+			>
+				<path d={mdiLock} />
+			</svg>
+		{/if}
+		<span class="truncate">{file.filename}</span>
 	</div>
 	<!-- 元数据 -->
 	<div class="text-center space-x-1 text-sm text-muted">
@@ -284,7 +335,7 @@
 
 	<!-- 引用文件列表 -->
 	<ul class="space-y-1 max-h-64 overflow-y-auto list-none m-1 p-0">
-		{#each $references as i (i.file.path)}
+		{#each $references ?? [] as i (i.file.path)}
 			<li class="break-all">
 				<a {...i.anchorAttrs}>
 					{i.file.path}
@@ -295,7 +346,7 @@
 				{/if}
 			</li>
 		{/each}
-		{#if $references?.length == limit}
+		{#if ($references ?? []).length == limit}
 			<button type="button" class="w-full" onclick={fetchMore}>
 				{t("fetchMore")}
 			</button>

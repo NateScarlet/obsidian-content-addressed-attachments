@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin, TFile, MarkdownView } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -23,11 +23,25 @@ import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 import showError from "./utils/showError";
 import { markdownChange } from "./events";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
-import insertAttachment from "./commands/insertAttachment";
-import insertFileAtCursor from "./commands/insertFileAtCursor";
+import insertAttachment, {
+	processFileAndInsertLink,
+} from "./commands/insertAttachment";
+import {
+	encryptLink,
+	decryptLink,
+	isEncryptedLink,
+	findLinkAtPos,
+	type EncryptContext,
+} from "./commands/convertAttachment";
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import IPFSLink from "./utils/IPFSLink";
+import findIPFSLinks from "./utils/findIPFSLinks";
+import KeyManager from "./lib/encryption/KeyManager";
+import EncryptionService from "./lib/encryption/EncryptionService";
+import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
+import type { KeyStorage } from "./lib/encryption/types";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -35,6 +49,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public casMetadata!: CASMetadata;
 	public urlResolver!: URLResolver;
 	public referenceManger = new ReferenceManager(this);
+	public keyManager!: KeyManager;
+	public encryptionService!: EncryptionService;
+	public encryptPathPolicy!: EncryptPathPolicy;
+
+	public get hasSecretStorage(): boolean {
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		return !!this.app.secretStorage;
+	}
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
@@ -78,10 +100,39 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					.filter((i) => !!i),
 			]);
 		});
-		this.urlResolver = new URLResolver(
-			this.app,
-			this.cas,
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		const secretStorage = this.app.secretStorage;
+		const storage: KeyStorage = secretStorage ?? {
+			getSecret() {
+				return Promise.resolve(undefined);
+			},
+			setSecret() {
+				throw new Error(
+					"Secret storage is not available in this Obsidian version",
+				);
+			},
+			listSecrets() {
+				return Promise.resolve([]);
+			},
+		};
+		this.keyManager = new KeyManager(
+			storage,
 			() => this.settings,
+			() => this.saveSettings(),
+		);
+		this.encryptionService = new EncryptionService(this.keyManager);
+		this.encryptPathPolicy = new EncryptPathPolicy(
+			this.keyManager,
+			this.encryptionService,
+			() => this.settings.encryptPathRules,
+		);
+		this.urlResolver = this.stack.use(
+			new URLResolver(
+				this.app,
+				this.cas,
+				() => this.settings,
+				this.encryptionService,
+			),
 		);
 		this.migrationManager = this.stack.use(new MigrationManager(this));
 		this.lockManager = this.stack.use(new LockManager(this));
@@ -96,40 +147,48 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		//#region 事件注册
 		this.registerEvent(
-			this.app.workspace.on("editor-paste", async (e, editor) => {
+			this.app.workspace.on("editor-paste", async (e, editor, info) => {
 				const files = e.clipboardData?.files;
 				if (e.defaultPrevented || !files?.length) {
 					return;
 				}
+				const notePath = info.file?.path ?? "";
 				for (let i = 0; i < files.length; i++) {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const { cid } = await this.cas.save(
+						await processFileAndInsertLink(
+							this.cas,
 							this.settings.primaryDir,
+							editor,
 							file,
+							notePath,
+							this.encryptPathPolicy,
 						);
-						insertFileAtCursor(file, cid, editor);
 					}
 				}
 			}),
 		);
 
 		this.registerEvent(
-			this.app.workspace.on("editor-drop", async (e, editor) => {
+			this.app.workspace.on("editor-drop", async (e, editor, info) => {
 				const files = e.dataTransfer?.files;
 				if (e.defaultPrevented || !files?.length) {
 					return;
 				}
+				const notePath = info.file?.path ?? "";
 				for (let i = 0; i < files.length; i++) {
 					const file = files.item(i);
 					e.preventDefault();
 					if (file) {
-						const { cid } = await this.cas.save(
+						await processFileAndInsertLink(
+							this.cas,
 							this.settings.primaryDir,
+							editor,
 							file,
+							notePath,
+							this.encryptPathPolicy,
 						);
-						insertFileAtCursor(file, cid, editor);
 					}
 				}
 			}),
@@ -160,16 +219,64 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				const from = editor.getCursor("from");
 				const to = editor.getCursor("to");
 				const content = editor.getValue();
+				const fromOffset = editor.posToOffset(from);
+				const toOffset = editor.posToOffset(to);
+
+				const ipfsLink =
+					findLinkAtPos(content, fromOffset) ??
+					findLinkAtPos(content, toOffset);
+
+				if (ipfsLink) {
+					const rawText =
+						typeof ipfsLink.url.toURL === "function"
+							? ipfsLink.url.toURL()
+							: undefined;
+					if (!rawText) return;
+					const ctx: EncryptContext = {
+						app: this.app,
+						cas: this.cas,
+						encryptionService: this.encryptionService,
+						urlResolver: this.urlResolver,
+						referenceManager: this.referenceManger,
+						keyManager: this.keyManager,
+						encryptPathPolicy: this.encryptPathPolicy,
+					};
+					const isEncrypted = isEncryptedLink(rawText);
+					if (isEncrypted) {
+						menu.addItem((item) => {
+							item.setTitle(t("decryptLink"))
+								.setIcon("lock-open")
+								.onClick(() => {
+									decryptLink(
+										ctx,
+										editor,
+										ipfsLink,
+										view.file?.path,
+										this.settings.primaryDir,
+									).catch(showError);
+								});
+						});
+					} else {
+						menu.addItem((item) => {
+							item.setTitle(t("encryptLink"))
+								.setIcon("lock")
+								.onClick(() => {
+									encryptLink(
+										ctx,
+										editor,
+										ipfsLink,
+										view.file?.path,
+										this.settings.primaryDir,
+									).catch(showError);
+								});
+						});
+					}
+					return;
+				}
 
 				const link =
-					this.lockManager.findLinkAtOffset(
-						content,
-						editor.posToOffset(from),
-					) ??
-					this.lockManager.findLinkAtOffset(
-						content,
-						editor.posToOffset(to),
-					);
+					this.lockManager.findLinkAtOffset(content, fromOffset) ??
+					this.lockManager.findLinkAtOffset(content, toOffset);
 
 				if (link) {
 					if (
@@ -201,6 +308,29 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		);
 		//#endregion
 
+		// 解密缓存清理：当布局变化（笔记关闭/切换）时触发
+		this.registerEvent(
+			this.app.workspace.on("layout-change", () => {
+				const { app } = this;
+				this.urlResolver.cleanupDecryptedCache(function* () {
+					for (const leaf of app.workspace.getLeavesOfType(
+						"markdown",
+					)) {
+						const view = leaf.view;
+						if (!(view instanceof MarkdownView) || !view.file)
+							continue;
+						const content = view.editor.getValue();
+						for (const match of findIPFSLinks(content)) {
+							const parsed = IPFSLink.parse(match.url.toString());
+							if (parsed) {
+								yield parsed.cid.toString();
+							}
+						}
+					}
+				});
+			}),
+		);
+
 		this.addCommand({
 			id: "insert-attachment",
 			name: t("insertAttachment"),
@@ -209,6 +339,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.app,
 					this.cas,
 					this.settings.primaryDir,
+					this.encryptPathPolicy,
 				).catch(showError);
 			},
 		});
@@ -368,6 +499,8 @@ const { t } = defineLocales({
 		lockCurrentNote: "Lock web files (current note)",
 		lockLink: "Lock this link",
 		unlockLink: "Unlock this link",
+		encryptLink: "Encrypt this link",
+		decryptLink: "Decrypt this link",
 		loading: "Loading",
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS file explorer",
@@ -381,6 +514,8 @@ const { t } = defineLocales({
 		lockCurrentNote: "锁定网络文件（当前笔记）",
 		lockLink: "锁定此链接",
 		unlockLink: "解锁此链接",
+		encryptLink: "加密此链接",
+		decryptLink: "解密此链接",
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",

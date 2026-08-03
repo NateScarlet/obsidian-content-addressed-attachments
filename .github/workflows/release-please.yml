@@ -33,10 +33,11 @@ jobs:
               with:
                   node-version-file: .node-version
                   cache: pnpm
-            - name: Build
+            - name: Check
               run: |
                   pnpm install
                   pnpm run build
+                  pnpm run test
             - name: Release
               if: ${{needs.release-please.outputs.release_created}}
               uses: softprops/action-gh-release@v2

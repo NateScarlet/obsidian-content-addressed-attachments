@@ -1,7 +1,10 @@
 import type { CID } from "multiformats";
 import type { Editor } from "obsidian";
-import formatMarkdownLink from "#src/utils/formatMarkdownLink";
+import IPFSLink from "#src/utils/IPFSLink";
 
+/**
+ * @deprecated Use `insertIPFSLinkAtCursor` instead.
+ */
 export default function insertFileAtCursor(
 	file: File,
 	cid: CID,
@@ -11,7 +14,12 @@ export default function insertFileAtCursor(
 	const to = editor.getCursor("to");
 	const hasSelection = from.line !== to.line || from.ch !== to.ch;
 
-	let text = formatMarkdownLink(file, cid);
+	const link = new IPFSLink({
+		cid,
+		filename: file.name,
+		format: file.type,
+	});
+	let text = link.toMarkdown(file.type.startsWith("image/"));
 	if (!hasSelection && editor.getLine(from.line).trim() === "") {
 		text += "\n";
 	}

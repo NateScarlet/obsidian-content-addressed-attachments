@@ -1,15 +1,18 @@
-import parseIPFSLink, { type IPFSStandardURL } from "./parseIPFSLink";
+import IPFSLink from "./IPFSLink";
 import parseIPFSLockedURL, { type IPFSLockedURL } from "./parseIPFSLockedURL";
 
-export default function* findIPFSLinks(markdown: string): IterableIterator<{
+export type IPFSLinkMatch = {
 	pos: [startIndex: number, endIndex: number];
 	url: NonNullable<
-		(IPFSStandardURL | IPFSLockedURL) &
-			Partial<IPFSStandardURL> &
-			Partial<IPFSLockedURL>
+		(IPFSLink | IPFSLockedURL) & Partial<IPFSLink> & Partial<IPFSLockedURL>
 	>;
+	isEmbed: boolean;
 	title?: string;
-}> {
+};
+
+export default function* findIPFSLinks(
+	markdown: string,
+): IterableIterator<IPFSLinkMatch> {
 	// 匹配任何 IPFS base32 链接，包含新增的 internal.ipfs-locked 链接
 	const pattern = new RegExp(
 		"\\s*(" +
@@ -18,7 +21,8 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 			"(b[a-z2-7]{58})" + // base32 CID
 			"(/[-\\w$.+!*',;:@&=%]*)?" + // 路径
 			"(\\?[-\\w$.+!*',;:@&=/?%]*)?" + // 查询参数
-			"(#[-\\w$.+!*',;:@&=/?%]*)?" + // 片段
+			"(#[" +
+			"-\\w$.+!*',;:@&=/?%]*)?" + // 片段
 			"|" +
 			"internal\\.ipfs-locked:b[a-z2-7]{58},[^\\s)]+" + // internal.ipfs-locked 链接
 			")" +
@@ -33,7 +37,7 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 		const startIndex = match.index;
 		const endIndex = startIndex + fullMatch.length;
 
-		// 计算rawURL在原始字符串中的开始位置
+		// 计算 rawURL 在原始字符串中的开始位置
 		const rawURLStartIndex = startIndex + fullMatch.indexOf(rawURL);
 
 		// 根据链接类型使用不同的解析函数
@@ -41,7 +45,7 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 		if (rawURL.startsWith("internal.ipfs-locked:")) {
 			url = parseIPFSLockedURL(rawURL);
 		} else {
-			url = parseIPFSLink(rawURL);
+			url = IPFSLink.parse(rawURL);
 		}
 
 		if (!url) continue;
@@ -52,22 +56,23 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 		const after = endIndex < markdown.length ? markdown[endIndex] : "";
 
 		let title: string | undefined;
+		let isEmbed = false;
 
-		// 如果被括号包裹，并且前面是`](`，则是Markdown链接
+		// 如果被括号包裹，并且前面是 `](`，则是 Markdown 链接
 		if (before === "](" && after === ")") {
 			// 向前查找标题部分 [title]
 			let bracketStart = -1;
 
-			// 从`]`的位置向前搜索第一个非转义的`[`
+			// 从 `]` 的位置向前搜索第一个非转义的 `[`
 			for (let i = startIndex - 3; i >= 0; i--) {
 				const char = markdown[i];
 
 				// 遇到换行符就停止
 				if (char === "\n") break;
 
-				// 找到`[`，检查是否被转义
+				// 找到 `[`，检查是否被转义
 				if (char === "[") {
-					// 检查前面的字符是否是转义符`\`
+					// 检查前面的字符是否是转义符 `\`
 					if (i > 0 && markdown[i - 1] === "\\") {
 						// 被转义了，继续搜索
 						continue;
@@ -77,7 +82,7 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 				}
 			}
 
-			// 如果找到了`[`，提取标题
+			// 如果找到了 `[`，提取标题和是否为嵌入
 			if (bracketStart !== -1) {
 				title =
 					markdown
@@ -85,9 +90,13 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 						.trim()
 						.replaceAll("\\[", "[") || undefined;
 				// 处理图片尺寸语法
-				const match = title?.match(/^(.+)\|\d+$/);
-				if (match) {
-					title = match[1];
+				const titleMatch = title?.match(/^(.+)\|\d+$/);
+				if (titleMatch) {
+					title = titleMatch[1];
+				}
+
+				if (bracketStart > 0 && markdown[bracketStart - 1] === "!") {
+					isEmbed = true;
 				}
 			}
 		}
@@ -95,6 +104,7 @@ export default function* findIPFSLinks(markdown: string): IterableIterator<{
 		yield {
 			pos: [rawURLStartIndex, rawURLStartIndex + rawURL.length],
 			url,
+			isEmbed,
 			title,
 		};
 	}

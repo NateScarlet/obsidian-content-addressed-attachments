@@ -22,17 +22,21 @@
 	import findIPFSLinks from "#src/utils/findIPFSLinks";
 	import staleWithRevalidate from "./stores/staleWhileRevalidate.svelte";
 
+	import type EncryptionService from "./encryption/EncryptionService";
+
 	// Props
 	let {
 		app,
 		referenceManager,
 		cas,
 		casMetadata,
+		encryptionService,
 	}: {
 		app: App;
 		referenceManager: ReferenceManager;
 		cas: CAS;
 		casMetadata: CASMetadata;
+		encryptionService: EncryptionService;
 	} = $props();
 
 	// 状态
@@ -123,6 +127,7 @@
 		casMetadata,
 		referenceManager,
 		app,
+		encryptionService,
 		mode: {
 			get value() {
 				return mode;

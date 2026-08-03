@@ -1,4 +1,5 @@
 import { App, TFile } from "obsidian";
+// TODO: Refactor batch link traversal using VaultLinkTransformer
 import ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
 import { LockProgressModal } from "./ui/LockProgressModal";
