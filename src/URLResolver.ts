@@ -137,7 +137,12 @@ export class URLResolver {
 	async resolveURL(rawURL: string): Promise<ResolveURLResult | undefined> {
 		const lockedURL = parseIPFSLockedURL(rawURL);
 		if (lockedURL) {
+			const format =
+				lockedURL.sourceURL.searchParams.get("format") || undefined;
 			for await (const match of this.cas.lookup(lockedURL.cid)) {
+				if (format === ENCRYPTED_FORMAT) {
+					return this.resolveEncryptedFile(match.path, lockedURL.cid);
+				}
 				return {
 					path: match.path,
 					url: this.app.vault.adapter.getResourcePath(match.path),
@@ -147,13 +152,21 @@ export class URLResolver {
 				url: lockedURL.sourceURL.toString(),
 				throw: false,
 			});
-			return this.readResponse(
+			const downloaded = await this.readResponse(
 				this.settings().downloadDir || this.settings().primaryDir,
 				resp,
 				{
 					cid: lockedURL.cid,
+					format,
 				},
 			);
+			if (downloaded && format === ENCRYPTED_FORMAT) {
+				return this.resolveEncryptedFile(
+					downloaded.path,
+					lockedURL.cid,
+				);
+			}
+			return downloaded;
 		}
 		const data = this.prepareTemplateData(rawURL);
 		const { result } = await this.flight.do(data.cid.toString(), () => {
@@ -277,7 +290,7 @@ export class URLResolver {
 												config.downloadDir ||
 												this.settings().downloadDir ||
 												this.settings().primaryDir;
-											resolve(
+											const downloaded =
 												await this.readResponse(
 													dir,
 													resp,
@@ -287,8 +300,21 @@ export class URLResolver {
 															data.filename(),
 														format: data.format(),
 													},
-												),
-											);
+												);
+											if (
+												downloaded &&
+												data.format() ===
+													ENCRYPTED_FORMAT
+											) {
+												resolve(
+													await this.resolveEncryptedFile(
+														downloaded.path,
+														data.cid,
+													),
+												);
+											} else {
+												resolve(downloaded);
+											}
 										}
 										return;
 									}

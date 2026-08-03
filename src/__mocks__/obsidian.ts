@@ -1,3 +1,5 @@
+import { vi } from "vitest";
+
 export class Notice {
 	constructor(
 		public message: string,
@@ -13,4 +15,7 @@ export class TFile {
 
 export class App {}
 export class Editor {}
-export function requestUrl() {}
+export const requestUrl = vi.fn();
+export function getLanguage() {
+	return "en";
+}
