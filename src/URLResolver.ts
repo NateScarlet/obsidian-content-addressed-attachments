@@ -262,6 +262,7 @@ export class URLResolver {
 										url,
 										method: "HEAD",
 										headers: headersRecord,
+										throw: false,
 									});
 									if (resp.status == 200) {
 										console.debug("GET", url);
