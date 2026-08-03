@@ -133,6 +133,10 @@
 	let newKeyName = $state("");
 	let showDeletedKeys = $state(false);
 	let permanentDeleteDays = $state(7);
+	// 本地暂存的新增规则（尚未写入 settings），直到有内容时才提交
+	let pendingRules = $state<Array<{ pattern: string; keyFingerprint: string }>>([]);
+	// 合并已保存和暂存的规则用于显示
+	let allRules = $derived([...settings.encryptPathRules, ...pendingRules]);
 
 	const primaryKey = $derived(keys[0]);
 	const primaryKeyName = $derived(
@@ -262,34 +266,70 @@
 	}
 
 	function addRule() {
-		const rules = [...settings.encryptPathRules];
-		rules.push({ pattern: "", keyFingerprint: "" });
-		settings.encryptPathRules = rules;
-		void saveSettings();
+		pendingRules = [...pendingRules, { pattern: "", keyFingerprint: "" }];
 	}
 
 	function updateRulePattern(index: number, pattern: string) {
-		const rules = [...settings.encryptPathRules];
-		rules[index] = { ...rules[index], pattern };
-		settings.encryptPathRules = rules;
-		void saveSettings();
+		const savedCount = settings.encryptPathRules.length;
+		if (index < savedCount) {
+			// 已保存的规则 — 直接更新并保存
+			const rules = [...settings.encryptPathRules];
+			rules[index] = { ...rules[index], pattern };
+			settings.encryptPathRules = rules;
+			void saveSettings();
+		} else {
+			// 暂存的规则
+			const pendingIndex = index - savedCount;
+			const updated = [...pendingRules];
+			updated[pendingIndex] = { ...updated[pendingIndex], pattern };
+			pendingRules = updated;
+
+			// 一旦有内容，立即提交到 settings
+			if (pattern.trim()) {
+				const rule = pendingRules[pendingIndex];
+				settings.encryptPathRules = [...settings.encryptPathRules, rule];
+				void saveSettings();
+				pendingRules = updated.filter((_, i) => i !== pendingIndex);
+			}
+		}
 	}
 
 	function handleRuleBlur(index: number) {
-		const rule = settings.encryptPathRules[index];
-		if (rule && !rule.pattern.trim()) {
-			const rules = [...settings.encryptPathRules];
-			rules.splice(index, 1);
-			settings.encryptPathRules = rules;
-			void saveSettings();
+		const savedCount = settings.encryptPathRules.length;
+		if (index < savedCount) {
+			// 已保存的规则 — 如果为空则移除
+			const rule = settings.encryptPathRules[index];
+			if (rule && !rule.pattern.trim()) {
+				const rules = [...settings.encryptPathRules];
+				rules.splice(index, 1);
+				settings.encryptPathRules = rules;
+				void saveSettings();
+			}
+		} else {
+			// 暂存的规则 — 如果为空则丢弃
+			const pendingIndex = index - savedCount;
+			const rule = pendingRules[pendingIndex];
+			if (rule && !rule.pattern.trim()) {
+				pendingRules = pendingRules.filter((_, i) => i !== pendingIndex);
+			}
 		}
 	}
 
 	function updateRuleKey(index: number, keyFingerprint: string) {
-		const rules = [...settings.encryptPathRules];
-		rules[index] = { ...rules[index], keyFingerprint };
-		settings.encryptPathRules = rules;
-		void saveSettings();
+		const savedCount = settings.encryptPathRules.length;
+		if (index < savedCount) {
+			// 已保存的规则
+			const rules = [...settings.encryptPathRules];
+			rules[index] = { ...rules[index], keyFingerprint };
+			settings.encryptPathRules = rules;
+			void saveSettings();
+		} else {
+			// 暂存的规则
+			const pendingIndex = index - savedCount;
+			const updated = [...pendingRules];
+			updated[pendingIndex] = { ...updated[pendingIndex], keyFingerprint };
+			pendingRules = updated;
+		}
 	}
 </script>
 
@@ -520,7 +560,7 @@
 		</div>
 
 		<div class="w-full space-y-3 pt-1">
-			{#each settings.encryptPathRules as rule, index (index)}
+			{#each allRules as rule, index (index)}
 				<div
 					class="flex flex-col gap-2 rounded-lg border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3"
 				>

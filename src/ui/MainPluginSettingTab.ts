@@ -10,6 +10,7 @@ import TemplatePreview from "#src/lib/TemplatePreview.svelte";
 import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
+import { encryptNote } from "#src/commands/convertAttachment";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
@@ -238,9 +239,6 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								return;
 							}
 
-							const { encryptNote } = await import(
-								"#src/commands/convertAttachment"
-							);
 							const files = this.app.vault.getMarkdownFiles();
 							let total = 0;
 							const ig = ignore().add(patterns);
