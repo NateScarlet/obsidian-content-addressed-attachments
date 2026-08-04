@@ -38,6 +38,10 @@ jobs:
                   pnpm install
                   pnpm run build
                   pnpm run test
+            - name: Build presets
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run preset:build
             - name: Release
               if: ${{needs.release-please.outputs.release_created}}
               uses: softprops/action-gh-release@v2
@@ -48,3 +52,5 @@ jobs:
                       main.js
                       manifest.json
                       styles.css
+                      dist/presets/imagemagick.js
+                      dist/presets/magick.wasm

@@ -1,5 +1,4 @@
-import { Notice, type App, type TFile, type Editor } from "obsidian";
-import { CID } from "multiformats/cid";
+import { Notice, type App, type Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptionService from "#src/lib/encryption/EncryptionService";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
@@ -7,13 +6,14 @@ import type { URLResolver } from "#src/URLResolver";
 import type ReferenceManager from "#src/ReferenceManager";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
-import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
+import { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
 import showError from "#src/utils/showError";
 import { ProgressModal } from "#src/ui/ProgressModal";
+import { trashIfUnreferenced, loadFileContent } from "./casUtils";
 
 const { t } = defineLocales({
 	en: {
@@ -36,8 +36,7 @@ const { t } = defineLocales({
 		reprocessConfirm:
 			"将重新处理仓库中所有被引用的附件。此操作难以撤销。是否继续？",
 		reprocessCancelled: "已取消重新处理",
-		reprocessComplete: (count: number) =>
-			`已重新处理 ${count} 个附件`,
+		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
 		reprocessProgress: (current: number, total: number) =>
 			`正在重新处理附件 ${current}/${total}`,
 		noScriptConfigured: "未配置预处理脚本",
@@ -58,45 +57,6 @@ export interface ReprocessContext {
 	pipeline: TransformPipeline;
 	scriptURL: string;
 	dir: string;
-}
-
-//#endregion
-
-//#region Helpers
-
-async function trashIfUnreferenced(
-	cas: CAS,
-	referenceManager: ReferenceManager,
-	cid: CID,
-	currentNotePath: string | undefined,
-): Promise<void> {
-	const referencingFiles: string[] = [];
-	for await (const path of referenceManager.findFilePath(cid, undefined)) {
-		if (path !== currentNotePath) {
-			referencingFiles.push(path);
-		}
-	}
-	if (referencingFiles.length > 0) return;
-	await cas.trash(cid);
-}
-
-async function loadFileContent(
-	app: App,
-	cas: CAS,
-	urlResolver: URLResolver,
-	rawURL: string,
-): Promise<ArrayBuffer | undefined> {
-	const parsed = IPFSLink.parse(rawURL);
-	if (parsed) {
-		const match = await cas.load(parsed.cid);
-		if (match?.normalizedPath) {
-			return app.vault.adapter.readBinary(match.normalizedPath);
-		}
-	}
-	const resolved = await urlResolver.resolveURL(rawURL);
-	if (resolved?.path) {
-		return app.vault.adapter.readBinary(resolved.path);
-	}
 }
 
 //#endregion
@@ -142,20 +102,20 @@ async function reprocessSingleLink(
 	}
 
 	// 运行管线
-	const result = await ctx.pipeline.run(
-		{
-			data: plaintext,
-			mimeType: originalMimeType,
-			filename: parsed.filename || "file",
-		},
-		ctx.scriptURL,
-	);
+	const result = await ctx.pipeline.run({
+		data: plaintext,
+		mimeType: originalMimeType,
+		filename: parsed.filename || "file",
+	});
 
 	// 如果管线返回 undefined，保留原始文件
 	if (!result) return undefined;
 
 	// 如果管线结果与原文件相同（MIME 和大小未变），跳过
-	if (result.mimeType === originalMimeType && result.data.byteLength === plaintext.byteLength) {
+	if (
+		result.mimeType === originalMimeType &&
+		result.data.byteLength === plaintext.byteLength
+	) {
 		return undefined;
 	}
 
@@ -187,7 +147,7 @@ async function reprocessSingleLink(
 	return new IPFSLink({
 		cid: newCid,
 		filename: fileToSave.name,
-		format: fileToSave === transformedFile ? fileToSave.type : ENCRYPTED_FORMAT,
+		format: fileToSave.type,
 	}).toURL();
 }
 
@@ -198,7 +158,9 @@ async function reprocessSingleLink(
 /**
  * 重新处理当前笔记的所有附件引用。
  */
-export async function reprocessCurrentNote(ctx: ReprocessContext): Promise<number> {
+export async function reprocessCurrentNote(
+	ctx: ReprocessContext,
+): Promise<number> {
 	const file = ctx.app.workspace.getActiveFile();
 	if (!file) {
 		throw new Error("No active note");
@@ -277,6 +239,7 @@ export async function reprocessWholeVault(
 
 				return totalReprocessed;
 			},
+			t("reprocessConfirm"),
 		);
 		modal.open();
 		modal.onCompleted = (count: number) => {
@@ -285,7 +248,7 @@ export async function reprocessWholeVault(
 		};
 		modal.onError = (err: unknown) => {
 			showError(err);
-			reject(err);
+			reject(err instanceof Error ? err : new Error(String(err)));
 		};
 	});
 }

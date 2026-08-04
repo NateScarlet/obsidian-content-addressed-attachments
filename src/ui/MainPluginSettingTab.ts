@@ -280,87 +280,86 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		//#region 预处理设置
 		new Setting(containerEl).setName(t("preProcessing")).setHeading();
 
-		// 预设下拉选择
-		const presetSetting = new Setting(containerEl)
-			.setName(t("preProcessScript"))
-			.setDesc(t("preProcessScriptDesc"));
-
-		// 检查当前 URL 是否在预设索引中
+		// 单输入框 + 预设下拉选择
 		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
 		const currentPreset = findPresetByURL(currentScriptURL);
 
-		if (currentPreset) {
-			presetSetting.setDesc(
-				`${currentPreset.description} (${currentPreset.name})`,
-			);
-		} else if (currentScriptURL) {
-			presetSetting.setDesc(t("customScript"));
-		}
-
-		presetSetting.addDropdown((dropdown) => {
-			// 添加空选项（禁用）
-			dropdown.addOption("", t("preProcessDisabled"));
-
-			// 添加预设选项
-			for (const preset of PRESET_INDEX) {
-				dropdown.addOption(preset.scriptURL, preset.name);
-			}
-
-			// 添加自定义选项
-			dropdown.addOption("__custom__", t("customScript"));
-
-			// 设置当前值
-			if (currentPreset) {
-				dropdown.setValue(currentPreset.scriptURL);
-			} else if (currentScriptURL) {
-				dropdown.setValue("__custom__");
-			} else {
-				dropdown.setValue("");
-			}
-
-			dropdown.onChange(async (value) => {
-				if (value === "__custom__") {
-					// 切换到自定义模式，保持当前 URL
-					presetSetting.setDesc(t("customScript"));
+		// 预设下拉：选择后填入输入框
+		const presetDropdown = new Setting(containerEl)
+			.setName(t("preProcessScript"))
+			.setDesc(
+				currentPreset
+					? `${currentPreset.description} (${currentPreset.name})`
+					: currentScriptURL
+						? t("customScript")
+						: t("preProcessDisabled"),
+			)
+			.addDropdown((dropdown) => {
+				dropdown.addOption("", t("preProcessDisabled"));
+				for (const preset of PRESET_INDEX) {
+					dropdown.addOption(preset.scriptURL, preset.name);
+				}
+				dropdown.addOption("__custom__", t("customScript"));
+				if (currentPreset) {
+					dropdown.setValue(currentPreset.scriptURL);
+				} else if (currentScriptURL) {
+					dropdown.setValue("__custom__");
 				} else {
+					dropdown.setValue("");
+				}
+				dropdown.onChange(async (value) => {
+					if (value === "__custom__") {
+						presetDropdown.setDesc(t("customScript"));
+						return;
+					}
+					if (value === "") {
+						this.plugin.settings.preProcess.scriptURL = "";
+						await this.plugin.saveSettings();
+						presetDropdown.setDesc(t("preProcessDisabled"));
+						return;
+					}
+					// 预设：直接填入 URL
 					this.plugin.settings.preProcess.scriptURL = value;
 					await this.plugin.saveSettings();
 					const preset = findPresetByURL(value);
 					if (preset) {
-						presetSetting.setDesc(
+						presetDropdown.setDesc(
 							`${preset.description} (${preset.name})`,
 						);
 					}
-				}
+				});
 			});
-		});
 
-		// 自定义脚本 URL 输入框（仅在非预设时显示）
-		if (!currentPreset) {
-			new Setting(containerEl)
-				.setName(t("customScriptURL"))
-				.setDesc(t("customScriptURLDesc"))
-				.addText((text) =>
-					text
-						.setPlaceholder(
-							"scripts/transform.js#format=avif&quality=80",
-						)
-						.setValue(
-							currentPreset ? "" : currentScriptURL,
-						)
-						.onChange(async (value) => {
-							this.plugin.settings.preProcess.scriptURL =
-								value;
-							await this.plugin.saveSettings();
-						}),
-				);
-		}
+		// 文本输入框：始终显示，可直接编辑
+		new Setting(containerEl)
+			.setName(t("customScriptURL"))
+			.setDesc(t("customScriptURLDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder("")
+					.setValue(currentScriptURL || "")
+					.onChange(async (value) => {
+						this.plugin.settings.preProcess.scriptURL = value;
+						await this.plugin.saveSettings();
+						// 更新描述
+						const preset = findPresetByURL(value);
+						if (preset) {
+							presetDropdown.setDesc(
+								`${preset.description} (${preset.name})`,
+							);
+						} else if (value) {
+							presetDropdown.setDesc(t("customScript"));
+						} else {
+							presetDropdown.setDesc(t("preProcessDisabled"));
+						}
+					}),
+			);
 		//#endregion
 
 		// 全库操作区域
 		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
 
-		const btnText = t("execute")!;
+		const btnText = t("execute");
 
 		new Setting(containerEl)
 			.setName(t("migrateAllNotes"))
@@ -396,8 +395,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						keyManager: this.plugin.keyManager,
 						encryptPathPolicy: this.plugin.encryptPathPolicy,
 						pipeline: this.plugin.pipeline,
-						scriptURL:
-							this.plugin.settings.preProcess.scriptURL,
+						scriptURL: this.plugin.settings.preProcess.scriptURL,
 						dir: this.plugin.settings.primaryDir,
 					};
 					reprocessWholeVault(ctx).catch(showError);
@@ -443,7 +441,8 @@ const { t } = defineLocales({
 		encryptMatchingNotesSuccess: (count: number) =>
 			`Encrypted ${count} link(s)`,
 		noMatchingFiles: "No matching notes found for rule",
-		reprocessWholeVault: "Reprocess all attachments (whole vault, advanced)",
+		reprocessWholeVault:
+			"Reprocess all attachments (whole vault, advanced)",
 		reprocessWholeVaultDesc:
 			"Reprocess all referenced attachments using the pre-processing pipeline",
 		preProcessing: "Pre-processing",
@@ -486,12 +485,10 @@ const { t } = defineLocales({
 			`已加密 ${count} 个链接`,
 		noMatchingFiles: "未找到符合路径规则的笔记",
 		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
-		reprocessWholeVaultDesc:
-			"使用预处理管线重新处理所有被引用的附件",
+		reprocessWholeVaultDesc: "使用预处理管线重新处理所有被引用的附件",
 		preProcessing: "预处理",
 		preProcessScript: "预处理脚本",
-		preProcessScriptDesc:
-			"插入时转换附件的脚本。空=禁用",
+		preProcessScriptDesc: "插入时转换附件的脚本。空=禁用",
 		preProcessDisabled: "禁用",
 		customScript: "自定义脚本",
 		customScriptURL: "自定义脚本 URL",

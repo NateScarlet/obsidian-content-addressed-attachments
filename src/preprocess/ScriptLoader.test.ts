@@ -1,14 +1,25 @@
-import { describe, it, expect, vi } from "vitest";
-import { parseScriptURL, getParams } from "./ScriptLoader";
+import { describe, it, expect } from "vitest";
+import { parseScriptURL } from "./ScriptLoader";
 
+/** 将 URLSearchParams 转为普通对象以便断言 */
+function paramsToObject(params: URLSearchParams): Record<string, string> {
+	const obj: Record<string, string> = {};
+	params.forEach((value, key) => {
+		obj[key] = value;
+	});
+	return obj;
+}
+
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 describe("parseScriptURL", () => {
 	it("parses vault-relative path", () => {
 		const result = parseScriptURL("scripts/transform.js");
 		expect(result).toEqual({
 			type: "vault-relative",
 			path: "scripts/transform.js",
-			params: {},
+			params: expect.any(URLSearchParams),
 		});
+		expect(paramsToObject(result!.params)).toEqual({});
 	});
 
 	it("parses vault-relative path with params", () => {
@@ -18,7 +29,11 @@ describe("parseScriptURL", () => {
 		expect(result).toEqual({
 			type: "vault-relative",
 			path: "scripts/transform.js",
-			params: { format: "avif", quality: "80" },
+			params: expect.any(URLSearchParams),
+		});
+		expect(paramsToObject(result!.params)).toEqual({
+			format: "avif",
+			quality: "80",
 		});
 	});
 
@@ -29,8 +44,9 @@ describe("parseScriptURL", () => {
 		expect(result).toEqual({
 			type: "ipfs",
 			cid: "bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di",
-			params: {},
+			params: expect.any(URLSearchParams),
 		});
+		expect(paramsToObject(result!.params)).toEqual({});
 	});
 
 	it("parses ipfs:// URL with params", () => {
@@ -40,8 +56,9 @@ describe("parseScriptURL", () => {
 		expect(result).toEqual({
 			type: "ipfs",
 			cid: "bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di",
-			params: { format: "avif" },
+			params: expect.any(URLSearchParams),
 		});
+		expect(paramsToObject(result!.params)).toEqual({ format: "avif" });
 	});
 
 	it("parses internal.ipfs-locked: URL", () => {
@@ -52,8 +69,9 @@ describe("parseScriptURL", () => {
 			type: "internal.ipfs-locked",
 			cid: "bafkreiabc123",
 			sourceURL: "https://example.com/script.js",
-			params: {},
+			params: expect.any(URLSearchParams),
 		});
+		expect(paramsToObject(result!.params)).toEqual({});
 	});
 
 	it("parses internal.ipfs-locked: URL with params", () => {
@@ -64,8 +82,9 @@ describe("parseScriptURL", () => {
 			type: "internal.ipfs-locked",
 			cid: "bafkreiabc123",
 			sourceURL: "https://example.com/script.js",
-			params: { format: "webp" },
+			params: expect.any(URLSearchParams),
 		});
+		expect(paramsToObject(result!.params)).toEqual({ format: "webp" });
 	});
 
 	it("parses https:// URL", () => {
@@ -75,8 +94,9 @@ describe("parseScriptURL", () => {
 		expect(result).toEqual({
 			type: "https",
 			url: "https://example.com/scripts/transform.js",
-			params: {},
+			params: expect.any(URLSearchParams),
 		});
+		expect(paramsToObject(result!.params)).toEqual({});
 	});
 
 	it("parses https:// URL with params", () => {
@@ -86,7 +106,22 @@ describe("parseScriptURL", () => {
 		expect(result).toEqual({
 			type: "https",
 			url: "https://example.com/scripts/transform.js",
-			params: { format: "avif", quality: "80" },
+			params: expect.any(URLSearchParams),
+		});
+		expect(paramsToObject(result!.params)).toEqual({
+			format: "avif",
+			quality: "80",
+		});
+	});
+
+	it("parses http:// URL", () => {
+		const result = parseScriptURL(
+			"http://example.com/scripts/transform.js",
+		);
+		expect(result).toEqual({
+			type: "https",
+			url: "http://example.com/scripts/transform.js",
+			params: expect.any(URLSearchParams),
 		});
 	});
 
@@ -100,35 +135,69 @@ describe("parseScriptURL", () => {
 		expect(result).toBeUndefined();
 	});
 
-	it("treats unknown scheme as vault-relative path", () => {
-		// "unknown:something" - "unknown:" is not in KNOWN_SCHEMES
-		// So it should be treated as vault-relative path
+	it("returns undefined for absolute Windows path", () => {
+		expect(parseScriptURL("C:\\scripts\\transform.js")).toBeUndefined();
+	});
+
+	it("returns undefined for absolute POSIX path", () => {
+		expect(parseScriptURL("/scripts/transform.js")).toBeUndefined();
+	});
+
+	it("treats unknown scheme followed by path as vault-relative path", () => {
 		const result = parseScriptURL("unknown:something");
 		expect(result).toEqual({
 			type: "vault-relative",
 			path: "unknown:something",
-			params: {},
+			params: expect.any(URLSearchParams),
 		});
 	});
 });
+/* eslint-enable @typescript-eslint/no-unsafe-assignment */
 
-describe("getParams", () => {
-	it("extracts params from URL fragment", () => {
-		const params = getParams("scripts/transform.js#format=avif&quality=80");
-		expect(params).toEqual({ format: "avif", quality: "80" });
+describe("ScriptLoaderImpl.getParams", () => {
+	it("extracts params from URL fragment", async () => {
+		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
+		const loader = new ScriptLoaderImpl(
+			(path) => path,
+			() => Promise.resolve(undefined),
+			() => Promise.resolve(false),
+			() => "",
+			() => "",
+			() => Promise.resolve(undefined),
+		);
+		const params = loader.getParams(
+			"scripts/transform.js#format=avif&quality=80",
+		);
+		expect(paramsToObject(params)).toEqual({
+			format: "avif",
+			quality: "80",
+		});
 	});
 
-	it("returns empty object for URL without fragment", () => {
-		const params = getParams("scripts/transform.js");
-		expect(params).toEqual({});
+	it("returns empty URLSearchParams for URL without fragment", async () => {
+		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
+		const loader = new ScriptLoaderImpl(
+			(path) => path,
+			() => Promise.resolve(undefined),
+			() => Promise.resolve(false),
+			() => "",
+			() => "",
+			() => Promise.resolve(undefined),
+		);
+		const params = loader.getParams("scripts/transform.js");
+		expect(paramsToObject(params)).toEqual({});
 	});
 
-	it("handles fragment with no value keys", () => {
-		const params = getParams("scripts/transform.js#flag");
-		expect(params).toEqual({ flag: "" });
-	});
-
-	it("returns empty object for empty string", () => {
-		expect(getParams("")).toEqual({});
+	it("returns empty URLSearchParams for empty string", async () => {
+		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
+		const loader = new ScriptLoaderImpl(
+			(path) => path,
+			() => Promise.resolve(undefined),
+			() => Promise.resolve(false),
+			() => "",
+			() => "",
+			() => Promise.resolve(undefined),
+		);
+		expect(paramsToObject(loader.getParams(""))).toEqual({});
 	});
 });

@@ -1,24 +1,16 @@
-import { Modal, Notice, Setting, type App } from "obsidian";
+import { Modal, Setting, type App } from "obsidian";
 import defineLocales from "#src/utils/defineLocales";
 
 const { t } = defineLocales({
 	en: {
 		confirm: "Continue",
 		cancel: "Cancel",
-		close: "Close",
 		progress: "Progress",
-		confirmDialog: "Confirm operation",
-		confirmMessage:
-			"This will reprocess all referenced attachments in the vault. This operation is hard to revert. Continue?",
 	},
 	zh: {
 		confirm: "继续",
 		cancel: "取消",
-		close: "关闭",
 		progress: "进度",
-		confirmDialog: "确认操作",
-		confirmMessage:
-			"将重新处理仓库中所有被引用的附件。此操作难以撤销。是否继续？",
 	},
 });
 
@@ -36,9 +28,8 @@ export class ProgressModal extends Modal {
 	constructor(
 		app: App,
 		private title: string,
-		private task: (
-			progress: ProgressController,
-		) => Promise<number>,
+		private task: (progress: ProgressController) => Promise<number>,
+		private confirmMessage: string,
 	) {
 		super(app);
 		this.setTitle(title);
@@ -49,19 +40,17 @@ export class ProgressModal extends Modal {
 
 		// 确认对话框
 		const confirmContainer = this.contentEl.createDiv();
-		confirmContainer.createEl("p", { text: t("confirmMessage") });
+		confirmContainer.createEl("p", { text: this.confirmMessage });
 
 		new Setting(confirmContainer)
 			.addButton((btn) =>
 				btn.setButtonText(t("confirm")).onClick(() => {
 					confirmContainer.empty();
-					this.startTask();
+					void this.startTask();
 				}),
 			)
 			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => this.close()),
+				btn.setButtonText(t("cancel")).onClick(() => this.close()),
 			);
 	}
 
@@ -80,7 +69,7 @@ export class ProgressModal extends Modal {
 				return modalIsCancelled;
 			},
 		} satisfies ProgressController;
-		let modalIsCancelled = false;
+		const modalIsCancelled = false;
 
 		try {
 			const result = await this.task(controller);

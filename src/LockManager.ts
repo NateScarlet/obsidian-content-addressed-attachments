@@ -331,12 +331,9 @@ export class LockManager {
 	}> {
 		// 只处理HTTP/HTTPS链接
 		const lowerLink = link.link.toLowerCase();
-		if (
-			!(
-				lowerLink.startsWith("http://") ||
-				lowerLink.startsWith("https://")
-			)
-		) {
+		if (!(
+			lowerLink.startsWith("http://") || lowerLink.startsWith("https://")
+		)) {
 			return { success: false, reason: t("notHTTPLink") };
 		}
 

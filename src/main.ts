@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, MarkdownView } from "obsidian";
+import { Notice, Plugin, TFile, MarkdownView, requestUrl } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -38,7 +38,6 @@ import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import {
 	reprocessCurrentNote,
-	reprocessWholeVault,
 	reprocessSingleLinkCommand,
 	type ReprocessContext,
 } from "./commands/reprocessAttachments";
@@ -151,9 +150,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.scriptLoader = new ScriptLoaderImpl(
 			(path) => this.app.vault.adapter.getResourcePath(path),
 			async (url, relPath) => {
-				const response = await fetch(url);
-				if (!response.ok) return undefined;
-				const arrayBuffer = await response.arrayBuffer();
+				const response = await requestUrl({ url });
+				const arrayBuffer = response.arrayBuffer;
 				await this.app.vault.adapter.writeBinary(relPath, arrayBuffer);
 				return relPath;
 			},
@@ -162,7 +160,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			() => this.settings.primaryDir,
 			(rawURL) => this.urlResolver.resolveURL(rawURL),
 		);
-		this.pipeline = new TransformPipeline(this.scriptLoader);
+		this.pipeline = new TransformPipeline(
+			this.scriptLoader,
+			() => this.settings.preProcess.scriptURL,
+		);
 
 		this.setupMutationObserver();
 
@@ -192,7 +193,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							notePath,
 							this.encryptPathPolicy,
 							this.pipeline,
-							this.settings.preProcess.scriptURL,
 						);
 					}
 				}
@@ -218,7 +218,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							notePath,
 							this.encryptPathPolicy,
 							this.pipeline,
-							this.settings.preProcess.scriptURL,
 						);
 					}
 				}
@@ -340,7 +339,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				const ipfsLinkForReprocess =
 					findLinkAtPos(content, fromOffset) ??
 					findLinkAtPos(content, toOffset);
-				if (ipfsLinkForReprocess && this.settings.preProcess.scriptURL) {
+				if (
+					ipfsLinkForReprocess &&
+					this.settings.preProcess.scriptURL
+				) {
 					menu.addItem((item) => {
 						item.setTitle(t("reprocessLink"))
 							.setIcon("refresh")
@@ -391,7 +393,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.settings.primaryDir,
 					this.encryptPathPolicy,
 					this.pipeline,
-					this.settings.preProcess.scriptURL,
 				).catch(showError);
 			},
 		});
@@ -590,7 +591,8 @@ const { t } = defineLocales({
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
 		reprocessCurrentNote: "Reprocess attachments (current note)",
-		reprocessWholeVault: "Reprocess all attachments (whole vault, advanced)",
+		reprocessWholeVault:
+			"Reprocess all attachments (whole vault, advanced)",
 		reprocessLink: "Reprocess this attachment",
 		reprocessComplete: (count: number) =>
 			`Reprocessed ${count} attachment(s)`,
@@ -612,8 +614,7 @@ const { t } = defineLocales({
 		reprocessCurrentNote: "重新处理附件（当前笔记）",
 		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
 		reprocessLink: "重新处理此附件",
-		reprocessComplete: (count: number) =>
-			`已重新处理 ${count} 个附件`,
+		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
 		noAttachmentsFound: "未找到需要重新处理的附件",
 	},
 });

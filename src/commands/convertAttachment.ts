@@ -1,5 +1,5 @@
 import { Notice, type App, type TFile, type Editor } from "obsidian";
-import { CID } from "multiformats/cid";
+
 import type { CAS } from "#src/types/CAS";
 import type EncryptionService from "#src/lib/encryption/EncryptionService";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
@@ -10,8 +10,8 @@ import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
-
 import type ReferenceManager from "#src/ReferenceManager";
+import { trashIfUnreferenced, loadFileContent } from "./casUtils";
 
 const { t } = defineLocales({
 	en: {
@@ -38,50 +38,6 @@ export interface EncryptContext {
 	referenceManager: ReferenceManager;
 	keyManager: KeyManager;
 	encryptPathPolicy?: EncryptPathPolicy;
-}
-
-async function trashIfUnreferenced(
-	cas: CAS,
-	referenceManager: ReferenceManager,
-	cid: CID,
-	currentNotePath: string | undefined,
-): Promise<void> {
-	const referencingFiles: string[] = [];
-	for await (const path of referenceManager.findFilePath(cid, undefined)) {
-		if (path !== currentNotePath) {
-			referencingFiles.push(path);
-		}
-	}
-
-	if (referencingFiles.length > 0) {
-		return;
-	}
-
-	await cas.trash(cid);
-}
-
-/**
- * 加载二进制内容。
- * 优先调用 cas.load(cid) 加载（当文件位于垃圾箱 .trash 中时，cas.load 会自动自动还原并校验文件），
- * 其次回退调用 urlResolver。
- */
-async function loadFileContent(
-	app: App,
-	cas: CAS,
-	urlResolver: URLResolver,
-	rawURL: string,
-): Promise<ArrayBuffer | undefined> {
-	const parsed = IPFSLink.parse(rawURL);
-	if (parsed) {
-		const match = await cas.load(parsed.cid);
-		if (match?.normalizedPath) {
-			return app.vault.adapter.readBinary(match.normalizedPath);
-		}
-	}
-	const resolved = await urlResolver.resolveURL(rawURL);
-	if (resolved?.path) {
-		return app.vault.adapter.readBinary(resolved.path);
-	}
 }
 
 /**

@@ -11,9 +11,9 @@ export interface PreProcessInput {
 /** 预处理脚本的上下文 */
 export interface PreProcessContext {
 	/** 日志函数 */
-	log: (...args: unknown[]) => void;
-	/** 从 URL fragment 解析的参数键值对 */
-	params: Record<string, string>;
+	log: (message: string) => void;
+	/** 从 URL fragment 解析的参数 */
+	params: URLSearchParams;
 	/** 根据文件扩展名获取 MIME 类型 */
 	mimeTypeByExtension: (ext: string) => string;
 }
@@ -55,24 +55,20 @@ export interface PresetEntry {
 
 /** 脚本位置解析结果 */
 export type ScriptLocation =
-	| { type: "vault-relative"; path: string; params: Record<string, string> }
+	| { type: "vault-relative"; path: string; params: URLSearchParams }
 	| {
 			type: "internal.ipfs-locked";
 			cid: string;
 			sourceURL: string;
-			params: Record<string, string>;
+			params: URLSearchParams;
 	  }
-	| { type: "ipfs"; cid: string; params: Record<string, string> }
-	| { type: "https"; url: string; params: Record<string, string> };
+	| { type: "ipfs"; cid: string; params: URLSearchParams }
+	| { type: "https"; url: string; params: URLSearchParams };
 
 /** 脚本加载器接口，用于依赖注入 */
 export interface ScriptLoader {
 	/** 加载脚本模块，返回模块实例或 undefined */
 	loadScript(scriptURL: string): Promise<PreProcessScriptModule | undefined>;
 	/** 获取参数 */
-	getParams(scriptURL: string): Record<string, string>;
-	/** 锁定 HTTPS URL 为 internal.ipfs-locked，返回新 URL 或 undefined */
-	lockHTTPSURL(
-		url: string,
-	): Promise<{ lockedURL: string; module: PreProcessScriptModule } | undefined>;
+	getParams(scriptURL: string): URLSearchParams;
 }

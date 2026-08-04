@@ -4,12 +4,16 @@ import type {
 	PreProcessScriptModule,
 } from "./types";
 
-/** 已知的 URL scheme 前缀 */
-const KNOWN_SCHEMES = ["https:", "ipfs:", "internal.ipfs-locked:"];
+/** 已知的 URL scheme */
+const KNOWN_SCHEMES = ["https:", "http:", "ipfs:", "internal.ipfs-locked:"];
+
+/** 绝对路径前缀（Windows 和 POSIX） */
+const ABSOLUTE_PATH_RE = /^[A-Za-z]:[/\\]|^\//;
 
 /**
  * 解析脚本 URL 为 ScriptLocation。
  * 规则：如果第一个冒号分隔的段是已知 scheme 之一，则为 URL 形式；否则为 vault 相对路径。
+ * vault 相对路径不允许以绝对路径前缀开头。
  */
 export function parseScriptURL(rawURL: string): ScriptLocation | undefined {
 	const trimmed = rawURL.trim();
@@ -23,44 +27,52 @@ export function parseScriptURL(rawURL: string): ScriptLocation | undefined {
 		}
 	}
 
+	// 放行绝对路径（如 C:\path 或 /path）
+	if (ABSOLUTE_PATH_RE.test(trimmed)) {
+		return undefined;
+	}
+
 	return parseVaultRelative(trimmed);
 }
 
-/**
- * 从 URL 末尾提取 fragment 参数并返回。
- * fragment 格式: `k=v&k2=v2`
- */
-function splitFragment(url: string): {
+/** 使用 URL 构造函数解析获取 params */
+function parseURLSearchParams(url: string): {
 	baseURL: string;
-	params: Record<string, string>;
+	params: URLSearchParams;
 } {
 	const hashIndex = url.indexOf("#");
 	if (hashIndex < 0) {
-		return { baseURL: url, params: {} };
+		return { baseURL: url, params: new URLSearchParams() };
 	}
 	const fragment = url.slice(hashIndex + 1);
-	const params: Record<string, string> = {};
-	for (const part of fragment.split("&")) {
-		const eqIndex = part.indexOf("=");
-		if (eqIndex > 0) {
-			params[decodeURIComponent(part.slice(0, eqIndex))] =
-				decodeURIComponent(part.slice(eqIndex + 1));
-		} else if (part) {
-			params[decodeURIComponent(part)] = "";
-		}
-	}
-	return { baseURL: url.slice(0, hashIndex), params };
+	return {
+		baseURL: url.slice(0, hashIndex),
+		params: new URLSearchParams(fragment),
+	};
 }
 
 function parseURLForm(
 	rawURL: string,
 	scheme: string,
 ): ScriptLocation | undefined {
-	const { baseURL, params } = splitFragment(rawURL);
+	const { baseURL, params } = parseURLSearchParams(rawURL);
 
 	switch (scheme) {
 		case "https:":
-			return { type: "https", url: baseURL, params };
+		case "http:":
+			// 使用标准 URL 构造函数验证
+			try {
+				const parsed = new URL(baseURL);
+				if (
+					parsed.protocol !== "http:" &&
+					parsed.protocol !== "https:"
+				) {
+					return undefined;
+				}
+				return { type: "https", url: baseURL, params };
+			} catch {
+				return undefined;
+			}
 		case "ipfs:": {
 			const cid = baseURL.slice("ipfs://".length);
 			if (!cid) return undefined;
@@ -81,18 +93,9 @@ function parseURLForm(
 }
 
 function parseVaultRelative(rawURL: string): ScriptLocation | undefined {
-	const { baseURL, params } = splitFragment(rawURL);
+	const { baseURL, params } = parseURLSearchParams(rawURL);
 	if (!baseURL) return undefined;
 	return { type: "vault-relative", path: baseURL, params };
-}
-
-/**
- * 获取脚本 URL 中的参数（不加载脚本）。
- */
-export function getParams(scriptURL: string): Record<string, string> {
-	if (!scriptURL) return {};
-	const { params } = splitFragment(scriptURL);
-	return params;
 }
 
 /**
@@ -100,6 +103,8 @@ export function getParams(scriptURL: string): Record<string, string> {
  *
  * 依赖注入友好：接收 resolveURL 函数将 ipfs:// 等 URL 解析为本地路径，
  * 接收 getResourcePath 将 vault 路径转换为可 serve 的 URL。
+ *
+ * HTTPS URL 总是先下载到本地再通过 getResourcePath 加载（锁定行为由 LockManager 负责）。
  */
 export default class ScriptLoaderImpl implements ScriptLoader {
 	/** 模块实例缓存 */
@@ -128,54 +133,12 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		private resolveURL: (
 			rawURL: string,
 		) => Promise<{ path?: string; url: string } | undefined>,
-		/** 动态 import 函数 */
-		private dynamicImport: (url: string) => Promise<unknown> = (url) =>
-			import(/* @vite-ignore */ url),
 	) {}
 
-	/**
-	 * 将 HTTPS URL 锁定为 internal.ipfs-locked 格式。
-	 * 下载内容到下载目录，计算 CID，重写设置为 locked 格式。
-	 */
-	async lockHTTPSURL(
-		url: string,
-	): Promise<
-		{ lockedURL: string; module: PreProcessScriptModule } | undefined
-	> {
-		try {
-			const response = await fetch(url);
-			if (!response.ok) return undefined;
-			const arrayBuffer = await response.arrayBuffer();
-			const { CID } = await import("multiformats/cid");
-			const { sha256 } = await import("multiformats/hashes/sha2");
-			const digest = await sha256.digest(new Uint8Array(arrayBuffer));
-			const cid = CID.create(1, 0x55, digest);
-
-			const dir = this.getDownloadDir() || this.getPrimaryDir();
-			const filename = `${cid.toString()}.js`;
-			const relPath = `${dir}/${filename}`;
-
-			const alreadyExists = await this.exists(relPath);
-			if (!alreadyExists) {
-				// 写入文件
-				await this.downloadToVault(url, relPath);
-			}
-
-			const lockedURL = `internal.ipfs-locked:${cid.toString()},${url}`;
-
-			// 尝试加载模块
-			const module = await this.loadScript(lockedURL);
-			if (!module) return undefined;
-
-			this.moduleCache.set(lockedURL, module);
-			return { lockedURL, module };
-		} catch {
-			return undefined;
-		}
-	}
-
-	getParams(scriptURL: string): Record<string, string> {
-		return getParams(scriptURL);
+	getParams(scriptURL: string): URLSearchParams {
+		if (!scriptURL) return new URLSearchParams();
+		const { params } = parseURLSearchParams(scriptURL);
+		return params;
 	}
 
 	async loadScript(
@@ -202,6 +165,10 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		}
 	}
 
+	clearCache(): void {
+		this.moduleCache.clear();
+	}
+
 	private async doLoadScript(
 		scriptURL: string,
 	): Promise<PreProcessScriptModule | undefined> {
@@ -212,8 +179,12 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 			const servableURL = await this.resolveToServableURL(location);
 			if (!servableURL) return undefined;
 
-			const mod = await this.dynamicImport(servableURL);
-			return mod as PreProcessScriptModule;
+			// 使用 getResourcePath 返回的 URL 作为 import 源
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
+			const mod: PreProcessScriptModule = await import(
+				/* @vite-ignore */ servableURL
+			);
+			return mod;
 		} catch (err) {
 			console.warn(
 				`[preprocess] Failed to load script: ${scriptURL}`,
@@ -228,11 +199,10 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 	): Promise<string | undefined> {
 		switch (location.type) {
 			case "vault-relative":
-				// vault 相对路径 → adapter.getResourcePath(relPath) → app:// URL
 				return this.getResourcePath(location.path);
 
 			case "internal.ipfs-locked": {
-				// 使用 URLResolver 解析到本地路径
+				// 先尝试 URLResolver 解析到本地路径
 				const resolved = await this.resolveURL(location.sourceURL);
 				if (resolved?.path) {
 					return this.getResourcePath(resolved.path);
@@ -268,12 +238,14 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 			}
 
 			case "https": {
-				// HTTPS 不直接 import(blobURL)，而是先下载到 vault 再 import
-				// 注意：这里只用于加载，不进行锁定操作
+				// HTTPS URL 总是先下载到 vault 再加载
 				const dir = this.getDownloadDir() || this.getPrimaryDir();
 				const filename = `script-${Date.now()}.js`;
 				const relPath = `${dir}/${filename}`;
-				const dlPath = await this.downloadToVault(location.url, relPath);
+				const dlPath = await this.downloadToVault(
+					location.url,
+					relPath,
+				);
 				if (dlPath) {
 					return this.getResourcePath(dlPath);
 				}
