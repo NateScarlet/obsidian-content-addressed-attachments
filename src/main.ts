@@ -36,12 +36,20 @@ import {
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import {
+	reprocessCurrentNote,
+	reprocessWholeVault,
+	reprocessSingleLinkCommand,
+	type ReprocessContext,
+} from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
+import TransformPipeline from "./preprocess/TransformPipeline";
+import ScriptLoaderImpl from "./preprocess/ScriptLoader";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -62,6 +70,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	private stack = new DisposableStack();
 	public migrationManager!: MigrationManager;
 	public lockManager!: LockManager;
+	public pipeline!: TransformPipeline;
+	public scriptLoader!: ScriptLoaderImpl;
 
 	private placeholderImageURL!: string;
 	private notFoundImageURL!: string;
@@ -137,6 +147,23 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.migrationManager = this.stack.use(new MigrationManager(this));
 		this.lockManager = this.stack.use(new LockManager(this));
 
+		// 初始化预处理管线
+		this.scriptLoader = new ScriptLoaderImpl(
+			(path) => this.app.vault.adapter.getResourcePath(path),
+			async (url, relPath) => {
+				const response = await fetch(url);
+				if (!response.ok) return undefined;
+				const arrayBuffer = await response.arrayBuffer();
+				await this.app.vault.adapter.writeBinary(relPath, arrayBuffer);
+				return relPath;
+			},
+			(path) => this.app.vault.adapter.exists(path),
+			() => this.settings.downloadDir,
+			() => this.settings.primaryDir,
+			(rawURL) => this.urlResolver.resolveURL(rawURL),
+		);
+		this.pipeline = new TransformPipeline(this.scriptLoader);
+
 		this.setupMutationObserver();
 
 		this.registerEditorExtension(
@@ -164,6 +191,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							file,
 							notePath,
 							this.encryptPathPolicy,
+							this.pipeline,
+							this.settings.preProcess.scriptURL,
 						);
 					}
 				}
@@ -188,6 +217,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							file,
 							notePath,
 							this.encryptPathPolicy,
+							this.pipeline,
+							this.settings.preProcess.scriptURL,
 						);
 					}
 				}
@@ -304,6 +335,25 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 						});
 					}
 				}
+
+				// 重新处理单个链接（上下文菜单）
+				const ipfsLinkForReprocess =
+					findLinkAtPos(content, fromOffset) ??
+					findLinkAtPos(content, toOffset);
+				if (ipfsLinkForReprocess && this.settings.preProcess.scriptURL) {
+					menu.addItem((item) => {
+						item.setTitle(t("reprocessLink"))
+							.setIcon("refresh")
+							.onClick(() => {
+								reprocessSingleLinkCommand(
+									reprocessCtx(),
+									editor,
+									ipfsLinkForReprocess,
+									view.file?.path,
+								).catch(showError);
+							});
+					});
+				}
 			}),
 		);
 		//#endregion
@@ -340,6 +390,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.cas,
 					this.settings.primaryDir,
 					this.encryptPathPolicy,
+					this.pipeline,
+					this.settings.preProcess.scriptURL,
 				).catch(showError);
 			},
 		});
@@ -364,6 +416,36 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					.then((count) => {
 						if (count === 0) {
 							new Notice(t("noReferencedFilesToRestore"));
+						}
+					})
+					.catch(showError);
+			},
+		});
+
+		// 重新处理附件命令
+		const reprocessCtx = (): ReprocessContext => ({
+			app: this.app,
+			cas: this.cas,
+			encryptionService: this.encryptionService,
+			urlResolver: this.urlResolver,
+			referenceManager: this.referenceManger,
+			keyManager: this.keyManager,
+			encryptPathPolicy: this.encryptPathPolicy,
+			pipeline: this.pipeline,
+			scriptURL: this.settings.preProcess.scriptURL,
+			dir: this.settings.primaryDir,
+		});
+
+		this.addCommand({
+			id: "reprocess-current-note",
+			name: t("reprocessCurrentNote"),
+			callback: () => {
+				reprocessCurrentNote(reprocessCtx())
+					.then((count) => {
+						if (count > 0) {
+							new Notice(t("reprocessComplete")(count));
+						} else {
+							new Notice(t("noAttachmentsFound"));
 						}
 					})
 					.catch(showError);
@@ -507,6 +589,12 @@ const { t } = defineLocales({
 		restoreReferencedFiles: "Restore referenced files from recycle bin",
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
+		reprocessCurrentNote: "Reprocess attachments (current note)",
+		reprocessWholeVault: "Reprocess all attachments (whole vault, advanced)",
+		reprocessLink: "Reprocess this attachment",
+		reprocessComplete: (count: number) =>
+			`Reprocessed ${count} attachment(s)`,
+		noAttachmentsFound: "No attachments found to reprocess",
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -521,6 +609,12 @@ const { t } = defineLocales({
 		openCASExplorer: "打开 CAS 文件管理器",
 		restoreReferencedFiles: "从回收站恢复被引用的文件",
 		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
+		reprocessCurrentNote: "重新处理附件（当前笔记）",
+		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
+		reprocessLink: "重新处理此附件",
+		reprocessComplete: (count: number) =>
+			`已重新处理 ${count} 个附件`,
+		noAttachmentsFound: "未找到需要重新处理的附件",
 	},
 });
 //#endregion

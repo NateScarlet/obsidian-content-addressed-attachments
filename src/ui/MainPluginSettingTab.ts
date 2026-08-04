@@ -11,6 +11,8 @@ import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { encryptNote } from "#src/commands/convertAttachment";
+import { reprocessWholeVault } from "#src/commands/reprocessAttachments";
+import { findPresetByURL, PRESET_INDEX } from "#src/preprocess/presetIndex";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
@@ -275,14 +277,96 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		}
 		//#endregion
 
+		//#region 预处理设置
+		new Setting(containerEl).setName(t("preProcessing")).setHeading();
+
+		// 预设下拉选择
+		const presetSetting = new Setting(containerEl)
+			.setName(t("preProcessScript"))
+			.setDesc(t("preProcessScriptDesc"));
+
+		// 检查当前 URL 是否在预设索引中
+		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
+		const currentPreset = findPresetByURL(currentScriptURL);
+
+		if (currentPreset) {
+			presetSetting.setDesc(
+				`${currentPreset.description} (${currentPreset.name})`,
+			);
+		} else if (currentScriptURL) {
+			presetSetting.setDesc(t("customScript"));
+		}
+
+		presetSetting.addDropdown((dropdown) => {
+			// 添加空选项（禁用）
+			dropdown.addOption("", t("preProcessDisabled"));
+
+			// 添加预设选项
+			for (const preset of PRESET_INDEX) {
+				dropdown.addOption(preset.scriptURL, preset.name);
+			}
+
+			// 添加自定义选项
+			dropdown.addOption("__custom__", t("customScript"));
+
+			// 设置当前值
+			if (currentPreset) {
+				dropdown.setValue(currentPreset.scriptURL);
+			} else if (currentScriptURL) {
+				dropdown.setValue("__custom__");
+			} else {
+				dropdown.setValue("");
+			}
+
+			dropdown.onChange(async (value) => {
+				if (value === "__custom__") {
+					// 切换到自定义模式，保持当前 URL
+					presetSetting.setDesc(t("customScript"));
+				} else {
+					this.plugin.settings.preProcess.scriptURL = value;
+					await this.plugin.saveSettings();
+					const preset = findPresetByURL(value);
+					if (preset) {
+						presetSetting.setDesc(
+							`${preset.description} (${preset.name})`,
+						);
+					}
+				}
+			});
+		});
+
+		// 自定义脚本 URL 输入框（仅在非预设时显示）
+		if (!currentPreset) {
+			new Setting(containerEl)
+				.setName(t("customScriptURL"))
+				.setDesc(t("customScriptURLDesc"))
+				.addText((text) =>
+					text
+						.setPlaceholder(
+							"scripts/transform.js#format=avif&quality=80",
+						)
+						.setValue(
+							currentPreset ? "" : currentScriptURL,
+						)
+						.onChange(async (value) => {
+							this.plugin.settings.preProcess.scriptURL =
+								value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+		//#endregion
+
 		// 全库操作区域
 		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
+
+		const btnText = t("execute")!;
 
 		new Setting(containerEl)
 			.setName(t("migrateAllNotes"))
 			.setDesc(t("migrateAllNotesDesc"))
 			.addButton((button) =>
-				button.setButtonText(t("execute")).onClick(() => {
+				button.setButtonText(btnText).onClick(() => {
 					this.plugin.migrationManager
 						.execute("all")
 						.catch(showError);
@@ -293,10 +377,32 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setName(t("lockAllNotes"))
 			.setDesc(t("lockAllNotesDesc"))
 			.addButton((button) => {
-				button.setButtonText(t("execute")).onClick(() => {
+				button.setButtonText(btnText).onClick(() => {
 					this.plugin.lockManager.execute("all").catch(showError);
 				});
 			});
+
+		new Setting(containerEl)
+			.setName(t("reprocessWholeVault"))
+			.setDesc(t("reprocessWholeVaultDesc"))
+			.addButton((button) =>
+				button.setButtonText(btnText).onClick(() => {
+					const ctx = {
+						app: this.plugin.app,
+						cas: this.plugin.cas,
+						encryptionService: this.plugin.encryptionService,
+						urlResolver: this.plugin.urlResolver,
+						referenceManager: this.plugin.referenceManger,
+						keyManager: this.plugin.keyManager,
+						encryptPathPolicy: this.plugin.encryptPathPolicy,
+						pipeline: this.plugin.pipeline,
+						scriptURL:
+							this.plugin.settings.preProcess.scriptURL,
+						dir: this.plugin.settings.primaryDir,
+					};
+					reprocessWholeVault(ctx).catch(showError);
+				}),
+			);
 	}
 
 	onClose(): void {
@@ -337,6 +443,18 @@ const { t } = defineLocales({
 		encryptMatchingNotesSuccess: (count: number) =>
 			`Encrypted ${count} link(s)`,
 		noMatchingFiles: "No matching notes found for rule",
+		reprocessWholeVault: "Reprocess all attachments (whole vault, advanced)",
+		reprocessWholeVaultDesc:
+			"Reprocess all referenced attachments using the pre-processing pipeline",
+		preProcessing: "Pre-processing",
+		preProcessScript: "Pre-processing script",
+		preProcessScriptDesc:
+			"Script to transform attachments on insert. Empty = disabled",
+		preProcessDisabled: "Disabled",
+		customScript: "Custom script",
+		customScriptURL: "Custom script URL",
+		customScriptURLDesc:
+			"Vault-relative path, ipfs://, internal.ipfs-locked:, or https:// URL. Add parameters in fragment (e.g. #quality=80)",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -367,6 +485,18 @@ const { t } = defineLocales({
 		encryptMatchingNotesSuccess: (count: number) =>
 			`已加密 ${count} 个链接`,
 		noMatchingFiles: "未找到符合路径规则的笔记",
+		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
+		reprocessWholeVaultDesc:
+			"使用预处理管线重新处理所有被引用的附件",
+		preProcessing: "预处理",
+		preProcessScript: "预处理脚本",
+		preProcessScriptDesc:
+			"插入时转换附件的脚本。空=禁用",
+		preProcessDisabled: "禁用",
+		customScript: "自定义脚本",
+		customScriptURL: "自定义脚本 URL",
+		customScriptURLDesc:
+			"Vault 相对路径、ipfs://、internal.ipfs-locked: 或 https:// URL。在 fragment 中添加参数（如 #quality=80）",
 	},
 });
 //#endregion

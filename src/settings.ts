@@ -11,6 +11,11 @@ export interface EncryptPathRule {
 	keyFingerprint: string;
 }
 
+export interface PreProcessSettings {
+	/** 预处理脚本 URL，空字符串表示禁用 */
+	scriptURL: string;
+}
+
 export interface Settings {
 	version: 1;
 	primaryDir: string;
@@ -20,6 +25,7 @@ export interface Settings {
 	maxBlobSize: number;
 	decryptedCacheDir: string;
 	encryptionKeysSecretId?: string;
+	preProcess: PreProcessSettings;
 }
 
 export const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB
@@ -45,6 +51,7 @@ interface SettingsV1Input {
 	maxBlobSize?: number;
 	decryptedCacheDir?: string;
 	encryptionKeysSecretId?: string;
+	preProcess?: PreProcessSettings;
 }
 
 export type SettingsInput = SettingsV0 | SettingsV1Input | { version: number };
@@ -84,6 +91,7 @@ export function settingsFromInput(
 			maxBlobSize: v1.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
 			decryptedCacheDir:
 				v1.decryptedCacheDir ?? DEFAULT_DECRYPTED_CACHE_DIR,
+			preProcess: v1.preProcess ?? { scriptURL: "" },
 		};
 	}
 
@@ -107,6 +115,7 @@ export function settingsFromInput(
 		encryptPathRules: [],
 		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
 		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
+		preProcess: { scriptURL: "" },
 	};
 }
 
@@ -157,6 +166,7 @@ export function getDefaultSettings(): Settings {
 		encryptPathRules: [],
 		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
 		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
+		preProcess: { scriptURL: "" },
 	};
 }
 
