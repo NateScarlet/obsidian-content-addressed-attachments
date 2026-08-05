@@ -94,12 +94,7 @@ async function encryptSingleLink(
 
 	const { cid: newCid } = await ctx.cas.save(dir, encryptedFile);
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			parsed.cid,
-			notePath,
-		);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid);
 	}
 
 	return new IPFSLink({
@@ -172,12 +167,7 @@ export async function decryptLink(
 	});
 	const { cid: newCid } = await ctx.cas.save(dir, file);
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			parsed.cid,
-			notePath,
-		);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid);
 	}
 	const newURL = new IPFSLink({
 		cid: newCid,

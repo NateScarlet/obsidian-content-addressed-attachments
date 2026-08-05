@@ -141,12 +141,7 @@ async function reprocessSingleLink(
 
 	// 清理旧文件
 	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			parsed.cid,
-			notePath,
-		);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid);
 	}
 
 	return new IPFSLink({
@@ -227,18 +222,18 @@ export async function reprocessWholeVault(
 		confirmModal.open();
 
 		function startReprocess() {
-			const modal = new ProgressModal(
-				ctx.app,
-				t("reprocessWholeVault"),
-				async (progress) => {
+			const modal = new ProgressModal(ctx.app, t("reprocessWholeVault"));
+			modal.open();
+			void (async () => {
+				try {
 					const files = ctx.app.vault.getMarkdownFiles();
 					let totalReprocessed = 0;
 					let processed = 0;
 
-					progress.update(t("reprocessProgress")(0, files.length));
+					modal.update(t("reprocessProgress")(0, files.length));
 
 					for (const file of files) {
-						if (progress.isCancelled) {
+						if (modal.isCancelled) {
 							new Notice(t("reprocessCancelled"));
 							break;
 						}
@@ -256,23 +251,20 @@ export async function reprocessWholeVault(
 						);
 						totalReprocessed += count;
 						processed++;
-						progress.update(
+						modal.update(
 							t("reprocessProgress")(processed, files.length),
 						);
 					}
 
-					return totalReprocessed;
-				},
-			);
-			modal.open();
-			modal.onCompleted = (count: number) => {
-				new Notice(t("reprocessComplete")(count));
-				resolve(count);
-			};
-			modal.onError = (err: unknown) => {
-				showError(err);
-				reject(err instanceof Error ? err : new Error(String(err)));
-			};
+					modal.close();
+					new Notice(t("reprocessComplete")(totalReprocessed));
+					resolve(totalReprocessed);
+				} catch (err) {
+					modal.close();
+					showError(err);
+					reject(err instanceof Error ? err : new Error(String(err)));
+				}
+			})();
 		}
 	});
 }

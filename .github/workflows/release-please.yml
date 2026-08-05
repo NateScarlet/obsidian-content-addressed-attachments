@@ -52,5 +52,7 @@ jobs:
                       main.js
                       manifest.json
                       styles.css
-                      dist/presets/imagemagick.js
-                      dist/presets/magick.wasm
+            - name: Publish presets
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run preset:publish ${{needs.release-please.outputs.tag_name}}

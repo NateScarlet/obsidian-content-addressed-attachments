@@ -157,16 +157,15 @@ describe("parseScriptURL", () => {
 describe("ScriptLoaderImpl.getParams", () => {
 	it("extracts params from URL fragment", async () => {
 		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
-		const loader = new ScriptLoaderImpl(
-			(path) => path,
-			() => Promise.resolve(undefined),
-			() => Promise.resolve(false),
-			() => Promise.resolve(undefined),
-			() => "",
-			() => "",
-			() => "",
-			() => Promise.resolve(undefined),
-		);
+		const loader = new ScriptLoaderImpl({
+			getResourcePath: (path: string) => path,
+			download: () => Promise.resolve(undefined),
+			copy: () => Promise.resolve(false),
+			exists: () => Promise.resolve(false),
+			readFile: () => Promise.resolve(undefined),
+			getPluginDir: () => "",
+			resolveURL: () => Promise.resolve(undefined),
+		});
 		const params = loader.getParams(
 			"scripts/transform.js#format=avif&quality=80",
 		);
@@ -178,32 +177,30 @@ describe("ScriptLoaderImpl.getParams", () => {
 
 	it("returns empty URLSearchParams for URL without fragment", async () => {
 		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
-		const loader = new ScriptLoaderImpl(
-			(path) => path,
-			() => Promise.resolve(undefined),
-			() => Promise.resolve(false),
-			() => Promise.resolve(undefined),
-			() => "",
-			() => "",
-			() => "",
-			() => Promise.resolve(undefined),
-		);
+		const loader = new ScriptLoaderImpl({
+			getResourcePath: (path: string) => path,
+			download: () => Promise.resolve(undefined),
+			copy: () => Promise.resolve(false),
+			exists: () => Promise.resolve(false),
+			readFile: () => Promise.resolve(undefined),
+			getPluginDir: () => "",
+			resolveURL: () => Promise.resolve(undefined),
+		});
 		const params = loader.getParams("scripts/transform.js");
 		expect(paramsToObject(params)).toEqual({});
 	});
 
 	it("returns empty URLSearchParams for empty string", async () => {
 		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
-		const loader = new ScriptLoaderImpl(
-			(path) => path,
-			() => Promise.resolve(undefined),
-			() => Promise.resolve(false),
-			() => Promise.resolve(undefined),
-			() => "",
-			() => "",
-			() => "",
-			() => Promise.resolve(undefined),
-		);
+		const loader = new ScriptLoaderImpl({
+			getResourcePath: (path: string) => path,
+			download: () => Promise.resolve(undefined),
+			copy: () => Promise.resolve(false),
+			exists: () => Promise.resolve(false),
+			readFile: () => Promise.resolve(undefined),
+			getPluginDir: () => "",
+			resolveURL: () => Promise.resolve(undefined),
+		});
 		expect(paramsToObject(loader.getParams(""))).toEqual({});
 	});
 });

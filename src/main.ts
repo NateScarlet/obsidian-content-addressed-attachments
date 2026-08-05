@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, MarkdownView, requestUrl } from "obsidian";
+import { Notice, Plugin, TFile, MarkdownView } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -49,6 +49,9 @@ import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import ScriptLoaderImpl from "./preprocess/ScriptLoader";
+import { downloadScript } from "./utils/downloadScript";
+import { sha256 } from "multiformats/hashes/sha2";
+import { CID } from "multiformats/cid";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -147,22 +150,44 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.lockManager = this.stack.use(new LockManager(this));
 
 		// 初始化预处理管线
-		this.scriptLoader = new ScriptLoaderImpl(
-			(path) => this.app.vault.adapter.getResourcePath(path),
-			async (url, relPath) => {
-				const response = await requestUrl({ url });
-				const arrayBuffer = response.arrayBuffer;
-				await this.app.vault.adapter.writeBinary(relPath, arrayBuffer);
-				return relPath;
+		this.scriptLoader = new ScriptLoaderImpl({
+			getResourcePath: (path) =>
+				this.app.vault.adapter.getResourcePath(path),
+			download: async (url) => {
+				const dir =
+					this.settings.downloadDir || this.settings.primaryDir;
+				const filename = `script-${Date.now()}.js`;
+				const relPath = `${dir}/${filename}`;
+				const result = await downloadScript(url, relPath, (p, data) =>
+					this.app.vault.adapter.writeBinary(p, data),
+				);
+				if (!result) return undefined;
+				// 计算 CID
+				const content = await this.app.vault.adapter.readBinary(result);
+				const digest = await sha256.digest(new Uint8Array(content));
+				const cid = CID.create(1, 0x55, digest).toString();
+				return { cid, path: result };
 			},
-			(path) => this.app.vault.adapter.exists(path),
-			(path) => this.app.vault.adapter.read(path),
-			() => this.settings.downloadDir,
-			() => this.settings.primaryDir,
-			() =>
+			copy: async (src, dst) => {
+				try {
+					const content =
+						await this.app.vault.adapter.readBinary(src);
+					await this.app.vault.adapter.writeBinary(dst, content);
+					return true;
+				} catch (err) {
+					console.warn(
+						`[copy] Failed to copy ${src} -> ${dst}:`,
+						err,
+					);
+					return false;
+				}
+			},
+			exists: (path) => this.app.vault.adapter.exists(path),
+			readFile: (path) => this.app.vault.adapter.read(path),
+			getPluginDir: () =>
 				`${this.app.vault.configDir}/plugins/content-addressed-attachments`,
-			(rawURL) => this.urlResolver.resolveURL(rawURL),
-		);
+			resolveURL: (rawURL) => this.urlResolver.resolveURL(rawURL),
+		});
 		this.pipeline = new TransformPipeline(
 			this.scriptLoader,
 			() => this.settings.preProcess.scriptURL,

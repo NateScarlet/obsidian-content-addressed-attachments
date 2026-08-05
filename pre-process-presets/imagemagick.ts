@@ -11,24 +11,12 @@
  * 构建后的脚本通过 GitHub Release 分发，WASM 文件位于同一目录。
  */
 
-// 内联类型定义：预设脚本独立打包，不依赖主项目类型
-interface PreProcessInput {
-	data: ArrayBuffer;
-	mimeType: string;
-	filename: string;
-}
-
-interface PreProcessContext {
-	log: (message: string) => void;
-	params: URLSearchParams;
-	mimeTypeByExtension: (ext: string) => string;
-}
-
-interface PreProcessOutput {
-	data: ArrayBuffer;
-	mimeType: string;
-	filename: string;
-}
+import type {
+	PreProcessInput,
+	PreProcessContext,
+	PreProcessOutput,
+	PreProcessScriptModule,
+} from "./shared-types";
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -45,9 +33,8 @@ async function ensureInitialized(): Promise<void> {
 	if (initPromise) return initPromise;
 
 	initPromise = (async () => {
-		const { initializeImageMagick, ConfigurationFiles } = await import(
-			"@imagemagick/magick-wasm"
-		);
+		const { initializeImageMagick, ConfigurationFiles } =
+			await import("@imagemagick/magick-wasm");
 		const wasmURL = new URL("magick.wasm", getScriptDir()).href;
 		const response = await fetch(wasmURL);
 		const wasmBytes = new Uint8Array(await response.arrayBuffer());
@@ -85,7 +72,7 @@ const FORMAT_TO_MIME: Record<string, string> = {
  * - quality：编码质量（默认 60，与 pre-commit.py 一致）
  * - 如果转换后反而更大，保留原始文件
  */
-export default async function transform(
+const transform = async function (
 	input: PreProcessInput,
 	ctx: PreProcessContext,
 ): Promise<PreProcessOutput | undefined> {
@@ -105,9 +92,8 @@ export default async function transform(
 
 	await ensureInitialized();
 
-	const { ImageMagick, MagickFormat } = await import(
-		"@imagemagick/magick-wasm"
-	);
+	const { ImageMagick, MagickFormat } =
+		await import("@imagemagick/magick-wasm");
 	const magickFormatName = FORMAT_TO_MAGICK[format] || "Avif";
 	const targetFormat =
 		MagickFormat[magickFormatName as keyof typeof MagickFormat];
@@ -157,4 +143,6 @@ export default async function transform(
 		);
 		return undefined;
 	}
-}
+} satisfies PreProcessScriptModule["default"];
+
+export default transform;

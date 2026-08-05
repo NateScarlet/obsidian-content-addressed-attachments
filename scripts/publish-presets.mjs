@@ -5,45 +5,53 @@
  * 预设 URL 格式为：
  *   internal.ipfs-locked:<cid>,<download_url>
  *
+ * 用法：node scripts/publish-presets.mjs <tag>
+ *   tag: GitHub Release 标签名（必填，由 workflow 传入）
+ *
  * 依赖：需要 gh CLI 可用，且已登录。
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const presetDistDir = resolve(root, "dist", "presets");
 
-const presets = ["imagemagick.js"];
-const wasmFiles = ["magick.wasm"];
+const tag = process.argv[2];
+if (!tag) {
+	console.error("Usage: node scripts/publish-presets.mjs <tag>");
+	console.error("  tag: GitHub Release tag name (e.g. v0.3.0)");
+	process.exit(1);
+}
 
-/** 获取当前仓库的默认标签 */
-function getTag() {
-	try {
-		const tag = execSync(
-			'gh release list --json tagName -q ".[0].tagName"',
-			{ encoding: "utf-8", cwd: root },
-		).trim();
-		return tag || "v0.2.0";
-	} catch {
-		return "v0.2.0";
+/** 获取目录下所有文件（递归） */
+function getFiles(dir: string): string[] {
+	const files: string[] = [];
+	for (const name of readdirSync(dir)) {
+		const fullPath = resolve(dir, name);
+		if (statSync(fullPath).isDirectory()) {
+			files.push(...getFiles(fullPath));
+		} else {
+			files.push(fullPath);
+		}
 	}
+	return files;
 }
 
 /** 计算文件的 CID */
-async function computeCID(filePath) {
-	const { CID } = await import("multiformats/cid");
-	const { sha256 } = await import("multiformats/hashes/sha2");
+async function computeCID(filePath: string): Promise<string> {
 	const data = readFileSync(filePath);
 	const digest = await sha256.digest(data);
 	return CID.create(1, 0x55, digest).toString();
 }
 
 /** 上传文件到 GitHub Release */
-function uploadToRelease(filePath, tag) {
+function uploadToRelease(filePath: string, tag: string): void {
 	const filename = filePath.split(/[/\\]/).pop();
 	try {
 		execSync(
@@ -52,39 +60,42 @@ function uploadToRelease(filePath, tag) {
 		);
 		console.log(`  Uploaded: ${filename}`);
 	} catch (err) {
-		console.warn(`  Failed to upload ${filename}: ${err.message}`);
+		console.error(`  Failed to upload ${filename}: ${(err as Error).message}`);
+		process.exit(1);
 	}
 }
 
-async function main() {
-	const tag = getTag();
-	console.log(`Using tag: ${tag}`);
-
-	const cidMap = {};
-
-	for (const preset of presets) {
-		const filePath = resolve(presetDistDir, preset);
-		const cid = await computeCID(filePath);
-		cidMap[preset] = cid;
-		console.log(`${preset}: ${cid}`);
-
-		// 上传到 GitHub Release
-		uploadToRelease(filePath, tag);
+async function main(): Promise<void> {
+	if (!existsSync(presetDistDir)) {
+		console.error(`Preset dist directory not found: ${presetDistDir}`);
+		console.error("Run `pnpm run preset:build` first.");
+		process.exit(1);
 	}
 
-	// 上传 WASM 文件
-	for (const wasmFile of wasmFiles) {
-		const filePath = resolve(presetDistDir, wasmFile);
+	console.log(`Using tag: ${tag}`);
+
+	const files = getFiles(presetDistDir);
+	const cidMap: Record<string, string> = {};
+
+	for (const filePath of files) {
+		const filename = filePath.split(/[/\\]/).pop();
+		const cid = await computeCID(filePath);
+		cidMap[filename] = cid;
+		console.log(`${filename}: ${cid}`);
+
 		uploadToRelease(filePath, tag);
 	}
 
 	console.log("\nPreset URLs:");
-	for (const [preset, cid] of Object.entries(cidMap)) {
-		const downloadURL = `https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/${tag}/${preset}`;
-		console.log(`  internal.ipfs-locked:${cid},${downloadURL}#format=avif&quality=80`);
+	for (const [filename, cid] of Object.entries(cidMap)) {
+		const downloadURL = `https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/${tag}/${filename}`;
+		console.log(`  internal.ipfs-locked:${cid},${downloadURL}`);
 	}
 
-	console.log("\nUpdate preset-index.json with the CIDs above.");
+	console.log("\nUpdate preset-url in plugin settings with the URL above.");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+	console.error(err);
+	process.exit(1);
+});

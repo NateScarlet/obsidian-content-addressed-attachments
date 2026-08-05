@@ -14,7 +14,7 @@ if (typeof Symbol.asyncDispose === "undefined") {
 	});
 }
 
-if (typeof globalThis.DisposableStack === "undefined") {
+if (typeof window.DisposableStack === "undefined") {
 	class PolyfillDisposableStack {
 		private disposed = false;
 		private stack: Array<() => void> = [];
@@ -67,6 +67,6 @@ if (typeof globalThis.DisposableStack === "undefined") {
 		}
 	}
 
-	(globalThis as Record<string, unknown>).DisposableStack =
+	(window as Record<string, unknown>).DisposableStack =
 		PolyfillDisposableStack;
 }

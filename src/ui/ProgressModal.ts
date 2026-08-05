@@ -10,63 +10,43 @@ const { t } = defineLocales({
 	},
 });
 
-export interface ProgressController {
-	readonly isCancelled: boolean;
-	update(message: string): void;
-}
-
+/**
+ * 进度模态框。
+ *
+ * 调用方自行执行任务，通过 update 方法更新进度文本，
+ * 通过 isCancelled 属性检查用户是否取消。
+ */
 export class ProgressModal extends Modal {
 	private _isCancelled = false;
-	private contentElRef: HTMLElement | null = null;
-	public onCompleted: ((result: number) => void) | null = null;
-	public onError: ((err: unknown) => void) | null = null;
+	private statusEl: HTMLElement | null = null;
 
 	constructor(
 		app: App,
 		private title: string,
-		private task: (progress: ProgressController) => Promise<number>,
 	) {
 		super(app);
 		this.setTitle(title);
 	}
 
 	onOpen(): void {
-		this.contentElRef = this.contentEl;
-		void this.startTask();
-	}
-
-	private async startTask(): Promise<void> {
-		if (!this.contentElRef) return;
-
-		const statusEl = this.contentElRef.createEl("p", {
+		this.statusEl = this.contentEl.createEl("p", {
 			text: t("progress"),
 		});
-
-		const controller = {
-			update: (message: string) => {
-				statusEl.setText(message);
-			},
-		} as ProgressController;
-		Object.defineProperty(controller, "isCancelled", {
-			get: () => this.isCancelled,
-		});
-
-		try {
-			const result = await this.task(controller);
-			this.close();
-			this.onCompleted?.(result);
-		} catch (err) {
-			this.close();
-			this.onError?.(err);
-		}
 	}
 
 	get isCancelled(): boolean {
 		return this._isCancelled;
 	}
 
+	/** 更新进度文本 */
+	update(message: string): void {
+		if (this.statusEl) {
+			this.statusEl.setText(message);
+		}
+	}
+
 	onClose(): void {
 		this._isCancelled = true;
-		this.contentElRef = null;
+		this.statusEl = null;
 	}
 }
