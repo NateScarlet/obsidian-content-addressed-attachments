@@ -12,7 +12,7 @@ import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { encryptNote } from "#src/commands/convertAttachment";
 import { reprocessWholeVault } from "#src/commands/reprocessAttachments";
-import { findPresetByURL, PRESET_INDEX } from "#src/preprocess/presetIndex";
+import { findScriptByURL, SCRIPT_INDEX } from "#src/preprocess/scriptIndex";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
@@ -282,26 +282,26 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 
 		// 单输入框 + 预设下拉选择
 		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
-		const currentPreset = findPresetByURL(currentScriptURL);
+		const currentScript = findScriptByURL(currentScriptURL);
 
 		// 预设下拉：选择后填入输入框
-		const presetDropdown = new Setting(containerEl)
+		const scriptDropdown = new Setting(containerEl)
 			.setName(t("preProcessScript"))
 			.setDesc(
-				currentPreset
-					? `${currentPreset.description} (${currentPreset.name})`
+				currentScript
+					? `${currentScript.description} (${currentScript.name})`
 					: currentScriptURL
 						? t("customScript")
 						: t("preProcessDisabled"),
 			)
 			.addDropdown((dropdown) => {
 				dropdown.addOption("", t("preProcessDisabled"));
-				for (const preset of PRESET_INDEX) {
-					dropdown.addOption(preset.scriptURL, preset.name);
+				for (const entry of SCRIPT_INDEX) {
+					dropdown.addOption(entry.scriptURL, entry.name);
 				}
 				dropdown.addOption("__custom__", t("customScript"));
-				if (currentPreset) {
-					dropdown.setValue(currentPreset.scriptURL);
+				if (currentScript) {
+					dropdown.setValue(currentScript.scriptURL);
 				} else if (currentScriptURL) {
 					dropdown.setValue("__custom__");
 				} else {
@@ -309,22 +309,22 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				}
 				dropdown.onChange(async (value) => {
 					if (value === "__custom__") {
-						presetDropdown.setDesc(t("customScript"));
+						scriptDropdown.setDesc(t("customScript"));
 						return;
 					}
 					if (value === "") {
 						this.plugin.settings.preProcess.scriptURL = "";
 						await this.plugin.saveSettings();
-						presetDropdown.setDesc(t("preProcessDisabled"));
+						scriptDropdown.setDesc(t("preProcessDisabled"));
 						return;
 					}
 					// 预设：直接填入 URL
 					this.plugin.settings.preProcess.scriptURL = value;
 					await this.plugin.saveSettings();
-					const preset = findPresetByURL(value);
-					if (preset) {
-						presetDropdown.setDesc(
-							`${preset.description} (${preset.name})`,
+					const entry = findScriptByURL(value);
+					if (entry) {
+						scriptDropdown.setDesc(
+							`${entry.description} (${entry.name})`,
 						);
 					}
 				});
@@ -342,15 +342,15 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						this.plugin.settings.preProcess.scriptURL = value;
 						await this.plugin.saveSettings();
 						// 更新描述
-						const preset = findPresetByURL(value);
-						if (preset) {
-							presetDropdown.setDesc(
-								`${preset.description} (${preset.name})`,
+						const entry = findScriptByURL(value);
+						if (entry) {
+							scriptDropdown.setDesc(
+								`${entry.description} (${entry.name})`,
 							);
 						} else if (value) {
-							presetDropdown.setDesc(t("customScript"));
+							scriptDropdown.setDesc(t("customScript"));
 						} else {
-							presetDropdown.setDesc(t("preProcessDisabled"));
+							scriptDropdown.setDesc(t("preProcessDisabled"));
 						}
 					}),
 			);

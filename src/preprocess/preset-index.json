@@ -1,7 +1,0 @@
-[
-	{
-		"name": "ImageMagick",
-		"description": "使用 ImageMagick WASM 转换图片格式（AVIF/WebP/JPEG/PNG）",
-		"scriptURL": ".obsidian/plugins/content-addressed-attachments/presets/imagemagick.js#format=avif&quality=80"
-	}
-]

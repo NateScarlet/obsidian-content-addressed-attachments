@@ -1,65 +1,65 @@
 import { describe, it, expect } from "vitest";
 import {
-	findPresetByURL,
-	getPresetBaseURLs,
-	PRESET_INDEX,
-} from "./presetIndex";
+	findScriptByURL,
+	getIndexedScriptURLs,
+	SCRIPT_INDEX,
+} from "./scriptIndex";
 
-describe("presetIndex", () => {
-	it("has valid preset entries", () => {
-		expect(PRESET_INDEX.length).toBeGreaterThan(0);
-		for (const entry of PRESET_INDEX) {
+describe("scriptIndex", () => {
+	it("has valid script index entries", () => {
+		expect(SCRIPT_INDEX.length).toBeGreaterThan(0);
+		for (const entry of SCRIPT_INDEX) {
 			expect(entry.name).toBeTruthy();
 			expect(entry.description).toBeTruthy();
 			expect(entry.scriptURL).toBeTruthy();
 		}
 	});
 
-	it("finds preset by full URL", () => {
-		const entry = PRESET_INDEX[0];
-		const found = findPresetByURL(entry.scriptURL);
+	it("finds script by full URL", () => {
+		const entry = SCRIPT_INDEX[0];
+		const found = findScriptByURL(entry.scriptURL);
 		expect(found).toBeDefined();
 		expect(found?.name).toBe(entry.name);
 	});
 
-	it("finds preset by URL without fragment", () => {
-		const entry = PRESET_INDEX[0];
+	it("finds script by URL without fragment", () => {
+		const entry = SCRIPT_INDEX[0];
 		const hashIndex = entry.scriptURL.indexOf("#");
 		const baseURL =
 			hashIndex >= 0
 				? entry.scriptURL.slice(0, hashIndex)
 				: entry.scriptURL;
-		const found = findPresetByURL(baseURL);
+		const found = findScriptByURL(baseURL);
 		expect(found).toBeDefined();
 		expect(found?.name).toBe(entry.name);
 	});
 
-	it("finds preset by URL with different fragment params", () => {
-		const entry = PRESET_INDEX[0];
+	it("finds script by URL with different fragment params", () => {
+		const entry = SCRIPT_INDEX[0];
 		const hashIndex = entry.scriptURL.indexOf("#");
 		const baseURL =
 			hashIndex >= 0
 				? entry.scriptURL.slice(0, hashIndex)
 				: entry.scriptURL;
-		const found = findPresetByURL(`${baseURL}#format=webp&quality=90`);
+		const found = findScriptByURL(`${baseURL}#format=webp&quality=90`);
 		expect(found).toBeDefined();
 		expect(found?.name).toBe(entry.name);
 	});
 
 	it("returns undefined for unknown URL", () => {
-		const found = findPresetByURL("unknown://url");
+		const found = findScriptByURL("unknown://url");
 		expect(found).toBeUndefined();
 	});
 
 	it("returns undefined for empty string", () => {
-		const found = findPresetByURL("");
+		const found = findScriptByURL("");
 		expect(found).toBeUndefined();
 	});
 
-	it("getPresetBaseURLs returns all base URLs", () => {
-		const urls = getPresetBaseURLs();
-		expect(urls.size).toBe(PRESET_INDEX.length);
-		for (const entry of PRESET_INDEX) {
+	it("getIndexedScriptURLs returns all base URLs", () => {
+		const urls = getIndexedScriptURLs();
+		expect(urls.size).toBe(SCRIPT_INDEX.length);
+		for (const entry of SCRIPT_INDEX) {
 			const hashIndex = entry.scriptURL.indexOf("#");
 			const base =
 				hashIndex >= 0

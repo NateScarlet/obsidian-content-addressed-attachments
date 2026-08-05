@@ -1,10 +1,10 @@
 /**
- * 更新预设索引。
+ * 更新预处理脚本索引。
  *
- * 从 dist/presets/ 计算预设脚本的 CID，
- * 更新 pre-process-presets/preset-index.json 和 src/preprocess/preset-index.json 中的 CID 占位符。
+ * 从 dist/preprocess-scripts/ 计算脚本的 CID，
+ * 更新 src/preprocess/script-index.generated.json 中的 CID 占位符。
  *
- * 用法: node scripts/update-preset-index.mjs
+ * 用法: node scripts/update-preprocess-index.mjs
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -15,11 +15,10 @@ import { sha256 } from "multiformats/hashes/sha2";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const presetDistDir = resolve(root, "dist", "presets");
-const presetIndexPath = resolve(root, "pre-process-presets", "preset-index.json");
-const presetIndexSrcPath = resolve(root, "src", "preprocess", "preset-index.json");
+const scriptDistDir = resolve(root, "dist", "preprocess-scripts");
+const scriptIndexPath = resolve(root, "src", "preprocess", "script-index.generated.json");
 
-const presets = ["imagemagick.js"];
+const scripts = ["imagemagick.js"];
 
 function computeCID(filePath) {
 	const data = readFileSync(filePath);
@@ -40,21 +39,18 @@ function updateIndexFile(indexPath, cidMap) {
 async function main() {
 	const cidMap = {};
 
-	for (const preset of presets) {
-		const filePath = resolve(presetDistDir, preset);
+	for (const script of scripts) {
+		const filePath = resolve(scriptDistDir, script);
 		const cid = await computeCID(filePath);
-		const key = preset.replace(".js", "").toUpperCase();
+		const key = script.replace(".js", "").toUpperCase();
 		cidMap[key] = cid;
-		console.log(`${preset}: ${cid}`);
+		console.log(`${script}: ${cid}`);
 	}
 
-	// 更新 pre-process-presets/preset-index.json
-	updateIndexFile(presetIndexPath, cidMap);
+	// 更新 src/preprocess/script-index.generated.json
+	updateIndexFile(scriptIndexPath, cidMap);
 
-	// 更新 src/preprocess/preset-index.json
-	updateIndexFile(presetIndexSrcPath, cidMap);
-
-	console.log("\nPreset index updated successfully.");
+	console.log("\nScript index updated successfully.");
 	console.log("Run 'pnpm run build' to rebuild the plugin with the updated index.");
 }
 

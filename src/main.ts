@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, MarkdownView } from "obsidian";
+import { Notice, Plugin, TFile, MarkdownView, requestUrl } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -50,9 +50,7 @@ import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import ScriptLoaderImpl from "./preprocess/ScriptLoader";
-import { downloadScript } from "./utils/downloadScript";
-import { sha256 } from "multiformats/hashes/sha2";
-import { CID } from "multiformats/cid";
+import computeCID from "./utils/computeCID";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -157,27 +155,29 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			download: async (url) => {
 				const dir =
 					this.settings.downloadDir || this.settings.primaryDir;
-				const filename = `script-${Date.now()}.js`;
-				const relPath = `${dir}/${filename}`;
-				const result = await downloadScript(url, relPath, (p, data) =>
-					this.app.vault.adapter.writeBinary(p, data),
+				const response = await requestUrl({ url, throw: false });
+				if (response.status !== 200) return undefined;
+				const cid = await computeCID(response.arrayBuffer);
+				const relPath = `${dir}/.script-downloads/${cid}`;
+				await this.app.vault.adapter.writeBinary(
+					relPath,
+					response.arrayBuffer,
 				);
-				if (!result) return undefined;
-				// 计算 CID
-				const content = await this.app.vault.adapter.readBinary(result);
-				const digest = await sha256.digest(new Uint8Array(content));
-				const cid = CID.create(1, 0x55, digest).toString();
-				return { cid, path: result };
+				return { cid, path: relPath };
 			},
-			copy: async (src, dst) => {
+			copy: async (cid, dst) => {
 				try {
+					const dir =
+						this.settings.downloadDir ||
+						this.settings.primaryDir;
+					const src = `${dir}/.script-downloads/${cid}`;
 					const content =
 						await this.app.vault.adapter.readBinary(src);
 					await this.app.vault.adapter.writeBinary(dst, content);
 					return true;
 				} catch (err) {
 					console.warn(
-						`[copy] Failed to copy ${src} -> ${dst}:`,
+						`[copy] Failed to copy ${cid} -> ${dst}:`,
 						err,
 					);
 					return false;
@@ -609,16 +609,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		const scriptURL = this.settings.preProcess.scriptURL;
 		if (scriptURL?.startsWith("https://") || scriptURL?.startsWith("http://")) {
 			try {
-				const dir = this.settings.downloadDir || this.settings.primaryDir;
-				const filename = `script-${Date.now()}.js`;
-				const relPath = `${dir}/${filename}`;
-				const result = await downloadScript(scriptURL, relPath, (p, data) =>
-					this.app.vault.adapter.writeBinary(p, data),
-				);
-				if (result) {
-					const content = await this.app.vault.adapter.readBinary(result);
-					const digest = await sha256.digest(new Uint8Array(content));
-					const cid = CID.create(1, 0x55, digest).toString();
+				const response = await requestUrl({ url: scriptURL, throw: false });
+				if (response.status === 200) {
+					const cid = await computeCID(response.arrayBuffer);
 					this.settings.preProcess.scriptURL = `internal.ipfs-locked:${cid},${scriptURL}`;
 					await this.saveData(this.settings);
 					new Notice(`HTTPS script locked to CID: ${cid}`);

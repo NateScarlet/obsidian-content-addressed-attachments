@@ -4,9 +4,10 @@ import type {
 	ScriptLoader,
 	ScriptLocation,
 	PreProcessScriptModule,
-	PresetManifest,
+	ScriptManifest,
 } from "./types";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
+import computeCID from "#src/utils/computeCID";
 
 /** 已知的 URL scheme */
 const KNOWN_SCHEMES = ["https:", "http:", "ipfs:", "internal.ipfs-locked:"];
@@ -106,8 +107,8 @@ export interface ScriptLoaderOptions {
 	download: (
 		url: string,
 	) => Promise<{ cid: string; path: string } | undefined>;
-	/** 从下载目录复制文件到目标路径 */
-	copy: (src: string, dst: string) => Promise<boolean>;
+	/** 从下载目录复制文件到目标路径，通过 CID 查找下载的文件 */
+	copy: (cid: string, dst: string) => Promise<boolean>;
 	/** 检查 vault 路径是否存在 */
 	exists: (path: string) => Promise<boolean>;
 	/** 读取 vault 文件内容为文本 */
@@ -174,7 +175,7 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 			// 读取文件内容，检查是否为多文件清单
 			const content = await this.options.readFile(localPath);
 			if (content && content.trimStart().startsWith("{")) {
-				const manifest = JSON.parse(content) as PresetManifest;
+				const manifest = JSON.parse(content) as ScriptManifest;
 				if (manifest.entry && manifest.files) {
 					const baseDir = await this.materializeManifest(
 						manifest,
@@ -270,15 +271,14 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 	 * 计算文件内容的 CID（v1, raw codec, SHA-256）。
 	 */
 	private async computeCID(data: ArrayBuffer): Promise<string> {
-		const digest = await sha256.digest(new Uint8Array(data));
-		return CID.create(1, 0x55, digest).toString();
+		return computeCID(data);
 	}
 
 	/**
-	 * 下载清单中所有文件到 `<pluginDir>/pre-process-scripts/<manifestCID>/` 目录。
+	 * 下载清单中所有文件到 `<pluginDir>/preprocess-scripts/<manifestCID>/` 目录。
 	 */
 	private async materializeManifest(
-		manifest: PresetManifest,
+		manifest: ScriptManifest,
 		manifestPath: string,
 	): Promise<string | undefined> {
 		// 计算清单文件自身的 CID 作为目录名
@@ -309,9 +309,9 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 					if (dlResult) {
 						// 验证 CID
 						if (dlResult.cid === fileSource.cid) {
-							// 复制到目标路径
+							// 通过 CID 复制到目标路径
 							const copied = await this.options.copy(
-								dlResult.path,
+								dlResult.cid,
 								targetPath,
 							);
 							if (copied) {

@@ -1,11 +1,11 @@
 /**
- * 发布预设脚本到 GitHub Release。
+ * 发布预处理脚本到 GitHub Release。
  *
- * 将 dist/presets/ 中的预设脚本和 WASM 文件上传到 GitHub Release，
- * 预设 URL 格式为：
+ * 将 dist/preprocess-scripts/ 中的脚本和 WASM 文件上传到 GitHub Release，
+ * 脚本 URL 格式为：
  *   internal.ipfs-locked:<cid>,<download_url>
  *
- * 用法：node scripts/publish-presets.mjs <tag>
+ * 用法：node scripts/publish-preprocess-scripts.mjs <tag>
  *   tag: GitHub Release 标签名（必填，由 workflow 传入）
  *
  * 依赖：需要 gh CLI 可用，且已登录。
@@ -20,11 +20,11 @@ import { sha256 } from "multiformats/hashes/sha2";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const presetDistDir = resolve(root, "dist", "presets");
+const scriptDistDir = resolve(root, "dist", "preprocess-scripts");
 
 const tag = process.argv[2];
 if (!tag) {
-	console.error("Usage: node scripts/publish-presets.mjs <tag>");
+	console.error("Usage: node scripts/publish-preprocess-scripts.mjs <tag>");
 	console.error("  tag: GitHub Release tag name (e.g. v0.3.0)");
 	process.exit(1);
 }
@@ -66,15 +66,15 @@ function uploadToRelease(filePath: string, tag: string): void {
 }
 
 async function main(): Promise<void> {
-	if (!existsSync(presetDistDir)) {
-		console.error(`Preset dist directory not found: ${presetDistDir}`);
-		console.error("Run `pnpm run preset:build` first.");
+	if (!existsSync(scriptDistDir)) {
+		console.error(`Script dist directory not found: ${scriptDistDir}`);
+		console.error("Run `pnpm run preprocess:build` first.");
 		process.exit(1);
 	}
 
 	console.log(`Using tag: ${tag}`);
 
-	const files = getFiles(presetDistDir);
+	const files = getFiles(scriptDistDir);
 	const cidMap: Record<string, string> = {};
 
 	for (const filePath of files) {
@@ -86,13 +86,13 @@ async function main(): Promise<void> {
 		uploadToRelease(filePath, tag);
 	}
 
-	console.log("\nPreset URLs:");
+	console.log("\nScript URLs:");
 	for (const [filename, cid] of Object.entries(cidMap)) {
 		const downloadURL = `https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/${tag}/${filename}`;
 		console.log(`  internal.ipfs-locked:${cid},${downloadURL}`);
 	}
 
-	console.log("\nUpdate preset-url in plugin settings with the URL above.");
+	console.log("\nUpdate script URL in plugin settings with the URL above.");
 }
 
 main().catch((err) => {

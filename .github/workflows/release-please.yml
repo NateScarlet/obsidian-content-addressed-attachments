@@ -38,10 +38,10 @@ jobs:
                   pnpm install
                   pnpm run build
                   pnpm run test
-            - name: Build presets
+            - name: Build preprocess scripts
               if: ${{needs.release-please.outputs.release_created}}
               run: |
-                  pnpm run preset:build
+                  pnpm run preprocess:build
             - name: Release
               if: ${{needs.release-please.outputs.release_created}}
               uses: softprops/action-gh-release@v2
@@ -52,7 +52,7 @@ jobs:
                       main.js
                       manifest.json
                       styles.css
-            - name: Publish presets
+            - name: Publish preprocess scripts
               if: ${{needs.release-please.outputs.release_created}}
               run: |
-                  pnpm run preset:publish ${{needs.release-please.outputs.tag_name}}
+                  pnpm run preprocess:publish ${{needs.release-please.outputs.tag_name}}

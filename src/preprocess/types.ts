@@ -43,8 +43,8 @@ export interface PreProcessConfig {
 	scriptURL: string;
 }
 
-/** 预设索引条目 */
-export interface PresetEntry {
+/** 脚本索引条目 */
+export interface ScriptIndexEntry {
 	/** 友好名称 */
 	name: string;
 	/** 描述 */
@@ -77,12 +77,12 @@ export interface ManifestFileSource {
 }
 
 /**
- * 多文件预设清单。
+ * 多文件脚本清单。
  * 当脚本 URL 指向的内容以 `{` 开头时，视为 JSON 清单。
- * 加载器会将所有文件下载到 `<pluginDir>/pre-process-scripts/<cid>/` 目录下，
+ * 加载器会将所有文件下载到 `<pluginDir>/preprocess-scripts/<cid>/` 目录下，
  * 然后加载入口文件。
  */
-export interface PresetManifest {
+export interface ScriptManifest {
 	/** 入口文件名（必须是 files 中的一个 key） */
 	entry: string;
 	/** 文件名 → 文件来源映射 */

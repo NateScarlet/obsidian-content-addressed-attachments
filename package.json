@@ -15,10 +15,10 @@
 		"test": "vitest run && svelte-check",
 		"lint": "eslint src",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
-		"preset:build": "node scripts/build-presets.mjs",
-		"preset:publish": "node scripts/publish-presets.mjs",
-		"preset:update-index": "node scripts/update-preset-index.mjs",
-		"preset:release": "pnpm run preset:build && pnpm run preset:publish && pnpm run preset:update-index"
+		"preprocess:build": "node scripts/build-preprocess-scripts.mjs",
+		"preprocess:publish": "node scripts/publish-preprocess-scripts.mjs",
+		"preprocess:update-index": "node scripts/update-preprocess-index.mjs",
+		"preprocess:release": "pnpm run preprocess:build && pnpm run preprocess:publish && pnpm run preprocess:update-index"
 	},
 	"imports": {
 		"#src/*": "./src/*"

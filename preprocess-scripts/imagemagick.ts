@@ -13,6 +13,9 @@
 
 import type { PreProcessInput, PreProcessContext, PreProcessOutput, PreProcessScriptModule } from "../src/preprocess/shared-types";
 
+/** 构建后的脚本文件在插件目录中的路径 */
+const SCRIPT_DIR = ".obsidian/plugins/content-addressed-attachments/preprocess-scripts";
+
 let initialized = false;
 let initPromise: Promise<void> | null = null;
 

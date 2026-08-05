@@ -1,9 +1,9 @@
 /**
- * 构建预设脚本并生成清单文件。
+ * 构建预处理脚本并生成清单文件。
  *
- * 使用 esbuild 将 ImageMagick WASM 预设脚本打包为单文件 bundle，
- * 输出到 dist/presets/ 目录。
- * 同时复制 magick.wasm 文件到同一目录，并生成 preset-index.json 清单。
+ * 使用 esbuild 将 ImageMagick WASM 预处理脚本打包为单文件 bundle，
+ * 输出到 dist/preprocess-scripts/ 目录。
+ * 同时复制 magick.wasm 文件到同一目录，并生成 script-index.json 清单。
  */
 
 import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
@@ -15,8 +15,8 @@ import * as esbuild from "esbuild";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const presetSrcDir = resolve(root, "pre-process-presets");
-const presetDistDir = resolve(root, "dist", "presets");
+const scriptSrcDir = resolve(root, "preprocess-scripts");
+const scriptDistDir = resolve(root, "dist", "preprocess-scripts");
 const wasmSrc = resolve(
 	root,
 	"node_modules",
@@ -26,10 +26,10 @@ const wasmSrc = resolve(
 	"magick.wasm",
 );
 
-const presets = ["imagemagick.ts"];
+const scripts = ["imagemagick.ts"];
 
-if (!existsSync(presetDistDir)) {
-	mkdirSync(presetDistDir, { recursive: true });
+if (!existsSync(scriptDistDir)) {
+	mkdirSync(scriptDistDir, { recursive: true });
 }
 
 /** 计算文件的 CID (v1, raw codec, SHA-256) */
@@ -42,9 +42,9 @@ async function computeCID(filePath: string): Promise<string> {
 // 构建 manifest 清单条目
 const manifestFiles: Record<string, { cid: string }> = {};
 
-for (const preset of presets) {
-	const srcPath = resolve(presetSrcDir, preset);
-	const distPath = resolve(presetDistDir, preset.replace(/\.ts$/, ".js"));
+for (const script of scripts) {
+	const srcPath = resolve(scriptSrcDir, script);
+	const distPath = resolve(scriptDistDir, script.replace(/\.ts$/, ".js"));
 
 	await esbuild.build({
 		entryPoints: [srcPath],
@@ -56,18 +56,18 @@ for (const preset of presets) {
 		minify: true,
 	});
 
-	console.log(`Built preset: ${preset} -> ${distPath}`);
+	console.log(`Built script: ${script} -> ${distPath}`);
 
 	// 计算打包后文件的 CID
 	const cid = await computeCID(distPath);
-	const filename = preset.replace(/\.ts$/, ".js");
+	const filename = script.replace(/\.ts$/, ".js");
 	manifestFiles[filename] = { cid };
 	console.log(`  CID: ${cid}`);
 }
 
 // 复制 magick.wasm 并计算 CID
 if (existsSync(wasmSrc)) {
-	const wasmDist = resolve(presetDistDir, "magick.wasm");
+	const wasmDist = resolve(scriptDistDir, "magick.wasm");
 	copyFileSync(wasmSrc, wasmDist);
 	console.log(`Copied: magick.wasm -> ${wasmDist}`);
 	const wasmCID = await computeCID(wasmDist);
@@ -78,12 +78,12 @@ if (existsSync(wasmSrc)) {
 }
 
 // 生成清单文件
-const entry = presets[0].replace(/\.ts$/, ".js");
+const entry = scripts[0].replace(/\.ts$/, ".js");
 const manifest = {
 	entry,
 	files: manifestFiles,
 };
-const manifestPath = resolve(presetDistDir, "preset-index.json");
+const manifestPath = resolve(scriptDistDir, "script-index.json");
 writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 console.log(`Generated manifest: ${manifestPath}`);
 
@@ -91,4 +91,4 @@ console.log(`Generated manifest: ${manifestPath}`);
 const manifestCID = await computeCID(manifestPath);
 console.log(`Manifest CID: ${manifestCID}`);
 
-console.log("All presets built successfully.");
+console.log("All preprocess scripts built successfully.");
