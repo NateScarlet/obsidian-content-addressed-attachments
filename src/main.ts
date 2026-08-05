@@ -39,6 +39,7 @@ import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import {
 	reprocessCurrentNote,
 	reprocessSingleLinkCommand,
+	reprocessWholeVault,
 	type ReprocessContext,
 } from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
@@ -481,6 +482,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: "reprocess-whole-vault",
+			name: t("reprocessWholeVault"),
+			callback: () => {
+				reprocessWholeVault(reprocessCtx()).catch(showError);
+			},
+		});
+
 		// 注册文件管理器视图
 		this.registerView(
 			CAS_FILE_EXPLORER_VIEW_TYPE,
@@ -595,6 +604,37 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+
+		// HTTPS 自动锁定：下载后计算 CID，重写设置为 internal.ipfs-locked:<cid>,<srcURL>
+		const scriptURL = this.settings.preProcess.scriptURL;
+		if (scriptURL?.startsWith("https://") || scriptURL?.startsWith("http://")) {
+			try {
+				const dir = this.settings.downloadDir || this.settings.primaryDir;
+				const filename = `script-${Date.now()}.js`;
+				const relPath = `${dir}/${filename}`;
+				const result = await downloadScript(scriptURL, relPath, (p, data) =>
+					this.app.vault.adapter.writeBinary(p, data),
+				);
+				if (result) {
+					const content = await this.app.vault.adapter.readBinary(result);
+					const digest = await sha256.digest(new Uint8Array(content));
+					const cid = CID.create(1, 0x55, digest).toString();
+					this.settings.preProcess.scriptURL = `internal.ipfs-locked:${cid},${scriptURL}`;
+					await this.saveData(this.settings);
+					new Notice(`HTTPS script locked to CID: ${cid}`);
+				}
+			} catch (err) {
+				console.warn(`[saveSettings] Failed to lock HTTPS script:`, err);
+				new Notice("Failed to lock HTTPS script; will retry on next save");
+			}
+		}
+
+		// 设置保存时提前加载脚本，消除首次粘贴的延迟
+		if (this.settings.preProcess.scriptURL) {
+			this.scriptLoader.loadScript(this.settings.preProcess.scriptURL).catch((err) => {
+				console.warn(`[saveSettings] Failed to preload script:`, err);
+			});
+		}
 	}
 
 	onunload() {

@@ -55,6 +55,9 @@ export default class TransformPipeline {
 				`[preprocess] Script transform failed for ${input.filename}:`,
 				err,
 			);
+			new Notice(
+				`[preprocess] Script transform failed for ${input.filename}: ${(err as Error).message}`,
+			);
 			return undefined;
 		}
 	}

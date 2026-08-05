@@ -11,12 +11,7 @@
  * 构建后的脚本通过 GitHub Release 分发，WASM 文件位于同一目录。
  */
 
-import type {
-	PreProcessInput,
-	PreProcessContext,
-	PreProcessOutput,
-	PreProcessScriptModule,
-} from "./shared-types";
+import type { PreProcessInput, PreProcessContext, PreProcessOutput, PreProcessScriptModule } from "../src/preprocess/shared-types";
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
