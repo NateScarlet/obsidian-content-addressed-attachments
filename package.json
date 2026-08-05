@@ -51,6 +51,7 @@
 		"vitest": "^4.1.10"
 	},
 	"dependencies": {
+		"@imagemagick/magick-wasm": "^0.0.42",
 		"@mdi/js": "^7.4.47",
 		"@types/mustache": "^4.2.6",
 		"@types/path-browserify": "^1.0.3",

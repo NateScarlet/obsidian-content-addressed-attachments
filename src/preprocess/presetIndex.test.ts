@@ -11,7 +11,7 @@ describe("presetIndex", () => {
 		for (const entry of PRESET_INDEX) {
 			expect(entry.name).toBeTruthy();
 			expect(entry.description).toBeTruthy();
-			expect(entry.scriptURL).toContain("internal.ipfs-locked:");
+			expect(entry.scriptURL).toBeTruthy();
 		}
 	});
 

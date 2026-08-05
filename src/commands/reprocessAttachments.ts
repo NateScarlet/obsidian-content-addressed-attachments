@@ -1,4 +1,4 @@
-import { Notice, type App, type Editor } from "obsidian";
+import { Modal, Notice, Setting, type App, type Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptionService from "#src/lib/encryption/EncryptionService";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
@@ -13,10 +13,13 @@ import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
 import showError from "#src/utils/showError";
 import { ProgressModal } from "#src/ui/ProgressModal";
-import { trashIfUnreferenced, loadFileContent } from "./casUtils";
+import { trashIfUnreferenced } from "./trashIfUnreferenced";
+import { loadFileContent } from "./loadFileContent";
 
 const { t } = defineLocales({
 	en: {
+		confirm: "Continue",
+		cancel: "Cancel",
 		reprocessCurrentNote: "Reprocess attachments (current note)",
 		reprocessWholeVault:
 			"Reprocess all attachments (whole vault, advanced)",
@@ -31,6 +34,8 @@ const { t } = defineLocales({
 		noAttachmentsFound: "No attachments found to reprocess",
 	},
 	zh: {
+		confirm: "继续",
+		cancel: "取消",
 		reprocessCurrentNote: "重新处理附件（当前笔记）",
 		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
 		reprocessConfirm:
@@ -203,53 +208,72 @@ export async function reprocessWholeVault(
 	ctx: ReprocessContext,
 ): Promise<number> {
 	return new Promise<number>((resolve, reject) => {
-		const modal = new ProgressModal(
-			ctx.app,
-			t("reprocessWholeVault"),
-			async (progress) => {
-				const files = ctx.app.vault.getMarkdownFiles();
-				let totalReprocessed = 0;
-				let processed = 0;
+		// 先显示确认对话框
+		const confirmModal = new Modal(ctx.app);
+		confirmModal.setTitle(t("reprocessWholeVault"));
+		confirmModal.contentEl.createEl("p", { text: t("reprocessConfirm") });
+		new Setting(confirmModal.contentEl)
+			.addButton((btn) =>
+				btn.setButtonText(t("confirm")).onClick(() => {
+					confirmModal.close();
+					void startReprocess();
+				}),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText(t("cancel"))
+					.onClick(() => confirmModal.close()),
+			);
+		confirmModal.open();
 
-				progress.update(t("reprocessProgress")(0, files.length));
+		function startReprocess() {
+			const modal = new ProgressModal(
+				ctx.app,
+				t("reprocessWholeVault"),
+				async (progress) => {
+					const files = ctx.app.vault.getMarkdownFiles();
+					let totalReprocessed = 0;
+					let processed = 0;
 
-				for (const file of files) {
-					if (progress.isCancelled) {
-						new Notice(t("reprocessCancelled"));
-						break;
+					progress.update(t("reprocessProgress")(0, files.length));
+
+					for (const file of files) {
+						if (progress.isCancelled) {
+							new Notice(t("reprocessCancelled"));
+							break;
+						}
+
+						const transformer = new VaultLinkTransformer(ctx.app);
+						const count = await transformer.transformFile(
+							file,
+							async (_match, linkText) => {
+								return reprocessSingleLink(
+									ctx,
+									linkText,
+									file.path,
+								);
+							},
+						);
+						totalReprocessed += count;
+						processed++;
+						progress.update(
+							t("reprocessProgress")(processed, files.length),
+						);
 					}
 
-					const transformer = new VaultLinkTransformer(ctx.app);
-					const count = await transformer.transformFile(
-						file,
-						async (_match, linkText) => {
-							return reprocessSingleLink(
-								ctx,
-								linkText,
-								file.path,
-							);
-						},
-					);
-					totalReprocessed += count;
-					processed++;
-					progress.update(
-						t("reprocessProgress")(processed, files.length),
-					);
-				}
-
-				return totalReprocessed;
-			},
-			t("reprocessConfirm"),
-		);
-		modal.open();
-		modal.onCompleted = (count: number) => {
-			new Notice(t("reprocessComplete")(count));
-			resolve(count);
-		};
-		modal.onError = (err: unknown) => {
-			showError(err);
-			reject(err instanceof Error ? err : new Error(String(err)));
-		};
+					return totalReprocessed;
+				},
+			);
+			modal.open();
+			modal.onCompleted = (count: number) => {
+				new Notice(t("reprocessComplete")(count));
+				resolve(count);
+			};
+			modal.onError = (err: unknown) => {
+				showError(err);
+				reject(err instanceof Error ? err : new Error(String(err)));
+			};
+		}
 	});
 }
 

@@ -12,11 +12,11 @@ export async function processFileAndInsertLink(
 	file: File,
 	notePath: string,
 	encryptPathPolicy: EncryptPathPolicy,
-	pipeline?: TransformPipeline,
+	pipeline: TransformPipeline,
 ): Promise<void> {
 	// 预处理管线：在加密前运行
 	let fileToProcess = file;
-	if (pipeline) {
+	{
 		const input = {
 			data: await file.arrayBuffer(),
 			mimeType: file.type,
@@ -52,7 +52,7 @@ export default async function insertAttachment(
 	cas: CAS,
 	dir: string,
 	encryptPathPolicy: EncryptPathPolicy,
-	pipeline?: TransformPipeline,
+	pipeline: TransformPipeline,
 ) {
 	const view = app.workspace.getActiveViewOfType(MarkdownView);
 	if (!view) {

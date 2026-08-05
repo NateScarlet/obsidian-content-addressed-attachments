@@ -1,7 +1,10 @@
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 import type {
 	ScriptLoader,
 	ScriptLocation,
 	PreProcessScriptModule,
+	PresetManifest,
 } from "./types";
 
 /** 已知的 URL scheme */
@@ -125,10 +128,14 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		) => Promise<string | undefined>,
 		/** 检查 vault 路径是否存在 */
 		private exists: (path: string) => Promise<boolean>,
+		/** 读取 vault 文件内容为文本 */
+		private readFile: (path: string) => Promise<string | undefined>,
 		/** 获取下载目录 */
 		private getDownloadDir: () => string,
 		/** 获取主存储目录 */
 		private getPrimaryDir: () => string,
+		/** 获取插件数据目录（用于存放预处理的脚本文件） */
+		private getPluginDir: () => string,
 		/** URL 解析器：将 ipfs:// 或 internal.ipfs-locked: 解析为本地路径 */
 		private resolveURL: (
 			rawURL: string,
@@ -176,10 +183,33 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		if (!location) return undefined;
 
 		try {
-			const servableURL = await this.resolveToServableURL(location);
-			if (!servableURL) return undefined;
+			const localPath = await this.resolveToLocalPath(location);
+			if (!localPath) return undefined;
 
-			// 使用 getResourcePath 返回的 URL 作为 import 源
+			// 读取文件内容，检查是否为多文件清单
+			const content = await this.readFile(localPath);
+			if (content && content.trimStart().startsWith("{")) {
+				const manifest = JSON.parse(content) as PresetManifest;
+				if (manifest.entry && manifest.files) {
+					const baseDir = await this.materializeManifest(
+						manifest,
+						location,
+					);
+					if (baseDir) {
+						const entryPath = `${baseDir}/${manifest.entry}`;
+						const servableURL = this.getResourcePath(entryPath);
+						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
+						const mod: PreProcessScriptModule = await import(
+							/* @vite-ignore */ servableURL
+						);
+						return mod;
+					}
+					return undefined;
+				}
+			}
+
+			// 普通单文件脚本
+			const servableURL = this.getResourcePath(localPath);
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
 			const mod: PreProcessScriptModule = await import(
 				/* @vite-ignore */ servableURL
@@ -194,18 +224,22 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		}
 	}
 
-	private async resolveToServableURL(
+	/**
+	 * 解析 ScriptLocation 为 vault 中的本地路径。
+	 * 返回的是 vault 相对路径，而非可 serve 的 URL。
+	 */
+	private async resolveToLocalPath(
 		location: ScriptLocation,
 	): Promise<string | undefined> {
 		switch (location.type) {
 			case "vault-relative":
-				return this.getResourcePath(location.path);
+				return location.path;
 
 			case "internal.ipfs-locked": {
 				// 先尝试 URLResolver 解析到本地路径
 				const resolved = await this.resolveURL(location.sourceURL);
 				if (resolved?.path) {
-					return this.getResourcePath(resolved.path);
+					return resolved.path;
 				}
 				// 兜底：尝试直接查找 CAS 文件
 				const dir = this.getPrimaryDir();
@@ -215,7 +249,7 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				const casPath = `${dir}/${prefix}/${suffix}`;
 				const exists = await this.exists(casPath);
 				if (exists) {
-					return this.getResourcePath(casPath);
+					return casPath;
 				}
 				// 尝试从 sourceURL 下载
 				const dlPath = await this.downloadToVault(
@@ -223,7 +257,7 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 					`${this.getDownloadDir() || dir}/${cidStr}.js`,
 				);
 				if (dlPath) {
-					return this.getResourcePath(dlPath);
+					return dlPath;
 				}
 				return undefined;
 			}
@@ -232,7 +266,7 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				const ipfsURL = `ipfs://${location.cid}`;
 				const resolved = await this.resolveURL(ipfsURL);
 				if (resolved?.path) {
-					return this.getResourcePath(resolved.path);
+					return resolved.path;
 				}
 				return undefined;
 			}
@@ -247,10 +281,90 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 					relPath,
 				);
 				if (dlPath) {
-					return this.getResourcePath(dlPath);
+					return dlPath;
 				}
 				return undefined;
 			}
 		}
+	}
+
+	/**
+	 * 计算文件内容的 CID（v1, raw codec, SHA-256）。
+	 */
+	private async computeCID(data: ArrayBuffer): Promise<string> {
+		const digest = await sha256.digest(new Uint8Array(data));
+		return CID.create(1, 0x55, digest).toString();
+	}
+
+	/**
+	 * 下载清单中所有文件到 `<pluginDir>/pre-process-scripts/<cid>/` 目录。
+	 * 返回基础目录路径，或 undefined 表示失败。
+	 */
+	private async materializeManifest(
+		manifest: PresetManifest,
+		location: ScriptLocation,
+	): Promise<string | undefined> {
+		// 使用清单自身的 CID 作为目录名（如果可用）
+		const manifestCID =
+			("cid" in location
+				? (location as { cid: string }).cid
+				: undefined) ?? `manifest-${Date.now()}`;
+		const baseDir = `${this.getPluginDir()}/pre-process-scripts/${manifestCID}`;
+
+		const entry = manifest.entry;
+		const files = manifest.files;
+
+		for (const [filename, fileSource] of Object.entries(files)) {
+			const targetPath = `${baseDir}/${filename}`;
+
+			// 检查文件是否已存在且 CID 匹配
+			const exists = await this.exists(targetPath);
+			if (exists) {
+				continue;
+			}
+
+			// 尝试从 sources 下载
+			let downloaded = false;
+			if (fileSource.sources) {
+				for (const sourceURL of fileSource.sources) {
+					const dlPath = await this.downloadToVault(
+						sourceURL,
+						targetPath,
+					);
+					if (dlPath) {
+						// 验证 CID
+						const content = await this.readFile(dlPath);
+						if (content) {
+							const encoder = new TextEncoder();
+							const data = encoder.encode(content).buffer;
+							const actualCID = await this.computeCID(data);
+							if (actualCID === fileSource.cid) {
+								downloaded = true;
+								break;
+							}
+						}
+					}
+				}
+			}
+
+			if (!downloaded) {
+				console.warn(
+					`[preprocess] Failed to download manifest file: ${filename}`,
+				);
+				return undefined;
+			}
+		}
+
+		// 验证入口文件存在
+		const entryPath = `${baseDir}/${entry}`;
+		const entryExists = await this.exists(entryPath);
+		if (!entryExists) {
+			console.warn(
+				`[preprocess] Manifest entry file not found: ${entryPath}`,
+			);
+			return undefined;
+		}
+
+		return baseDir;
 	}
 }

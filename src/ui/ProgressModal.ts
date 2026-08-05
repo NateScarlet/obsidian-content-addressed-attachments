@@ -1,15 +1,11 @@
-import { Modal, Setting, type App } from "obsidian";
+import { Modal, type App } from "obsidian";
 import defineLocales from "#src/utils/defineLocales";
 
 const { t } = defineLocales({
 	en: {
-		confirm: "Continue",
-		cancel: "Cancel",
 		progress: "Progress",
 	},
 	zh: {
-		confirm: "继续",
-		cancel: "取消",
 		progress: "进度",
 	},
 });
@@ -29,7 +25,6 @@ export class ProgressModal extends Modal {
 		app: App,
 		private title: string,
 		private task: (progress: ProgressController) => Promise<number>,
-		private confirmMessage: string,
 	) {
 		super(app);
 		this.setTitle(title);
@@ -37,39 +32,24 @@ export class ProgressModal extends Modal {
 
 	onOpen(): void {
 		this.contentElRef = this.contentEl;
-
-		// 确认对话框
-		const confirmContainer = this.contentEl.createDiv();
-		confirmContainer.createEl("p", { text: this.confirmMessage });
-
-		new Setting(confirmContainer)
-			.addButton((btn) =>
-				btn.setButtonText(t("confirm")).onClick(() => {
-					confirmContainer.empty();
-					void this.startTask();
-				}),
-			)
-			.addButton((btn) =>
-				btn.setButtonText(t("cancel")).onClick(() => this.close()),
-			);
+		void this.startTask();
 	}
 
 	private async startTask(): Promise<void> {
 		if (!this.contentElRef) return;
 
-		const progressEl = this.contentElRef.createDiv();
-		progressEl.createEl("h3", { text: this.title });
-		const statusEl = progressEl.createEl("p", { text: t("progress") });
+		const statusEl = this.contentElRef.createEl("p", {
+			text: t("progress"),
+		});
 
 		const controller = {
 			update: (message: string) => {
 				statusEl.setText(message);
 			},
-			get isCancelled() {
-				return modalIsCancelled;
-			},
-		} satisfies ProgressController;
-		const modalIsCancelled = false;
+		} as ProgressController;
+		Object.defineProperty(controller, "isCancelled", {
+			get: () => this.isCancelled,
+		});
 
 		try {
 			const result = await this.task(controller);

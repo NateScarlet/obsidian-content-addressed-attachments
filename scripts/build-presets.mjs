@@ -24,7 +24,7 @@ const wasmSrc = resolve(
 	"magick.wasm",
 );
 
-const presets = ["imagemagick.js"];
+const presets = ["imagemagick.ts"];
 
 if (!existsSync(presetDistDir)) {
 	mkdirSync(presetDistDir, { recursive: true });

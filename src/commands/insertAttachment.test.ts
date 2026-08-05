@@ -5,6 +5,7 @@ import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import type { Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
+import type TransformPipeline from "#src/preprocess/TransformPipeline";
 
 describe("processFileAndInsertLink", () => {
 	const validCIDString =
@@ -14,6 +15,10 @@ describe("processFileAndInsertLink", () => {
 	const mockCas = {
 		save: vi.fn().mockResolvedValue({ cid: dummyCID }),
 	} as unknown as CAS;
+
+	const mockPipeline = {
+		run: vi.fn().mockResolvedValue(undefined),
+	} as unknown as TransformPipeline;
 
 	const mockEncryptPathPolicy = {
 		ensureEncrypted: vi
@@ -60,6 +65,7 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"notes/regular.md",
 			mockEncryptPathPolicy,
+			mockPipeline,
 		);
 
 		const text = editor.getText();
@@ -81,6 +87,7 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"secret/confidential.md",
 			mockEncryptPathPolicy,
+			mockPipeline,
 		);
 
 		const text = editor.getText();
@@ -103,6 +110,7 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"secret/confidential.md",
 			mockEncryptPathPolicy,
+			mockPipeline,
 		);
 
 		const text = editor.getText();

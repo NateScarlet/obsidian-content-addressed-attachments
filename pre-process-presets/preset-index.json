@@ -1,7 +1,0 @@
-[
-	{
-		"name": "ImageMagick",
-		"description": "使用 ImageMagick WASM 转换图片格式（AVIF/WebP/JPEG/PNG）",
-		"scriptURL": "internal.ipfs-locked:<CID_IMAGEMAGICK>,https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/v0.2.0/preset-imagemagick.js#format=avif&quality=80"
-	}
-]

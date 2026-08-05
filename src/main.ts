@@ -156,8 +156,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				return relPath;
 			},
 			(path) => this.app.vault.adapter.exists(path),
+			(path) => this.app.vault.adapter.read(path),
 			() => this.settings.downloadDir,
 			() => this.settings.primaryDir,
+			() =>
+				`${this.app.vault.configDir}/plugins/content-addressed-attachments`,
 			(rawURL) => this.urlResolver.resolveURL(rawURL),
 		);
 		this.pipeline = new TransformPipeline(
