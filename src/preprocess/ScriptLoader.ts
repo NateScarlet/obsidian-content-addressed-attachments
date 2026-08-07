@@ -205,7 +205,9 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				`[preprocess] Failed to load script: ${scriptURL}`,
 				err,
 			);
-			return undefined;
+			throw err instanceof Error
+				? err
+				: new Error(`[preprocess] Failed to load script: ${scriptURL}`);
 		}
 	}
 

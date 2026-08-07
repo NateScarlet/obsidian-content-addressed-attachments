@@ -19,7 +19,8 @@ export default class TransformPipeline {
 	/**
 	 * 运行预处理管线。
 	 * @param input 输入文件信息
-	 * @returns 转换后的文件，或 undefined 表示保留原始文件
+	 * @returns 转换后的文件，或 undefined 表示保留原始文件（预处理未启用或脚本显式跳过）
+	 * @throws 当配置了预处理脚本但脚本加载失败或脚本执行抛出异常时
 	 */
 	async run(input: PreProcessInput): Promise<PreProcessOutput | undefined> {
 		const scriptURL = this.getScriptURL();
@@ -28,37 +29,32 @@ export default class TransformPipeline {
 		}
 
 		const module = await this.scriptLoader.loadScript(scriptURL);
-		if (!module?.default) {
-			return undefined;
+		if (!module) {
+			throw new Error(`[preprocess] Failed to load script: ${scriptURL}`);
+		}
+		if (!module.default) {
+			throw new Error(
+				`[preprocess] Script "${scriptURL}" has no default export`,
+			);
 		}
 
 		const params = this.scriptLoader.getParams(scriptURL);
 
-		try {
-			const result = await module.default(input, {
-				log: (message) => new Notice(`[preprocess] ${message}`),
-				params,
-				mimeTypeByExtension,
-			});
+		const result = await module.default(input, {
+			log: (message) => new Notice(`[preprocess] ${message}`),
+			params,
+			mimeTypeByExtension,
+		});
 
-			if (result === undefined) {
-				return undefined;
-			}
-
-			return {
-				data: result.data,
-				mimeType: result.mimeType || input.mimeType,
-				filename: result.filename || input.filename,
-			};
-		} catch (err) {
-			console.warn(
-				`[preprocess] Script transform failed for ${input.filename}:`,
-				err,
-			);
-			new Notice(
-				`[preprocess] Script transform failed for ${input.filename}: ${(err as Error).message}`,
-			);
+		if (result === undefined) {
 			return undefined;
 		}
+
+		return {
+			data: result.data,
+			mimeType: result.mimeType || input.mimeType,
+			filename: result.filename || input.filename,
+		};
 	}
 }
+

@@ -32,36 +32,36 @@ describe("TransformPipeline", () => {
 		expect(loader.loadScript).not.toHaveBeenCalled();
 	});
 
-	it("returns undefined when script module has no default export", async () => {
+	it("throws when script module has no default export", async () => {
 		const loader = createMockScriptLoader({});
 		const pipeline = new TransformPipeline(
 			loader,
 			() => "scripts/transform.js",
 		);
 
-		const result = await pipeline.run({
-			data: new ArrayBuffer(8),
-			mimeType: "image/png",
-			filename: "test.png",
-		});
-
-		expect(result).toBeUndefined();
+		await expect(
+			pipeline.run({
+				data: new ArrayBuffer(8),
+				mimeType: "image/png",
+				filename: "test.png",
+			}),
+		).rejects.toThrow("has no default export");
 	});
 
-	it("returns undefined when script loader fails", async () => {
+	it("throws when script loader fails", async () => {
 		const loader = createMockScriptLoader(undefined);
 		const pipeline = new TransformPipeline(
 			loader,
 			() => "scripts/transform.js",
 		);
 
-		const result = await pipeline.run({
-			data: new ArrayBuffer(8),
-			mimeType: "image/png",
-			filename: "test.png",
-		});
-
-		expect(result).toBeUndefined();
+		await expect(
+			pipeline.run({
+				data: new ArrayBuffer(8),
+				mimeType: "image/png",
+				filename: "test.png",
+			}),
+		).rejects.toThrow("Failed to load script");
 	});
 
 	it("returns result when script returns transformed data", async () => {
@@ -109,7 +109,7 @@ describe("TransformPipeline", () => {
 		expect(result).toBeUndefined();
 	});
 
-	it("returns undefined when script throws", async () => {
+	it("rethrows error when script throws", async () => {
 		const loader = createMockScriptLoader({
 			default: () => {
 				throw new Error("Script error");
@@ -120,13 +120,13 @@ describe("TransformPipeline", () => {
 			() => "scripts/transform.js",
 		);
 
-		const result = await pipeline.run({
-			data: new ArrayBuffer(8),
-			mimeType: "image/png",
-			filename: "test.png",
-		});
-
-		expect(result).toBeUndefined();
+		await expect(
+			pipeline.run({
+				data: new ArrayBuffer(8),
+				mimeType: "image/png",
+				filename: "test.png",
+			}),
+		).rejects.toThrow("Script error");
 	});
 
 	it("falls back to input mimeType when result has no mimeType", async () => {
