@@ -32,8 +32,11 @@ export async function processFileAndInsertLink(
 				);
 			}
 		} catch (err) {
-			console.warn("[preprocess] Pipeline failed, falling back to original file:", err);
-			new Notice("[preprocess] Script failed, keeping original file");
+			console.warn(
+				"[preprocess] Pipeline failed, falling back to original file:",
+				err,
+			);
+			new Notice("[preprocess] script failed, keeping original file");
 		}
 	}
 

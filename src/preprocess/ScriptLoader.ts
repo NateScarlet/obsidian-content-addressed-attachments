@@ -3,6 +3,8 @@ import type {
 	PreProcessScriptModule,
 	ScriptManifest,
 } from "./types";
+import type { DataAdapter } from "obsidian";
+import { CID } from "multiformats/cid";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
 
 /** 使用 URL 构造函数解析获取 params */
@@ -23,12 +25,8 @@ function parseURLSearchParams(url: string): {
 
 /** ScriptLoader 构造函数选项 */
 export interface ScriptLoaderOptions {
-	/** 将 vault 路径解析为可 serve 的 URL（adapter.getResourcePath） */
-	getResourcePath: (path: string) => string;
-	/** 从 CAS 复制文件到目标路径，通过 CID 查找 */
-	copy: (cid: string, dst: string) => Promise<void>;
-	/** 读取 vault 文件内容为文本 */
-	readFile: (path: string) => Promise<string | undefined>;
+	/** vault DataAdapter 方法（getResourcePath / read / copy / exists） */
+	adapter: Pick<DataAdapter, "getResourcePath" | "read" | "copy" | "exists">;
 	/** 获取插件数据目录（用于存放预处理的脚本文件） */
 	getPluginDir: () => string;
 	/**
@@ -38,7 +36,7 @@ export interface ScriptLoaderOptions {
 	 */
 	resolveURL: (
 		rawURL: string,
-	) => Promise<{ cid: string; path: string } | undefined>;
+	) => Promise<{ cid: CID; path: string } | undefined>;
 }
 
 /**
@@ -92,7 +90,12 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			const localPath = resolved.path;
 
 			// 读取文件内容，检查是否为多文件清单
-			const content = await this.options.readFile(localPath);
+			let content: string | undefined;
+			try {
+				content = await this.options.adapter.read(localPath);
+			} catch {
+				// read 可能因文件不存在抛异常
+			}
 			if (content && content.trimStart().startsWith("{")) {
 				const manifest = JSON.parse(content) as ScriptManifest;
 				if (manifest.entry && manifest.files) {
@@ -103,7 +106,7 @@ export default class DefaultScriptLoader implements ScriptLoader {
 					if (baseDir) {
 						const entryPath = `${baseDir}/${manifest.entry}`;
 						const servableURL =
-							this.options.getResourcePath(entryPath);
+							this.options.adapter.getResourcePath(entryPath);
 						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
 						const mod: PreProcessScriptModule = await import(
 							/* @vite-ignore */ servableURL
@@ -115,7 +118,8 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			}
 
 			// 普通单文件脚本
-			const servableURL = this.options.getResourcePath(localPath);
+			const servableURL =
+				this.options.adapter.getResourcePath(localPath);
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
 			const mod: PreProcessScriptModule = await import(
 				/* @vite-ignore */ servableURL
@@ -136,15 +140,15 @@ export default class DefaultScriptLoader implements ScriptLoader {
 	 * 下载清单中所有文件到 `<pluginDir>/preprocess-scripts/<manifestCID>/` 目录。
 	 *
 	 * sources 中的 URL 统一通过 resolveURL 选项处理（包括 vault-relative 路径和 HTTPS 等）。
-	 * resolveURL 负责将内容下载并存储，然后通过 copy 复制到目标路径。
+	 * resolveURL 负责将内容下载并存储，然后通过 adapter.copy 复制到目标路径。
 	 *
 	 * @param manifestCID 清单文件自身的 CID（由 resolveURL 计算）
 	 */
 	private async materializeManifest(
 		manifest: ScriptManifest,
-		manifestCID: string,
+		manifestCID: CID,
 	): Promise<string | undefined> {
-		const baseDir = `${this.options.getPluginDir()}/pre-process-scripts/${manifestCID}`;
+		const baseDir = `${this.options.getPluginDir()}/pre-process-scripts/${manifestCID.toString()}`;
 
 		const entry = manifest.entry;
 		const files = manifest.files;
@@ -153,8 +157,8 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			const targetPath = `${baseDir}/${filename}`;
 
 			// 检查文件是否已存在
-			const targetContent = await this.options.readFile(targetPath);
-			if (targetContent !== undefined) {
+			const fileExists = await this.options.adapter.exists(targetPath);
+			if (fileExists) {
 				continue;
 			}
 
@@ -163,10 +167,10 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			if (fileSource.sources) {
 				for (const sourceURL of fileSource.sources) {
 					const resolved = await this.options.resolveURL(sourceURL);
-					if (resolved && resolved.cid === fileSource.cid) {
-						// 通过 CID 复制到目标路径
-						await this.options.copy(
-							resolved.cid,
+					if (resolved && resolved.cid.equals(CID.parse(fileSource.cid))) {
+						// 从 source 路径复制到目标路径
+						await this.options.adapter.copy(
+							resolved.path,
 							targetPath,
 						);
 						downloaded = true;
@@ -185,8 +189,8 @@ export default class DefaultScriptLoader implements ScriptLoader {
 
 		// 验证入口文件存在
 		const entryPath = `${baseDir}/${entry}`;
-		const entryContent = await this.options.readFile(entryPath);
-		if (entryContent === undefined) {
+		const entryExists = await this.options.adapter.exists(entryPath);
+		if (!entryExists) {
 			console.warn(
 				`[preprocess] Manifest entry file not found: ${entryPath}`,
 			);

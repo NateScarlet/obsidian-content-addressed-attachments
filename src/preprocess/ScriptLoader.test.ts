@@ -1,8 +1,10 @@
+/* eslint-disable import/no-nodejs-modules -- test requires Node.js builtins for fixtures */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync } from "fs";
 import computeCID from "#src/utils/computeCID";
+import { CID } from "multiformats/cid";
 
 /** 将 URLSearchParams 转为普通对象以便断言 */
 function paramsToObject(params: URLSearchParams): Record<string, string> {
@@ -17,9 +19,12 @@ describe("DefaultScriptLoader.getParams", () => {
 	it("parses fragment params from URL", async () => {
 		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
 		const loader = new DefaultScriptLoader({
-			getResourcePath: (path: string) => path,
-			copy: () => Promise.resolve(),
-			readFile: () => Promise.resolve(undefined),
+			adapter: {
+				getResourcePath: (path: string) => path,
+				read: () => Promise.reject(new Error("not used")),
+				copy: () => Promise.resolve(),
+				exists: () => Promise.resolve(false),
+			},
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
 		});
@@ -35,9 +40,12 @@ describe("DefaultScriptLoader.getParams", () => {
 	it("returns empty URLSearchParams for URL without fragment", async () => {
 		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
 		const loader = new DefaultScriptLoader({
-			getResourcePath: (path: string) => path,
-			copy: () => Promise.resolve(),
-			readFile: () => Promise.resolve(undefined),
+			adapter: {
+				getResourcePath: (path: string) => path,
+				read: () => Promise.reject(new Error("not used")),
+				copy: () => Promise.resolve(),
+				exists: () => Promise.resolve(false),
+			},
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
 		});
@@ -48,9 +56,12 @@ describe("DefaultScriptLoader.getParams", () => {
 	it("returns empty URLSearchParams for empty scriptURL", async () => {
 		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
 		const loader = new DefaultScriptLoader({
-			getResourcePath: (path: string) => path,
-			copy: () => Promise.resolve(),
-			readFile: () => Promise.resolve(undefined),
+			adapter: {
+				getResourcePath: (path: string) => path,
+				read: () => Promise.reject(new Error("not used")),
+				copy: () => Promise.resolve(),
+				exists: () => Promise.resolve(false),
+			},
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
 		});
@@ -81,9 +92,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 
 		// 读取 fixture 文件并计算 CID
 		const fixtureData = readFileSync(fixtureScriptPath);
-		const fixtureCID = await computeCID(
-			new Uint8Array(fixtureData).buffer as ArrayBuffer,
-		);
+		const fixtureCID = await computeCID(new Uint8Array(fixtureData).buffer);
 
 		// 动态生成 manifest 内容（使用实际 CID）并写入 temp 目录
 		const manifestContent = JSON.stringify({
@@ -101,9 +110,6 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 		const manifestPath = resolve(tempDir, "manifest-fixture.json");
 		writeFileSync(manifestPath, manifestContent, "utf-8");
 
-		// resolveURL 模拟存储（仿 CAS）
-		const casStore = new Map<string, Buffer>();
-
 		// 读取 vault-relative 文件的共享工具
 		const readVaultFile = (path: string): Buffer | undefined => {
 			// 优先从 temp 目录读取（manifest 在此）
@@ -119,37 +125,39 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 			return undefined;
 		};
 
-		const loader = new DefaultScriptLoader({
-			// getResourcePath 返回 file:// URL 供 import() 使用
+		const adapter = {
 			getResourcePath: (path: string) => {
 				// 如果是相对路径，转换为绝对路径
 				if (!resolve(path) || !path.startsWith("/")) {
-					// 尝试作为相对路径解析
 					const absPath = resolve(tempDir, path);
 					return `file:///${absPath.replace(/\\/g, "/")}`;
 				}
 				return `file:///${path.replace(/\\/g, "/")}`;
 			},
-			readFile: async (path: string) => {
-				// 从文件系统读取
+			read: (path: string) => {
 				const fullPath = resolve(tempDir, path);
 				if (existsSync(fullPath)) {
-					return readFileSync(fullPath, "utf-8");
+					return Promise.resolve(readFileSync(fullPath, "utf-8"));
 				}
-				return undefined;
+				return Promise.reject(new Error(`File not found: ${path}`));
 			},
-			copy: async (cid: string, dst: string) => {
-				const data = casStore.get(cid);
-				if (!data) {
-					throw new Error(`CID not found in store: ${cid}`);
-				}
+			copy: (src: string, dst: string) => {
+				const srcPath = resolve(tempDir, src);
+				const data = readFileSync(srcPath);
 				const dstPath = resolve(tempDir, dst);
 				const dstDir = dirname(dstPath);
 				if (!existsSync(dstDir)) {
 					mkdirSync(dstDir, { recursive: true });
 				}
 				writeFileSync(dstPath, data);
+				return Promise.resolve();
 			},
+			exists: (path: string) =>
+				Promise.resolve(existsSync(resolve(tempDir, path))),
+		};
+
+		const loader = new DefaultScriptLoader({
+			adapter,
 			getPluginDir: () => tempDir,
 			resolveURL: async (rawURL: string) => {
 				// 处理 vault-relative 路径和 HTTPS URL
@@ -163,16 +171,12 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 					// HTTPS：使用 fixture 文件
 					data = fixtureData;
 				}
-				const cid = await computeCID(
-					new Uint8Array(data).buffer as ArrayBuffer,
-				);
-				// 存储到 CAS 并写入文件系统
-				if (!casStore.has(cid)) {
-					casStore.set(cid, data);
-					const storePath = resolve(tempDir, cid);
+				const cidStr = await computeCID(new Uint8Array(data).buffer);
+				const storePath = resolve(tempDir, cidStr);
+				if (!existsSync(storePath)) {
 					writeFileSync(storePath, data);
 				}
-				return { cid, path: resolve(tempDir, cid) };
+				return { cid: CID.parse(cidStr), path: storePath };
 			},
 		});
 
@@ -188,29 +192,33 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 	it("falls back to single-file loading for non-manifest content", async () => {
 		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
 
-		const loader = new DefaultScriptLoader({
+		const adapter = {
 			getResourcePath: (path: string) => {
 				const absPath = resolve(__dirname, path);
 				return `file:///${absPath.replace(/\\/g, "/")}`;
 			},
-			copy: () => Promise.resolve(),
-			readFile: async (path: string) => {
+			read: (path: string) => {
 				const fullPath = resolve(__dirname, path);
 				if (existsSync(fullPath)) {
-					return readFileSync(fullPath, "utf-8");
+					return Promise.resolve(readFileSync(fullPath, "utf-8"));
 				}
-				return undefined;
+				return Promise.reject(new Error(`File not found: ${path}`));
 			},
+			copy: () => Promise.resolve(),
+			exists: (path: string) =>
+				Promise.resolve(existsSync(resolve(__dirname, path))),
+		};
+
+		const loader = new DefaultScriptLoader({
+			adapter,
 			getPluginDir: () => tempDir,
 			resolveURL: async (rawURL: string) => {
 				// vault-relative：从文件系统读取
 				const fullPath = resolve(__dirname, rawURL);
 				if (!existsSync(fullPath)) return undefined;
 				const data = readFileSync(fullPath);
-				const cid = await computeCID(
-					new Uint8Array(data).buffer as ArrayBuffer,
-				);
-				return { cid, path: rawURL };
+				const cidStr = await computeCID(new Uint8Array(data).buffer);
+				return { cid: CID.parse(cidStr), path: rawURL };
 			},
 		});
 
