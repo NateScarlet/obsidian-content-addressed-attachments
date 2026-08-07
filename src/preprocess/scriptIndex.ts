@@ -10,7 +10,9 @@ export const SCRIPT_INDEX: ScriptIndexEntry[] = scriptIndexJson;
 /**
  * 根据 scriptURL 在脚本索引中查找对应的条目。
  */
-export function findScriptByURL(scriptURL: string): ScriptIndexEntry | undefined {
+export function findScriptByURL(
+	scriptURL: string,
+): ScriptIndexEntry | undefined {
 	// 去除 fragment 参数后比较
 	const hashIndex = scriptURL.indexOf("#");
 	const baseURL = hashIndex >= 0 ? scriptURL.slice(0, hashIndex) : scriptURL;

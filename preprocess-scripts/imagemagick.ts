@@ -1,29 +1,20 @@
 /**
- * ImageMagick WASM 图片转换预设脚本。
+ * ImageMagick WASM 图片转换脚本。
  *
- * 使用 @imagemagick/magick-wasm 进行图片格式转换，逻辑参考 .scratch/pre-commit.py。
+ * 使用 @imagemagick/magick-wasm 进行图片格式转换。
  * 支持所有 ImageMagick 可读的输入格式，输出格式由 params 指定。
  *
  * 参数：
  *   - format: 输出格式（avif | webp | jpeg | png），默认 avif
- *   - quality: 编码质量（1-100），默认 60（与 pre-commit.py 一致）
+ *   - quality: 编码质量（1-100），默认 60
  *
- * 构建后的脚本通过 GitHub Release 分发，WASM 文件位于同一目录。
+ * 构建后的脚本与 magick.wasm 位于同一目录，通过相对 import.meta.url 解析。
  */
 
 import type { PreProcessInput, PreProcessContext, PreProcessOutput, PreProcessScriptModule } from "../src/preprocess/shared-types";
 
-/** 构建后的脚本文件在插件目录中的路径 */
-const SCRIPT_DIR = ".obsidian/plugins/content-addressed-attachments/preprocess-scripts";
-
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-
-/** 返回脚本所在目录 URL */
-function getScriptDir(): string {
-	const url = new URL(import.meta.url);
-	return url.href.slice(0, url.href.lastIndexOf("/") + 1);
-}
 
 /** 初始化 ImageMagick WASM */
 async function ensureInitialized(): Promise<void> {
@@ -33,7 +24,7 @@ async function ensureInitialized(): Promise<void> {
 	initPromise = (async () => {
 		const { initializeImageMagick, ConfigurationFiles } =
 			await import("@imagemagick/magick-wasm");
-		const wasmURL = new URL("magick.wasm", getScriptDir()).href;
+		const wasmURL = new URL("magick.wasm", import.meta.url);
 		const response = await fetch(wasmURL);
 		const wasmBytes = new Uint8Array(await response.arrayBuffer());
 		await initializeImageMagick(wasmBytes, ConfigurationFiles.default);
@@ -43,32 +34,22 @@ async function ensureInitialized(): Promise<void> {
 	return initPromise;
 }
 
-/** format 参数 → MagickFormat 常量名映射 */
-const FORMAT_TO_MAGICK: Record<string, string> = {
-	avif: "Avif",
-	webp: "WebP",
-	jpeg: "Jpeg",
-	jpg: "Jpeg",
-	png: "Png",
-};
-
-/** format 参数 → MIME 类型映射 */
-const FORMAT_TO_MIME: Record<string, string> = {
-	avif: "image/avif",
-	webp: "image/webp",
-	jpeg: "image/jpeg",
-	jpg: "image/jpeg",
-	png: "image/png",
+/** format 参数 → MagickFormat 常量名与 MIME 类型映射 */
+const FORMAT_CONFIG: Record<string, { magick: string; mime: string }> = {
+	avif: { magick: "Avif", mime: "image/avif" },
+	webp: { magick: "WebP", mime: "image/webp" },
+	jpeg: { magick: "Jpeg", mime: "image/jpeg" },
+	jpg: { magick: "Jpeg", mime: "image/jpeg" },
+	png: { magick: "Png", mime: "image/png" },
 };
 
 /**
  * 默认导出：使用 ImageMagick WASM 转换图片格式。
  *
- * 参考 .scratch/pre-commit.py 逻辑：
  * - auto-orient：自动校正朝向
  * - strip：移除元数据
- * - quality：编码质量（默认 60，与 pre-commit.py 一致）
- * - 如果转换后反而更大，保留原始文件
+ * - quality：编码质量（默认 60）
+ * - 如果转换后相比原始文件节省不足 10%，保留原始文件
  */
 const transform = async function (
 	input: PreProcessInput,
@@ -81,7 +62,8 @@ const transform = async function (
 
 	const format = ctx.params.get("format") || "avif";
 	const quality = parseInt(ctx.params.get("quality") || "60", 10);
-	const targetMime = FORMAT_TO_MIME[format] || "image/avif";
+	const config = FORMAT_CONFIG[format] ?? FORMAT_CONFIG.avif;
+	const targetMime = config.mime;
 
 	// 已经是目标格式，跳过
 	if (input.mimeType === targetMime) {
@@ -92,16 +74,14 @@ const transform = async function (
 
 	const { ImageMagick, MagickFormat } =
 		await import("@imagemagick/magick-wasm");
-	const magickFormatName = FORMAT_TO_MAGICK[format] || "Avif";
 	const targetFormat =
-		MagickFormat[magickFormatName as keyof typeof MagickFormat];
+		MagickFormat[config.magick as keyof typeof MagickFormat];
 
 	try {
 		const resultData = await ImageMagick.read<Uint8Array | null>(
 			new Uint8Array(input.data),
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			async (image: any) => {
-				// 参考 pre-commit.py: -auto-orient -quality 60 -strip
 				image.quality = quality;
 				image.autoOrient();
 				image.strip();
@@ -120,10 +100,10 @@ const transform = async function (
 			return undefined;
 		}
 
-		// 参考 pre-commit.py：如果转换后反而更大，保留原始文件
-		if (resultData.byteLength >= input.data.byteLength) {
+		// 转换后比原始文件节省不足 10% 时保留原始文件
+		if (resultData.byteLength > 0.9 * input.data.byteLength) {
 			ctx.log(
-				`${format.toUpperCase()} output is larger than input, keeping original: ${input.filename}`,
+				`${format.toUpperCase()} output saves less than 10%, keeping original: ${input.filename}`,
 			);
 			return undefined;
 		}

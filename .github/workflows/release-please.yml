@@ -52,7 +52,4 @@ jobs:
                       main.js
                       manifest.json
                       styles.css
-            - name: Publish preprocess scripts
-              if: ${{needs.release-please.outputs.release_created}}
-              run: |
-                  pnpm run preprocess:publish ${{needs.release-please.outputs.tag_name}}
+                      dist/preprocess-scripts/*

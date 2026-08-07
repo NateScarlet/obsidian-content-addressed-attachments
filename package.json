@@ -16,9 +16,8 @@
 		"lint": "eslint src",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"preprocess:build": "node scripts/build-preprocess-scripts.mjs",
-		"preprocess:publish": "node scripts/publish-preprocess-scripts.mjs",
 		"preprocess:update-index": "node scripts/update-preprocess-index.mjs",
-		"preprocess:release": "pnpm run preprocess:build && pnpm run preprocess:publish && pnpm run preprocess:update-index"
+		"preprocess:release": "pnpm run preprocess:build && pnpm run preprocess:update-index"
 	},
 	"imports": {
 		"#src/*": "./src/*"

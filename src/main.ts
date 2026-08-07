@@ -168,8 +168,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			copy: async (cid, dst) => {
 				try {
 					const dir =
-						this.settings.downloadDir ||
-						this.settings.primaryDir;
+						this.settings.downloadDir || this.settings.primaryDir;
 					const src = `${dir}/.script-downloads/${cid}`;
 					const content =
 						await this.app.vault.adapter.readBinary(src);
@@ -607,9 +606,15 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		// HTTPS 自动锁定：下载后计算 CID，重写设置为 internal.ipfs-locked:<cid>,<srcURL>
 		const scriptURL = this.settings.preProcess.scriptURL;
-		if (scriptURL?.startsWith("https://") || scriptURL?.startsWith("http://")) {
+		if (
+			scriptURL?.startsWith("https://") ||
+			scriptURL?.startsWith("http://")
+		) {
 			try {
-				const response = await requestUrl({ url: scriptURL, throw: false });
+				const response = await requestUrl({
+					url: scriptURL,
+					throw: false,
+				});
 				if (response.status === 200) {
 					const cid = await computeCID(response.arrayBuffer);
 					this.settings.preProcess.scriptURL = `internal.ipfs-locked:${cid},${scriptURL}`;
@@ -617,16 +622,26 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					new Notice(`HTTPS script locked to CID: ${cid}`);
 				}
 			} catch (err) {
-				console.warn(`[saveSettings] Failed to lock HTTPS script:`, err);
-				new Notice("Failed to lock HTTPS script; will retry on next save");
+				console.warn(
+					`[saveSettings] Failed to lock HTTPS script:`,
+					err,
+				);
+				new Notice(
+					"Failed to lock HTTPS script; will retry on next save",
+				);
 			}
 		}
 
 		// 设置保存时提前加载脚本，消除首次粘贴的延迟
 		if (this.settings.preProcess.scriptURL) {
-			this.scriptLoader.loadScript(this.settings.preProcess.scriptURL).catch((err) => {
-				console.warn(`[saveSettings] Failed to preload script:`, err);
-			});
+			this.scriptLoader
+				.loadScript(this.settings.preProcess.scriptURL)
+				.catch((err) => {
+					console.warn(
+						`[saveSettings] Failed to preload script:`,
+						err,
+					);
+				});
 		}
 	}
 

@@ -66,9 +66,7 @@ async function encryptSingleLink(
 	linkText: string,
 	notePath: string,
 	dir: string,
-): Promise<
-	{ newURL: string; oldCID: CID | undefined } | undefined
-> {
+): Promise<{ newURL: string; oldCID: CID | undefined } | undefined> {
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
@@ -137,11 +135,7 @@ export async function encryptLink(
 
 	// 替换后再清理旧 CID，避免被当前笔记的引用阻止
 	if (result.oldCID) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			result.oldCID,
-		);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, result.oldCID);
 	}
 }
 
@@ -194,11 +188,7 @@ export async function decryptLink(
 
 	// 替换后再清理旧 CID，避免被当前笔记的引用阻止
 	if (oldCID) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			oldCID,
-		);
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, oldCID);
 	}
 }
 
