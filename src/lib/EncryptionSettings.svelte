@@ -352,7 +352,7 @@
 					type="number"
 					min="1"
 					value={Math.round(settings.maxBlobSize / (1024 * 1024))}
-					class="w-20 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text text-center"
+					class="w-20 rounded border border-border bg-primary px-3 py-1 text-xs text-theme-text text-center"
 					onchange={(e) => updateMaxBlobSize((e.target as HTMLInputElement).value)}
 				/>
 				<span class="text-xs font-medium text-theme-text-muted">MB</span>
@@ -371,7 +371,7 @@
 				type="text"
 				value={settings.decryptedCacheDir}
 				placeholder={t("decryptedCacheDirPlaceholder")}
-				class="w-64 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text"
+				class="w-64 rounded border border-border bg-primary px-3 py-1 text-xs text-theme-text"
 				onchange={(e) => updateDecryptedCacheDir((e.target as HTMLInputElement).value)}
 			/>
 		</div>
@@ -410,7 +410,7 @@
 				type="text"
 				bind:value={newKeyName}
 				placeholder={t("keyNamePlaceholder")}
-				class="flex-1 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-2 text-xs text-theme-text"
+				class="flex-1 rounded border border-border bg-primary px-3 py-2 text-xs text-theme-text"
 				onkeydown={(e) => e.key === "Enter" && createKey()}
 			/>
 			<button
@@ -431,7 +431,7 @@
 			{:else}
 				{#each keys as key, i (key.fingerprint)}
 					<div
-						class="flex items-center justify-between rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3"
+						class="flex items-center justify-between rounded border border-border bg-primary-alt p-3"
 					>
 						<div class="flex flex-col gap-0 flex-1 mr-4">
 							<div class="flex items-center gap-2">
@@ -439,7 +439,7 @@
 									type="text"
 									value={key.name}
 									placeholder={keyDefaultName(key)}
-									class="rounded border-b border-transparent bg-transparent px-1 py-0 text-xs font-medium text-theme-text hover:border-[var(--background-modifier-border)] focus:border-accent focus:bg-[var(--background-primary)] focus:outline-none transition-colors min-w-32 max-w-full"
+									class="rounded border-b border-transparent bg-transparent px-1 py-0 text-xs font-medium text-theme-text hover:border-border focus:border-accent focus:bg-primary focus:outline-none transition-colors min-w-32 max-w-full"
 									onchange={(e) =>
 										updateKeyName(
 											key.fingerprint,
@@ -483,7 +483,7 @@
 		</div>
 
 		<!-- 已删除密钥折叠区域 -->
-		<div class="w-full border-t border-[var(--background-modifier-border)] pt-4 mt-2">
+		<div class="w-full border-t border-border pt-4 mt-2">
 			<button
 				type="button"
 				class="flex items-center gap-2 text-xs text-theme-text-muted hover:text-theme-text"
@@ -502,7 +502,7 @@
 					{:else}
 						{#each deletedKeys as key (key.fingerprint)}
 							<div
-								class="flex items-center justify-between rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-2 text-xs"
+								class="flex items-center justify-between rounded border border-border bg-primary-alt p-2 text-xs"
 							>
 								<div class="flex flex-col">
 									<span class="text-theme-text-muted line-through">
@@ -531,7 +531,7 @@
 									type="number"
 									bind:value={permanentDeleteDays}
 									min="0"
-									class="w-14 rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-2 py-0 text-xs text-theme-text text-center"
+									class="w-14 rounded border border-border bg-primary px-2 py-0 text-xs text-theme-text text-center"
 								/>
 								<span>{t("permanentlyDeleteSuffix")}</span>
 							</div>
@@ -550,7 +550,7 @@
 	</div>
 
 	<!-- 自动加密路径规则设置 -->
-	<div class="setting-item flex-col items-start gap-3 border-t border-[var(--background-modifier-border)] pt-4">
+	<div class="setting-item flex-col items-start gap-3 border-t border-border pt-4">
 		<div class="flex w-full items-center justify-between">
 			<div class="setting-item-info">
 				<div class="setting-item-name">{t("encryptPathRules")}</div>
@@ -568,14 +568,14 @@
 		<div class="w-full space-y-3 pt-1">
 			{#each allRules as rule, index (index)}
 				<div
-					class="flex flex-col gap-2 rounded-lg border border-[var(--background-modifier-border)] bg-[var(--background-primary-alt)] p-3"
+					class="flex flex-col gap-2 rounded-lg border border-border bg-primary-alt p-3"
 				>
 					<!-- 第一区域：多行规则文本框 -->
 					<textarea
 						rows={3}
 						value={rule.pattern}
 						placeholder={t("encryptPathRulePatternPlaceholder")}
-						class="w-full rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-2 text-xs font-mono text-theme-text resize-y"
+						class="w-full rounded border border-border bg-primary px-3 py-2 text-xs font-mono text-theme-text resize-y"
 						oninput={(e) =>
 							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
 						onblur={() => handleRuleBlur(index)}
@@ -590,7 +590,7 @@
 							</span>
 							<select
 								value={rule.keyFingerprint}
-								class="rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-1 text-xs text-theme-text"
+								class="rounded border border-border bg-primary px-3 py-1 text-xs text-theme-text"
 								onchange={(e) =>
 									updateRuleKey(index, (e.target as HTMLSelectElement).value)}
 							>
