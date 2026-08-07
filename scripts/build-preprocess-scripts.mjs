@@ -3,7 +3,11 @@
  *
  * 使用 esbuild 将 ImageMagick WASM 预处理脚本打包为单文件 bundle，
  * 输出到 dist/preprocess-scripts/ 目录。
- * 同时复制 magick.wasm 文件到同一目录，并生成 script-index.json 清单。
+ * 同时复制 magick.wasm 文件到同一目录，并生成 per-script 清单文件。
+ *
+ * 清单中 sources 优先使用 vault-relative 路径（开发环境），
+ * 其次为 release asset HTTPS URL（<TAG> 占位符由 update-preprocess-index.mjs 替换）。
+ * CID 直接写入清单，下游直接读取即可。
  */
 
 import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
@@ -26,6 +30,14 @@ const wasmSrc = resolve(
 	"magick.wasm",
 );
 
+/** 开发环境 vault-relative 路径前缀 */
+const VAULT_RELATIVE_PREFIX =
+	".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts";
+
+/** release asset 下载 URL 模板 */
+const RELEASE_ASSET_URL =
+	"https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/<TAG>/";
+
 const scripts = ["imagemagick.ts"];
 
 if (!existsSync(scriptDistDir)) {
@@ -39,9 +51,7 @@ async function computeCID(filePath) {
 	return CID.create(1, 0x55, digest).toString();
 }
 
-// 构建 manifest 清单条目
-const manifestFiles = {};
-
+// 构建脚本
 for (const script of scripts) {
 	const srcPath = resolve(scriptSrcDir, script);
 	const distPath = resolve(scriptDistDir, script.replace(/\.ts$/, ".js"));
@@ -57,38 +67,61 @@ for (const script of scripts) {
 	});
 
 	console.log(`Built script: ${script} -> ${distPath}`);
-
-	// 计算打包后文件的 CID
-	const cid = await computeCID(distPath);
-	const filename = script.replace(/\.ts$/, ".js");
-	manifestFiles[filename] = { cid };
-	console.log(`  CID: ${cid}`);
 }
 
-// 复制 magick.wasm 并计算 CID
+// 复制 magick.wasm
 if (existsSync(wasmSrc)) {
 	const wasmDist = resolve(scriptDistDir, "magick.wasm");
 	copyFileSync(wasmSrc, wasmDist);
 	console.log(`Copied: magick.wasm -> ${wasmDist}`);
-	const wasmCID = await computeCID(wasmDist);
-	manifestFiles["magick.wasm"] = { cid: wasmCID };
-	console.log(`  CID: ${wasmCID}`);
 } else {
 	console.warn("Warning: magick.wasm not found at", wasmSrc);
 }
 
-// 生成清单文件
-const entry = scripts[0].replace(/\.ts$/, ".js");
-const manifest = {
-	entry,
-	files: manifestFiles,
-};
-const manifestPath = resolve(scriptDistDir, "script-index.json");
-writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-console.log(`Generated manifest: ${manifestPath}`);
+// 为每个脚本生成 per-script 清单文件
+for (const script of scripts) {
+	const filename = script.replace(/\.ts$/, ".js");
+	const filePath = resolve(scriptDistDir, filename);
+	const cid = await computeCID(filePath);
 
-// 计算清单文件自身的 CID
-const manifestCID = await computeCID(manifestPath);
-console.log(`Manifest CID: ${manifestCID}`);
+	// 收集该脚本依赖的额外文件
+	const extraFiles = [];
+	if (script === "imagemagick.ts" && existsSync(wasmSrc)) {
+		const wasmDist = resolve(scriptDistDir, "magick.wasm");
+		const wasmCID = await computeCID(wasmDist);
+		extraFiles.push({ filename: "magick.wasm", cid: wasmCID });
+	}
+
+	// sources：相对路径在前（开销小），HTTPS URL 在后（发布时引用）
+	const manifestFiles = {
+		[filename]: {
+			cid,
+			sources: [
+				`${VAULT_RELATIVE_PREFIX}/${filename}`,
+				`${RELEASE_ASSET_URL}${filename}`,
+			],
+		},
+	};
+	for (const extra of extraFiles) {
+		manifestFiles[extra.filename] = {
+			cid: extra.cid,
+			sources: [
+				`${VAULT_RELATIVE_PREFIX}/${extra.filename}`,
+				`${RELEASE_ASSET_URL}${extra.filename}`,
+			],
+		};
+	}
+
+	const manifest = {
+		entry: filename,
+		files: manifestFiles,
+	};
+
+	const manifestName = script.replace(/\.ts$/, ".json");
+	const manifestPath = resolve(scriptDistDir, manifestName);
+	writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+	console.log(`Generated manifest: ${manifestPath}`);
+	console.log(`  ${filename}: ${cid}`);
+}
 
 console.log("All preprocess scripts built successfully.");

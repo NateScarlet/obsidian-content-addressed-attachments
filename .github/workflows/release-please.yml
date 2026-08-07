@@ -42,6 +42,14 @@ jobs:
               if: ${{needs.release-please.outputs.release_created}}
               run: |
                   pnpm run preprocess:build
+            - name: Update script index for release
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run preprocess:update-index ${{ needs.release-please.outputs.tag_name }}
+            - name: Rebuild plugin with updated index
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run build:esbuild production
             - name: Release
               if: ${{needs.release-please.outputs.release_created}}
               uses: softprops/action-gh-release@v2

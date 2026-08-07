@@ -228,22 +228,6 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				if (resolved?.path) {
 					return resolved.path;
 				}
-				// 兜底：尝试直接查找 CAS 文件
-				const cidStr = location.cid;
-				const prefix = cidStr.slice(0, 2);
-				const suffix = cidStr.slice(2);
-				const casPath = `${prefix}/${suffix}`;
-				const exists = await this.options.exists(casPath);
-				if (exists) {
-					return casPath;
-				}
-				// 尝试从 sourceURL 下载
-				const dlResult = await this.options.download(
-					location.sourceURL,
-				);
-				if (dlResult) {
-					return dlResult.path;
-				}
 				return undefined;
 			}
 
@@ -276,6 +260,9 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 
 	/**
 	 * 下载清单中所有文件到 `<pluginDir>/preprocess-scripts/<manifestCID>/` 目录。
+	 *
+	 * sources 中的 URL 统一通过 download 选项处理（包括 vault-relative 路径和 HTTPS 等）。
+	 * download 负责将内容写入本地下载目录，然后通过 copy 复制到目标路径。
 	 */
 	private async materializeManifest(
 		manifest: ScriptManifest,

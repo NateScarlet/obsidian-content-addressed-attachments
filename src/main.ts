@@ -155,13 +155,28 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			download: async (url) => {
 				const dir =
 					this.settings.downloadDir || this.settings.primaryDir;
-				const response = await requestUrl({ url, throw: false });
-				if (response.status !== 200) return undefined;
-				const cid = await computeCID(response.arrayBuffer);
+				// vault-relative 路径：直接从 vault 读取
+				const colonIndex = url.indexOf(":");
+				let arrayBuffer: ArrayBuffer;
+				if (colonIndex < 0) {
+					// 无 scheme → vault-relative 路径
+					const content = await this.app.vault.adapter.readBinary(
+						url,
+					);
+					arrayBuffer = content;
+				} else {
+					const response = await requestUrl({
+						url,
+						throw: false,
+					});
+					if (response.status !== 200) return undefined;
+					arrayBuffer = response.arrayBuffer;
+				}
+				const cid = await computeCID(arrayBuffer);
 				const relPath = `${dir}/.script-downloads/${cid}`;
 				await this.app.vault.adapter.writeBinary(
 					relPath,
-					response.arrayBuffer,
+					arrayBuffer,
 				);
 				return { cid, path: relPath };
 			},
