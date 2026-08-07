@@ -1,38 +1,9 @@
 import type {
 	ScriptLoader,
-	ScriptLocation,
 	PreProcessScriptModule,
 	ScriptManifest,
 } from "./types";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
-
-/** 已知的 URL scheme */
-const KNOWN_SCHEMES = ["https:", "http:", "ipfs:", "internal.ipfs-locked:"];
-
-/** 绝对路径前缀（Windows 和 POSIX） */
-const ABSOLUTE_PATH_RE = /^[A-Za-z]:[/\\]|^\//;
-
-/**
- * 解析脚本 URL 为 ScriptLocation。
- */
-export function parseScriptURL(rawURL: string): ScriptLocation | undefined {
-	const trimmed = rawURL.trim();
-	if (!trimmed) return undefined;
-
-	const colonIndex = trimmed.indexOf(":");
-	if (colonIndex > 0) {
-		const scheme = trimmed.slice(0, colonIndex + 1);
-		if (KNOWN_SCHEMES.includes(scheme)) {
-			return parseURLForm(trimmed, scheme);
-		}
-	}
-
-	if (ABSOLUTE_PATH_RE.test(trimmed)) {
-		return undefined;
-	}
-
-	return parseVaultRelative(trimmed);
-}
 
 /** 使用 URL 构造函数解析获取 params */
 function parseURLSearchParams(url: string): {
@@ -48,52 +19,6 @@ function parseURLSearchParams(url: string): {
 		baseURL: url.slice(0, hashIndex),
 		params: new URLSearchParams(fragment),
 	};
-}
-
-function parseURLForm(
-	rawURL: string,
-	scheme: string,
-): ScriptLocation | undefined {
-	const { baseURL, params } = parseURLSearchParams(rawURL);
-
-	switch (scheme) {
-		case "https:":
-		case "http:":
-			try {
-				const parsed = new URL(baseURL);
-				if (
-					parsed.protocol !== "http:" &&
-					parsed.protocol !== "https:"
-				) {
-					return undefined;
-				}
-				return { type: "http", url: baseURL, params };
-			} catch {
-				return undefined;
-			}
-		case "ipfs:": {
-			const cid = baseURL.slice("ipfs://".length);
-			if (!cid) return undefined;
-			return { type: "ipfs", cid, params };
-		}
-		case "internal.ipfs-locked:": {
-			const rest = baseURL.slice("internal.ipfs-locked:".length);
-			const commaIndex = rest.indexOf(",");
-			if (commaIndex < 0) return undefined;
-			const cid = rest.slice(0, commaIndex);
-			const sourceURL = rest.slice(commaIndex + 1);
-			if (!cid || !sourceURL) return undefined;
-			return { type: "internal.ipfs-locked", cid, sourceURL, params };
-		}
-		default:
-			return undefined;
-	}
-}
-
-function parseVaultRelative(rawURL: string): ScriptLocation | undefined {
-	const { baseURL, params } = parseURLSearchParams(rawURL);
-	if (!baseURL) return undefined;
-	return { type: "vault-relative", path: baseURL, params };
 }
 
 /** ScriptLoader 构造函数选项 */
@@ -160,32 +85,11 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 	private async doLoadScript(
 		scriptURL: string,
 	): Promise<PreProcessScriptModule | undefined> {
-		const location = parseScriptURL(scriptURL);
-		if (!location) return undefined;
-
 		try {
-			// 解析 URL 为本地路径，所有类型统一通过 resolveURL 处理
-			let localPath: string | undefined;
-			let resolvedURL: string;
-			switch (location.type) {
-				case "vault-relative":
-					resolvedURL = location.path;
-					break;
-				case "internal.ipfs-locked":
-					resolvedURL = location.sourceURL;
-					break;
-				case "ipfs":
-					resolvedURL = `ipfs://${location.cid}`;
-					break;
-				case "http":
-					resolvedURL = location.url;
-					break;
-			}
-			const resolved = await this.options.resolveURL(resolvedURL);
-			if (resolved?.path) {
-				localPath = resolved.path;
-			}
-			if (!localPath) return undefined;
+			// 所有 URL 类型统一通过 resolveURL 处理
+			const resolved = await this.options.resolveURL(scriptURL);
+			if (!resolved?.path) return undefined;
+			const localPath = resolved.path;
 
 			// 读取文件内容，检查是否为多文件清单
 			const content = await this.options.readFile(localPath);
@@ -194,7 +98,7 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				if (manifest.entry && manifest.files) {
 					const baseDir = await this.materializeManifest(
 						manifest,
-						resolved!.cid,
+						resolved.cid,
 					);
 					if (baseDir) {
 						const entryPath = `${baseDir}/${manifest.entry}`;
