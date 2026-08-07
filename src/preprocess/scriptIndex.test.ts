@@ -15,6 +15,21 @@ describe("scriptIndex", () => {
 		}
 	});
 
+	it("has unique names across all entries", () => {
+		const names = SCRIPT_INDEX.map((e) => e.name);
+		const uniqueNames = new Set(names);
+		expect(uniqueNames.size).toBe(names.length);
+	});
+
+	it("has unique scriptURLs across all entries", () => {
+		const urls = SCRIPT_INDEX.map((e) => {
+			const hashIndex = e.scriptURL.indexOf("#");
+			return hashIndex >= 0 ? e.scriptURL.slice(0, hashIndex) : e.scriptURL;
+		});
+		const uniqueUrls = new Set(urls);
+		expect(uniqueUrls.size).toBe(urls.length);
+	});
+
 	it("finds script by full URL", () => {
 		const entry = SCRIPT_INDEX[0];
 		const found = findScriptByURL(entry.scriptURL);

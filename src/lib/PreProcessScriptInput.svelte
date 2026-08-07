@@ -109,7 +109,7 @@
 	</div>
 
 	{#if selectedDropdownValue !== "disabled" || currentText.trim()}
-		<div class="mt-2.5 w-full">
+		<div class="mt-2 w-full">
 			<textarea
 				bind:this={textareaEl}
 				{@attach textAreaAutoHeight(() => currentText)}

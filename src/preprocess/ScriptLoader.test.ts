@@ -13,10 +13,10 @@ function paramsToObject(params: URLSearchParams): Record<string, string> {
 	return obj;
 }
 
-describe("ScriptLoaderImpl.getParams", () => {
-	it("extracts params from URL fragment", async () => {
-		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
-		const loader = new ScriptLoaderImpl({
+describe("DefaultScriptLoader.getParams", () => {
+	it("parses fragment params from URL", async () => {
+		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
+		const loader = new DefaultScriptLoader({
 			getResourcePath: (path: string) => path,
 			copy: () => Promise.resolve(),
 			readFile: () => Promise.resolve(undefined),
@@ -33,8 +33,8 @@ describe("ScriptLoaderImpl.getParams", () => {
 	});
 
 	it("returns empty URLSearchParams for URL without fragment", async () => {
-		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
-		const loader = new ScriptLoaderImpl({
+		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
+		const loader = new DefaultScriptLoader({
 			getResourcePath: (path: string) => path,
 			copy: () => Promise.resolve(),
 			readFile: () => Promise.resolve(undefined),
@@ -45,9 +45,9 @@ describe("ScriptLoaderImpl.getParams", () => {
 		expect(paramsToObject(params)).toEqual({});
 	});
 
-	it("returns empty URLSearchParams for empty string", async () => {
-		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
-		const loader = new ScriptLoaderImpl({
+	it("returns empty URLSearchParams for empty scriptURL", async () => {
+		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
+		const loader = new DefaultScriptLoader({
 			getResourcePath: (path: string) => path,
 			copy: () => Promise.resolve(),
 			readFile: () => Promise.resolve(undefined),
@@ -58,7 +58,7 @@ describe("ScriptLoaderImpl.getParams", () => {
 	});
 });
 
-describe("ScriptLoaderImpl.loadScript with manifest", () => {
+describe("DefaultScriptLoader.loadScript with manifest", () => {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
 	const fixturesDir = resolve(__dirname, "__tests__", "fixtures");
 	const fixtureScriptPath = resolve(fixturesDir, "manifest-fixture.js");
@@ -77,7 +77,7 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 	});
 
 	it("loads a multi-file script via manifest", async () => {
-		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
+		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
 
 		// 读取 fixture 文件并计算 CID
 		const fixtureData = readFileSync(fixtureScriptPath);
@@ -119,7 +119,7 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 			return undefined;
 		};
 
-		const loader = new ScriptLoaderImpl({
+		const loader = new DefaultScriptLoader({
 			// getResourcePath 返回 file:// URL 供 import() 使用
 			getResourcePath: (path: string) => {
 				// 如果是相对路径，转换为绝对路径
@@ -186,9 +186,9 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 	});
 
 	it("falls back to single-file loading for non-manifest content", async () => {
-		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
+		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
 
-		const loader = new ScriptLoaderImpl({
+		const loader = new DefaultScriptLoader({
 			getResourcePath: (path: string) => {
 				const absPath = resolve(__dirname, path);
 				return `file:///${absPath.replace(/\\/g, "/")}`;

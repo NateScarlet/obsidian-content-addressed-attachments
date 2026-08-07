@@ -42,9 +42,9 @@ export interface ScriptLoaderOptions {
 }
 
 /**
- * ScriptLoader 实现：解析脚本位置、动态 import、缓存模块实例。
+ * DefaultScriptLoader：解析脚本位置、动态 import、缓存模块实例。
  */
-export default class ScriptLoaderImpl implements ScriptLoader {
+export default class DefaultScriptLoader implements ScriptLoader {
 	/** 模块实例缓存 */
 	private moduleCache = new Map<string, PreProcessScriptModule>();
 	/** 加载去重 */

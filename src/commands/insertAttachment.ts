@@ -1,4 +1,4 @@
-import { MarkdownView, type App, type Editor } from "obsidian";
+import { MarkdownView, Notice, type App, type Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
@@ -22,13 +22,18 @@ export async function processFileAndInsertLink(
 			mimeType: file.type,
 			filename: file.name,
 		};
-		const result = await pipeline.run(input);
-		if (result) {
-			fileToProcess = new File(
-				[new Blob([result.data], { type: result.mimeType })],
-				result.filename,
-				{ type: result.mimeType },
-			);
+		try {
+			const result = await pipeline.run(input);
+			if (result) {
+				fileToProcess = new File(
+					[new Blob([result.data], { type: result.mimeType })],
+					result.filename,
+					{ type: result.mimeType },
+				);
+			}
+		} catch (err) {
+			console.warn("[preprocess] Pipeline failed, falling back to original file:", err);
+			new Notice("[preprocess] Script failed, keeping original file");
 		}
 	}
 

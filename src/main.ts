@@ -49,7 +49,7 @@ import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
-import ScriptLoaderImpl from "./preprocess/ScriptLoader";
+import DefaultScriptLoader from "./preprocess/ScriptLoader";
 import ScriptLoaderAdapter from "./preprocess/ScriptLoaderAdapter";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
@@ -72,7 +72,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public migrationManager!: MigrationManager;
 	public lockManager!: LockManager;
 	public pipeline!: TransformPipeline;
-	public scriptLoader!: ScriptLoaderImpl;
+	public scriptLoader!: DefaultScriptLoader;
 
 	private placeholderImageURL!: string;
 	private notFoundImageURL!: string;
@@ -160,7 +160,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				new Notice(`HTTPS script locked to CID: ${cid}`);
 			},
 		});
-		this.scriptLoader = new ScriptLoaderImpl(adapter.createOptions());
+		this.scriptLoader = new DefaultScriptLoader(adapter.createOptions());
 		this.pipeline = new TransformPipeline(
 			this.scriptLoader,
 			() => this.settings.preProcess.scriptURL,
@@ -442,6 +442,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "reprocess-current-note",
 			name: t("reprocessCurrentNote"),
 			callback: () => {
+				if (!this.settings.preProcess.scriptURL) {
+					new Notice(t("noScriptConfigured"));
+					return;
+				}
 				reprocessCurrentNote(reprocessCtx())
 					.then((count) => {
 						if (count > 0) {
@@ -458,6 +462,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "reprocess-whole-vault",
 			name: t("reprocessWholeVault"),
 			callback: () => {
+				if (!this.settings.preProcess.scriptURL) {
+					new Notice(t("noScriptConfigured"));
+					return;
+				}
 				reprocessWholeVault(reprocessCtx()).catch(showError);
 			},
 		});
@@ -618,6 +626,7 @@ const { t } = defineLocales({
 		reprocessComplete: (count: number) =>
 			`Reprocessed ${count} attachment(s)`,
 		noAttachmentsFound: "No attachments found to reprocess",
+		noScriptConfigured: "No pre-processing script configured",
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -637,6 +646,7 @@ const { t } = defineLocales({
 		reprocessLink: "重新处理此附件",
 		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
 		noAttachmentsFound: "未找到需要重新处理的附件",
+		noScriptConfigured: "未配置预处理脚本",
 	},
 });
 //#endregion

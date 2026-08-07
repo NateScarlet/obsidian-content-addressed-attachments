@@ -13,6 +13,7 @@ import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
 import showError from "#src/utils/showError";
 import ProgressModal from "#src/ui/ProgressModal";
+import SingleFlightGroup from "#src/utils/SingleFlightGroup";
 import { trashIfUnreferenced } from "./trashIfUnreferenced";
 import { loadFileContent } from "./loadFileContent";
 
@@ -153,6 +154,13 @@ async function reprocessSingleLink(
 
 //#endregion
 
+//#region Single-flight guard
+
+/** 防止并发重新处理 */
+const reprocessFlight = new SingleFlightGroup<number>();
+
+//#endregion
+
 //#region Public commands
 
 /**
@@ -161,15 +169,25 @@ async function reprocessSingleLink(
 export async function reprocessCurrentNote(
 	ctx: ReprocessContext,
 ): Promise<number> {
-	const file = ctx.app.workspace.getActiveFile();
-	if (!file) {
-		throw new Error("No active note");
-	}
+	const { result, isShared } = await reprocessFlight.do(
+		"current-note",
+		async () => {
+			const file = ctx.app.workspace.getActiveFile();
+			if (!file) {
+				throw new Error("No active note");
+			}
 
-	const transformer = new VaultLinkTransformer(ctx.app);
-	return transformer.transformFile(file, async (_match, linkText) => {
-		return reprocessSingleLink(ctx, linkText, file.path);
-	});
+			const transformer = new VaultLinkTransformer(ctx.app);
+			return transformer.transformFile(file, async (_match, linkText) => {
+				return reprocessSingleLink(ctx, linkText, file.path);
+			});
+		},
+	);
+	if (isShared) {
+		new Notice(t("reprocessCancelled"));
+		return 0;
+	}
+	return result;
 }
 
 /**
@@ -202,71 +220,81 @@ export async function reprocessSingleLinkCommand(
 export async function reprocessWholeVault(
 	ctx: ReprocessContext,
 ): Promise<number> {
-	return new Promise<number>((resolve, reject) => {
-		// 先显示确认对话框
-		const confirmModal = new Modal(ctx.app);
-		confirmModal.setTitle(t("reprocessWholeVault"));
-		confirmModal.contentEl.createEl("p", { text: t("reprocessConfirm") });
-		new Setting(confirmModal.contentEl)
-			.addButton((btn) =>
-				btn.setButtonText(t("confirm")).onClick(() => {
-					confirmModal.close();
-					void startReprocess();
-				}),
-			)
-			.addButton((btn) =>
-				btn
-					.setButtonText(t("cancel"))
-					.onClick(() => confirmModal.close()),
-			);
-		confirmModal.open();
+	const { result, isShared } = await reprocessFlight.do(
+		"whole-vault",
+		async () => {
+			return new Promise<number>((resolve, reject) => {
+				// 先显示确认对话框
+				const confirmModal = new Modal(ctx.app);
+				confirmModal.setTitle(t("reprocessWholeVault"));
+				confirmModal.contentEl.createEl("p", { text: t("reprocessConfirm") });
+				new Setting(confirmModal.contentEl)
+					.addButton((btn) =>
+						btn.setButtonText(t("confirm")).onClick(() => {
+							confirmModal.close();
+							void startReprocess();
+						}),
+					)
+					.addButton((btn) =>
+						btn
+							.setButtonText(t("cancel"))
+							.onClick(() => confirmModal.close()),
+					);
+				confirmModal.open();
 
-		function startReprocess() {
-			const modal = new ProgressModal(ctx.app, t("reprocessWholeVault"));
-			modal.open();
-			void (async () => {
-				try {
-					const files = ctx.app.vault.getMarkdownFiles();
-					let totalReprocessed = 0;
-					let processed = 0;
+				function startReprocess() {
+					const modal = new ProgressModal(ctx.app, t("reprocessWholeVault"));
+					modal.open();
+					void (async () => {
+						try {
+							const files = ctx.app.vault.getMarkdownFiles();
+							let totalReprocessed = 0;
+							let processed = 0;
 
-					modal.update(t("reprocessProgress")(0, files.length));
+							modal.update(t("reprocessProgress")(0, files.length));
 
-					for (const file of files) {
-						if (modal.isCancelled) {
-							new Notice(t("reprocessCancelled"));
-							break;
-						}
+							for (const file of files) {
+								if (modal.isCancelled) {
+									new Notice(t("reprocessCancelled"));
+									break;
+								}
 
-						const transformer = new VaultLinkTransformer(ctx.app);
-						const count = await transformer.transformFile(
-							file,
-							async (_match, linkText) => {
-								return reprocessSingleLink(
-									ctx,
-									linkText,
-									file.path,
+								const transformer = new VaultLinkTransformer(ctx.app);
+								const count = await transformer.transformFile(
+									file,
+									async (_match, linkText) => {
+										return reprocessSingleLink(
+											ctx,
+											linkText,
+											file.path,
+										);
+									},
 								);
-							},
-						);
-						totalReprocessed += count;
-						processed++;
-						modal.update(
-							t("reprocessProgress")(processed, files.length),
-						);
-					}
+								totalReprocessed += count;
+								processed++;
+								modal.update(
+									t("reprocessProgress")(processed, files.length),
+								);
+							}
 
-					modal.close();
-					new Notice(t("reprocessComplete")(totalReprocessed));
-					resolve(totalReprocessed);
-				} catch (err) {
-					modal.close();
-					showError(err);
-					reject(err instanceof Error ? err : new Error(String(err)));
+							modal.close();
+							new Notice(t("reprocessComplete")(totalReprocessed));
+							resolve(totalReprocessed);
+						} catch (err) {
+							modal.close();
+							showError(err);
+							reject(err instanceof Error ? err : new Error(String(err)));
+						}
+					})();
 				}
-			})();
-		}
-	});
+			});
+		},
+	);
+	if (isShared) {
+		new Notice(t("reprocessCancelled"));
+		return 0;
+	}
+	return result;
 }
 
 //#endregion

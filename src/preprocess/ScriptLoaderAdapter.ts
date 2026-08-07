@@ -25,7 +25,7 @@ export interface ScriptLoaderAdapterOptions {
 }
 
 /**
- * 装配 ScriptLoaderImpl 所需的选项，桥接插件基础设施与 ScriptLoader。
+ * 装配 DefaultScriptLoader 所需的选项，桥接插件基础设施与 ScriptLoader。
  *
  * 职责：
  * - 提供 ScriptLoaderOptions 所需的所有回调
@@ -36,7 +36,7 @@ export interface ScriptLoaderAdapterOptions {
 export default class ScriptLoaderAdapter {
 	constructor(private options: ScriptLoaderAdapterOptions) {}
 
-	/** 构造 ScriptLoaderOptions 供 ScriptLoaderImpl 使用 */
+	/** 构造 ScriptLoaderOptions 供 DefaultScriptLoader 使用 */
 	createOptions(): ScriptLoaderOptions {
 		return {
 			getResourcePath: (path) =>
