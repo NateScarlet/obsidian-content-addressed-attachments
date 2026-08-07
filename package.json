@@ -13,7 +13,7 @@
 		"build:esbuild": "node esbuild.config.mjs production",
 		"check": "pnpm test && pnpm lint --fix",
 		"test": "vitest run && svelte-check",
-		"lint": "eslint src",
+		"lint": "eslint src preprocess-scripts",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"preprocess:build": "node scripts/build-preprocess-scripts.mjs",
 		"preprocess:update-index": "node scripts/update-preprocess-index.mjs",

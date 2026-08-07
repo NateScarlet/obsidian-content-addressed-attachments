@@ -11,7 +11,14 @@
  * 构建后的脚本与 magick.wasm 位于同一目录，通过相对 import.meta.url 解析。
  */
 
-import type { PreProcessInput, PreProcessContext, PreProcessOutput, PreProcessScriptModule } from "../src/preprocess/shared-types";
+import { requestUrl } from "obsidian";
+import type {
+	PreProcessInput,
+	PreProcessContext,
+	PreProcessOutput,
+	PreProcessScriptModule,
+} from "../src/preprocess/shared-types";
+import type { IMagickImage } from "@imagemagick/magick-wasm";
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -25,8 +32,8 @@ async function ensureInitialized(): Promise<void> {
 		const { initializeImageMagick, ConfigurationFiles } =
 			await import("@imagemagick/magick-wasm");
 		const wasmURL = new URL("magick.wasm", import.meta.url);
-		const response = await fetch(wasmURL);
-		const wasmBytes = new Uint8Array(await response.arrayBuffer());
+		const response = await requestUrl({ url: wasmURL.href });
+		const wasmBytes = new Uint8Array(response.arrayBuffer);
 		await initializeImageMagick(wasmBytes, ConfigurationFiles.default);
 		initialized = true;
 	})();
@@ -78,16 +85,15 @@ const transform = async function (
 		MagickFormat[config.magick as keyof typeof MagickFormat];
 
 	try {
-		const resultData = await ImageMagick.read<Uint8Array | null>(
+		const resultData = ImageMagick.read<Uint8Array | null>(
 			new Uint8Array(input.data),
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			async (image: any) => {
+			(image: IMagickImage) => {
 				image.quality = quality;
 				image.autoOrient();
 				image.strip();
 
 				let written: Uint8Array | null = null;
-				await image.write(targetFormat, (data: Uint8Array) => {
+				image.write(targetFormat, (data: Uint8Array) => {
 					// write 回调的 data 指向 native 内存，函数返回后会被立刻释放，
 					// 必须先拷贝成普通 Uint8Array 再带出回调（见 magick-wasm 文档 #185）
 					written = new Uint8Array(data);

@@ -54,6 +54,7 @@ for (const script of scripts) {
 		platform: "browser",
 		target: "es2020",
 		minify: true,
+		external: ["obsidian"],
 	});
 
 	console.log(`Built script: ${script} -> ${distPath}`);
