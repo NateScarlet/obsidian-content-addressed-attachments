@@ -8,6 +8,7 @@ import clsx from "clsx";
 import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
 import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
+import PreProcessScriptInput from "#src/lib/PreProcessScriptInput.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { encryptNote } from "#src/commands/convertAttachment";
@@ -17,9 +18,6 @@ import { findScriptByURL, SCRIPT_INDEX } from "#src/preprocess/scriptIndex";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
-
-// datalist 元素 id 需唯一，避免设置页多次渲染时引用冲突
-let scriptDatalistSeq = 0;
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
@@ -284,52 +282,26 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		//#region 预处理设置
 		new Setting(containerEl).setName(t("preProcessing")).setHeading();
 
-		// 单输入框 + 预设自动补全：可直接输入 URL，点击输入框出现预设下拉，选中后替换为预设完整 URL
+		// 预处理脚本：多行输入框（支持长 URL 换行）+ 预设自动补全下拉
 		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
-		const datalistId = `preprocess-script-datalist-${scriptDatalistSeq++}`;
-
-		const scriptSetting = new Setting(containerEl)
-			.setName(t("preProcessScript"))
-			.addText((text) => {
-				const updateDesc = (value: string) => {
-					const entry = findScriptByURL(value);
-					let state: string;
-					if (entry) {
-						state = `${entry.description} (${entry.name})`;
-					} else if (value) {
-						state = t("customScript");
-					} else {
-						state = t("preProcessDisabled");
-					}
-					scriptSetting.setDesc(
-						`${state}\n${t("customScriptURLDesc")}`,
-					);
-				};
-
-				const input = text
-					.setPlaceholder("")
-					.setValue(currentScriptURL || "")
-					.onChange(async (value) => {
+		const scriptInputContainer = containerEl.createDiv();
+		this.stack.adopt(
+			mount(PreProcessScriptInput, {
+				target: scriptInputContainer,
+				props: {
+					value: currentScriptURL || "",
+					entries: SCRIPT_INDEX,
+					customScriptLabel: t("customScript"),
+					disabledLabel: t("preProcessDisabled"),
+					findScriptByURL,
+					onChange: async (value: string) => {
 						this.plugin.settings.preProcess.scriptURL = value;
 						await this.plugin.saveSettings();
-						updateDesc(value);
-					});
-
-				// 预设自动补全：选项值为预设完整 URL（含 fragment 参数），选中后填入输入框
-				const doc = text.inputEl.ownerDocument;
-				const datalist = doc.createElement("datalist");
-				datalist.id = datalistId;
-				for (const entry of SCRIPT_INDEX) {
-					const option = doc.createElement("option");
-					option.value = entry.scriptURL;
-					option.textContent = `${entry.name} - ${entry.description}`;
-					datalist.appendChild(option);
-				}
-				input.inputEl.setAttribute("list", datalistId);
-				input.inputEl.parentElement?.appendChild(datalist);
-
-				updateDesc(currentScriptURL);
-			});
+					},
+				},
+			}),
+			(i) => void unmount(i),
+		);
 		//#endregion
 
 		// 全库操作区域
@@ -422,11 +394,8 @@ const { t } = defineLocales({
 		reprocessWholeVaultDesc:
 			"Reprocess all referenced attachments using the pre-processing pipeline",
 		preProcessing: "Pre-processing",
-		preProcessScript: "Pre-processing script",
 		preProcessDisabled: "Disabled",
 		customScript: "Custom script",
-		customScriptURLDesc:
-			"Vault-relative path, ipfs://, internal.ipfs-locked:, or https:// URL. Add parameters in fragment (e.g. #quality=80)",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -460,11 +429,8 @@ const { t } = defineLocales({
 		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
 		reprocessWholeVaultDesc: "使用预处理管线重新处理所有被引用的附件",
 		preProcessing: "预处理",
-		preProcessScript: "预处理脚本",
 		preProcessDisabled: "禁用",
 		customScript: "自定义脚本",
-		customScriptURLDesc:
-			"Vault 相对路径、ipfs://、internal.ipfs-locked: 或 https:// URL。在 fragment 中添加参数（如 #quality=80）",
 	},
 });
 //#endregion
