@@ -1,5 +1,6 @@
 <script module lang="ts">
 	const PAGE_SIZE = 50;
+	const SKELETON_ITEMS = Array.from({ length: PAGE_SIZE }, (_, i) => i);
 </script>
 
 <script lang="ts">
@@ -187,7 +188,7 @@
 		<div
 			class="grid grid-cols-[repeat(auto-fill,minmax(min(16rem,100%),1fr))] gap-px gap-y-2 p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"
 		>
-			{#each Array.from({ length: PAGE_SIZE }) as i (i)}
+			{#each SKELETON_ITEMS as i (i)}
 				<div class="h-64 bg-hover animate-pulse rounded"></div>
 			{/each}
 		</div>
