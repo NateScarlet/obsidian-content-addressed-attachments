@@ -15,7 +15,7 @@ import * as raw from "multiformats/codecs/raw";
 const fixturesDir = path.resolve("./tests/e2e-vault/fixtures");
 const PLUGIN_ID = "content-addressed-attachments";
 const SCRIPT_DIR =
-	".obsidian/plugins/content-addressed-attachments/preprocess-scripts/imagemagick.js";
+	".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.js";
 const NOTE_PATH = "e2e.md";
 
 interface Fixture {

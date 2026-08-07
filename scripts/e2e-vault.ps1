@@ -35,9 +35,11 @@ pnpm run preprocess:build
 $src = Join-Path $RepoRoot "dist\preprocess-scripts"
 if (-not (Test-Path $src)) { throw "缺少 dist\preprocess-scripts（preprocess:build 未产出）" }
 
-$dst = Join-Path $pluginDir "preprocess-scripts"
+$dst = Join-Path $pluginDir "dist\preprocess-scripts"
 Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue
+$dstParent = Split-Path $dst -Parent
+if (-not (Test-Path $dstParent)) { New-Item -ItemType Directory -Path $dstParent -Force }
 Copy-Item $src $dst -Recurse
 
-Write-Host "装配完成: preprocess-scripts -> $dst"
+Write-Host "装配完成: dist\preprocess-scripts -> $dst"
 Write-Host "现在可以运行 pnpm run e2e（连接已就绪的 CDP 实例）"
