@@ -12,7 +12,7 @@ import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
 import showError from "#src/utils/showError";
-import { ProgressModal } from "#src/ui/ProgressModal";
+import ProgressModal from "#src/ui/ProgressModal";
 import { trashIfUnreferenced } from "./trashIfUnreferenced";
 import { loadFileContent } from "./loadFileContent";
 

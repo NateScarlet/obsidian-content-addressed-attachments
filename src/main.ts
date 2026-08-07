@@ -57,7 +57,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public cas!: CAS;
 	public casMetadata!: CASMetadata;
 	public urlResolver!: URLResolver;
-	public referenceManger = new ReferenceManager(this);
+	public referenceManager = new ReferenceManager(this);
 	public keyManager!: KeyManager;
 	public encryptionService!: EncryptionService;
 	public encryptPathPolicy!: EncryptPathPolicy;
@@ -100,7 +100,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		);
 
 		this.casMetadata = new CASMetadataImpl(
-			new CASMetadataObjectFilterBuilder(this.referenceManger),
+			new CASMetadataObjectFilterBuilder(this.referenceManager),
 		);
 		this.cas = new CASImpl(this.app, this.casMetadata, () => {
 			return uniq([
@@ -256,7 +256,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.app.vault.on("modify", (file) => {
 				if (file instanceof TFile && file.extension === "md") {
 					markdownChange.dispatch({ detail: file });
-					void this.referenceManger.loadFile(file.path);
+					void this.referenceManager.loadFile(file.path);
 				}
 			}),
 		);
@@ -264,7 +264,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.app.workspace.on("editor-change", (editor, view) => {
 				if (view.file && view.file.extension === "md") {
 					markdownChange.dispatch({ detail: view.file });
-					void this.referenceManger.loadFileContent(
+					void this.referenceManager.loadFileContent(
 						view.file.path,
 						editor.getValue(),
 					);
@@ -295,7 +295,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 						cas: this.cas,
 						encryptionService: this.encryptionService,
 						urlResolver: this.urlResolver,
-						referenceManager: this.referenceManger,
+						referenceManager: this.referenceManager,
 						keyManager: this.keyManager,
 						encryptPathPolicy: this.encryptPathPolicy,
 					};
@@ -457,7 +457,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			cas: this.cas,
 			encryptionService: this.encryptionService,
 			urlResolver: this.urlResolver,
-			referenceManager: this.referenceManger,
+			referenceManager: this.referenceManager,
 			keyManager: this.keyManager,
 			encryptPathPolicy: this.encryptPathPolicy,
 			pipeline: this.pipeline,

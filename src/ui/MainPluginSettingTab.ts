@@ -12,10 +12,14 @@ import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { encryptNote } from "#src/commands/convertAttachment";
 import { reprocessWholeVault } from "#src/commands/reprocessAttachments";
+import type { ReprocessContext } from "#src/commands/reprocessAttachments";
 import { findScriptByURL, SCRIPT_INDEX } from "#src/preprocess/scriptIndex";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
+
+// datalist 元素 id 需唯一，避免设置页多次渲染时引用冲突
+let scriptDatalistSeq = 0;
 
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
@@ -247,7 +251,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								encryptionService:
 									this.plugin.encryptionService,
 								urlResolver: this.plugin.urlResolver,
-								referenceManager: this.plugin.referenceManger,
+								referenceManager: this.plugin.referenceManager,
 								dir: this.plugin.settings.primaryDir,
 								keyManager: this.plugin.keyManager,
 								encryptPathPolicy:
@@ -280,80 +284,52 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		//#region 预处理设置
 		new Setting(containerEl).setName(t("preProcessing")).setHeading();
 
-		// 单输入框 + 预设下拉选择
+		// 单输入框 + 预设自动补全：可直接输入 URL，点击输入框出现预设下拉，选中后替换为预设完整 URL
 		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
-		const currentScript = findScriptByURL(currentScriptURL);
+		const datalistId = `preprocess-script-datalist-${scriptDatalistSeq++}`;
 
-		// 预设下拉：选择后填入输入框
-		const scriptDropdown = new Setting(containerEl)
+		const scriptSetting = new Setting(containerEl)
 			.setName(t("preProcessScript"))
-			.setDesc(
-				currentScript
-					? `${currentScript.description} (${currentScript.name})`
-					: currentScriptURL
-						? t("customScript")
-						: t("preProcessDisabled"),
-			)
-			.addDropdown((dropdown) => {
-				dropdown.addOption("", t("preProcessDisabled"));
-				for (const entry of SCRIPT_INDEX) {
-					dropdown.addOption(entry.scriptURL, entry.name);
-				}
-				dropdown.addOption("__custom__", t("customScript"));
-				if (currentScript) {
-					dropdown.setValue(currentScript.scriptURL);
-				} else if (currentScriptURL) {
-					dropdown.setValue("__custom__");
-				} else {
-					dropdown.setValue("");
-				}
-				dropdown.onChange(async (value) => {
-					if (value === "__custom__") {
-						scriptDropdown.setDesc(t("customScript"));
-						return;
-					}
-					if (value === "") {
-						this.plugin.settings.preProcess.scriptURL = "";
-						await this.plugin.saveSettings();
-						scriptDropdown.setDesc(t("preProcessDisabled"));
-						return;
-					}
-					// 预设：直接填入 URL
-					this.plugin.settings.preProcess.scriptURL = value;
-					await this.plugin.saveSettings();
+			.addText((text) => {
+				const updateDesc = (value: string) => {
 					const entry = findScriptByURL(value);
+					let state: string;
 					if (entry) {
-						scriptDropdown.setDesc(
-							`${entry.description} (${entry.name})`,
-						);
+						state = `${entry.description} (${entry.name})`;
+					} else if (value) {
+						state = t("customScript");
+					} else {
+						state = t("preProcessDisabled");
 					}
-				});
-			});
+					scriptSetting.setDesc(
+						`${state}\n${t("customScriptURLDesc")}`,
+					);
+				};
 
-		// 文本输入框：始终显示，可直接编辑
-		new Setting(containerEl)
-			.setName(t("customScriptURL"))
-			.setDesc(t("customScriptURLDesc"))
-			.addText((text) =>
-				text
+				const input = text
 					.setPlaceholder("")
 					.setValue(currentScriptURL || "")
 					.onChange(async (value) => {
 						this.plugin.settings.preProcess.scriptURL = value;
 						await this.plugin.saveSettings();
-						// 更新描述
-						const entry = findScriptByURL(value);
-						if (entry) {
-							scriptDropdown.setDesc(
-								`${entry.description} (${entry.name})`,
-							);
-						} else if (value) {
-							scriptDropdown.setDesc(t("customScript"));
-						} else {
-							scriptDropdown.setDesc(t("preProcessDisabled"));
-						}
-					}),
-			);
+						updateDesc(value);
+					});
+
+				// 预设自动补全：选项值为预设完整 URL（含 fragment 参数），选中后填入输入框
+				const doc = text.inputEl.ownerDocument;
+				const datalist = doc.createElement("datalist");
+				datalist.id = datalistId;
+				for (const entry of SCRIPT_INDEX) {
+					const option = doc.createElement("option");
+					option.value = entry.scriptURL;
+					option.textContent = `${entry.name} - ${entry.description}`;
+					datalist.appendChild(option);
+				}
+				input.inputEl.setAttribute("list", datalistId);
+				input.inputEl.parentElement?.appendChild(datalist);
+
+				updateDesc(currentScriptURL);
+			});
 		//#endregion
 
 		// 全库操作区域
@@ -386,12 +362,12 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setDesc(t("reprocessWholeVaultDesc"))
 			.addButton((button) =>
 				button.setButtonText(btnText).onClick(() => {
-					const ctx = {
+					const ctx: ReprocessContext = {
 						app: this.plugin.app,
 						cas: this.plugin.cas,
 						encryptionService: this.plugin.encryptionService,
 						urlResolver: this.plugin.urlResolver,
-						referenceManager: this.plugin.referenceManger,
+						referenceManager: this.plugin.referenceManager,
 						keyManager: this.plugin.keyManager,
 						encryptPathPolicy: this.plugin.encryptPathPolicy,
 						pipeline: this.plugin.pipeline,
@@ -447,11 +423,8 @@ const { t } = defineLocales({
 			"Reprocess all referenced attachments using the pre-processing pipeline",
 		preProcessing: "Pre-processing",
 		preProcessScript: "Pre-processing script",
-		preProcessScriptDesc:
-			"Script to transform attachments on insert. Empty = disabled",
 		preProcessDisabled: "Disabled",
 		customScript: "Custom script",
-		customScriptURL: "Custom script URL",
 		customScriptURLDesc:
 			"Vault-relative path, ipfs://, internal.ipfs-locked:, or https:// URL. Add parameters in fragment (e.g. #quality=80)",
 	},
@@ -488,10 +461,8 @@ const { t } = defineLocales({
 		reprocessWholeVaultDesc: "使用预处理管线重新处理所有被引用的附件",
 		preProcessing: "预处理",
 		preProcessScript: "预处理脚本",
-		preProcessScriptDesc: "插入时转换附件的脚本。空=禁用",
 		preProcessDisabled: "禁用",
 		customScript: "自定义脚本",
-		customScriptURL: "自定义脚本 URL",
 		customScriptURLDesc:
 			"Vault 相对路径、ipfs://、internal.ipfs-locked: 或 https:// URL。在 fragment 中添加参数（如 #quality=80）",
 	},

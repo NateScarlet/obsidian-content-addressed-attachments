@@ -16,7 +16,7 @@ const { t } = defineLocales({
  * 调用方自行执行任务，通过 update 方法更新进度文本，
  * 通过 isCancelled 属性检查用户是否取消。
  */
-export class ProgressModal extends Modal {
+export default class ProgressModal extends Modal {
 	private _isCancelled = false;
 	private statusEl: HTMLElement | null = null;
 
