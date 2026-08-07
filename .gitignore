@@ -16,6 +16,9 @@ styles.css
 # Exclude sourcemaps
 *.map
 
+# Preprocess scripts build output
+dist/
+
 # obsidian
 data.json
 

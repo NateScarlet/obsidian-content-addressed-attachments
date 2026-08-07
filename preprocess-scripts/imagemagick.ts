@@ -108,7 +108,9 @@ const transform = async function (
 
 				let written: Uint8Array | null = null;
 				await image.write(targetFormat, (data: Uint8Array) => {
-					written = data;
+					// write 回调的 data 指向 native 内存，函数返回后会被立刻释放，
+					// 必须先拷贝成普通 Uint8Array 再带出回调（见 magick-wasm 文档 #185）
+					written = new Uint8Array(data);
 				});
 				return written;
 			},

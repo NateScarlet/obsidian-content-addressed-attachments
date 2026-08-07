@@ -33,14 +33,14 @@ if (!existsSync(scriptDistDir)) {
 }
 
 /** 计算文件的 CID (v1, raw codec, SHA-256) */
-async function computeCID(filePath: string): Promise<string> {
+async function computeCID(filePath) {
 	const data = readFileSync(filePath);
 	const digest = await sha256.digest(data);
 	return CID.create(1, 0x55, digest).toString();
 }
 
 // 构建 manifest 清单条目
-const manifestFiles: Record<string, { cid: string }> = {};
+const manifestFiles = {};
 
 for (const script of scripts) {
 	const srcPath = resolve(scriptSrcDir, script);
