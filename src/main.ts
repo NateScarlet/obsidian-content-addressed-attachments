@@ -51,6 +51,8 @@ import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import ScriptLoaderImpl from "./preprocess/ScriptLoader";
 import computeCID from "./utils/computeCID";
+import { CID } from "multiformats/cid";
+import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -152,56 +154,65 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.scriptLoader = new ScriptLoaderImpl({
 			getResourcePath: (path) =>
 				this.app.vault.adapter.getResourcePath(path),
-			download: async (url) => {
+			copy: async (cidStr, dst) => {
+				const cid = CID.parse(cidStr);
+				const match = await this.cas.load(cid);
+				if (!match) {
+					throw new Error(
+						`[copy] CID not found in CAS: ${cidStr}`,
+					);
+				}
+				const content =
+					await this.app.vault.adapter.readBinary(
+						match.normalizedPath,
+					);
+				await this.app.vault.adapter.writeBinary(dst, content);
+			},
+			readFile: (path) => this.app.vault.adapter.read(path),
+			getPluginDir: () =>
+				`${this.app.vault.configDir}/plugins/content-addressed-attachments`,
+			resolveURL: async (rawURL) => {
+				// 优先使用 URLResolver 处理 ipfs 和 internal.ipfs-locked URL
+				const urlResolverResult =
+					await this.urlResolver.resolveURL(rawURL);
+				if (urlResolverResult?.path) {
+					// 从 URL 中提取 CID
+					const lockedURL = parseIPFSLockedURL(rawURL);
+					let cidStr: string;
+					if (lockedURL) {
+						cidStr = lockedURL.cid.toString();
+					} else {
+						const url = new URL(rawURL);
+						cidStr = url.host;
+					}
+					return { cid: cidStr, path: urlResolverResult.path };
+				}
+
+				// 处理 HTTP(S) URL 和 vault-relative 路径
 				const dir =
 					this.settings.downloadDir || this.settings.primaryDir;
-				// vault-relative 路径：直接从 vault 读取
-				const colonIndex = url.indexOf(":");
+				const colonIndex = rawURL.indexOf(":");
 				let arrayBuffer: ArrayBuffer;
 				if (colonIndex < 0) {
 					// 无 scheme → vault-relative 路径
-					const content = await this.app.vault.adapter.readBinary(
-						url,
-					);
+					const content =
+						await this.app.vault.adapter.readBinary(rawURL);
 					arrayBuffer = content;
 				} else {
 					const response = await requestUrl({
-						url,
+						url: rawURL,
 						throw: false,
 					});
 					if (response.status !== 200) return undefined;
 					arrayBuffer = response.arrayBuffer;
 				}
 				const cid = await computeCID(arrayBuffer);
-				const relPath = `${dir}/${cid}`;
-				await this.app.vault.adapter.writeBinary(
-					relPath,
-					arrayBuffer,
-				);
+				const file = new File([arrayBuffer], "download");
+				const { cid: cidObj } = await this.cas.save(dir, file);
+				const relPath =
+					this.cas.formatNormalizePath(dir, cidObj);
 				return { cid, path: relPath };
 			},
-			copy: async (cid, dst) => {
-				try {
-					const dir =
-						this.settings.downloadDir || this.settings.primaryDir;
-					const src = `${dir}/${cid}`;
-					const content =
-						await this.app.vault.adapter.readBinary(src);
-					await this.app.vault.adapter.writeBinary(dst, content);
-					return true;
-				} catch (err) {
-					console.warn(
-						`[copy] Failed to copy ${cid} -> ${dst}:`,
-						err,
-					);
-					return false;
-				}
-			},
-			exists: (path) => this.app.vault.adapter.exists(path),
-			readFile: (path) => this.app.vault.adapter.read(path),
-			getPluginDir: () =>
-				`${this.app.vault.configDir}/plugins/content-addressed-attachments`,
-			resolveURL: (rawURL) => this.urlResolver.resolveURL(rawURL),
 		});
 		this.pipeline = new TransformPipeline(
 			this.scriptLoader,

@@ -5,7 +5,6 @@ import type {
 	ScriptManifest,
 } from "./types";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
-import computeCID from "#src/utils/computeCID";
 
 /** 已知的 URL scheme */
 const KNOWN_SCHEMES = ["https:", "http:", "ipfs:", "internal.ipfs-locked:"];
@@ -101,22 +100,20 @@ function parseVaultRelative(rawURL: string): ScriptLocation | undefined {
 export interface ScriptLoaderOptions {
 	/** 将 vault 路径解析为可 serve 的 URL（adapter.getResourcePath） */
 	getResourcePath: (path: string) => string;
-	/** 下载远程内容到本地下载目录，返回 CID 和路径 */
-	download: (
-		url: string,
-	) => Promise<{ cid: string; path: string } | undefined>;
-	/** 从下载目录复制文件到目标路径，通过 CID 查找下载的文件 */
-	copy: (cid: string, dst: string) => Promise<boolean>;
-	/** 检查 vault 路径是否存在 */
-	exists: (path: string) => Promise<boolean>;
+	/** 从 CAS 复制文件到目标路径，通过 CID 查找 */
+	copy: (cid: string, dst: string) => Promise<void>;
 	/** 读取 vault 文件内容为文本 */
 	readFile: (path: string) => Promise<string | undefined>;
 	/** 获取插件数据目录（用于存放预处理的脚本文件） */
 	getPluginDir: () => string;
-	/** URL 解析器：将 ipfs:// 或 internal.ipfs-locked: 解析为本地路径 */
+	/**
+	 * 解析 URL 并下载到本地存储。
+	 * 直接 resolve 就是下载，在已经本地存在时跳过下载。
+	 * URL 中已经包含了可能的 cid。
+	 */
 	resolveURL: (
 		rawURL: string,
-	) => Promise<{ path?: string; url: string } | undefined>;
+	) => Promise<{ cid: string; path: string } | undefined>;
 }
 
 /**
@@ -167,7 +164,27 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		if (!location) return undefined;
 
 		try {
-			const localPath = await this.resolveToLocalPath(location);
+			// 解析 URL 为本地路径，所有类型统一通过 resolveURL 处理
+			let localPath: string | undefined;
+			let resolvedURL: string;
+			switch (location.type) {
+				case "vault-relative":
+					resolvedURL = location.path;
+					break;
+				case "internal.ipfs-locked":
+					resolvedURL = location.sourceURL;
+					break;
+				case "ipfs":
+					resolvedURL = `ipfs://${location.cid}`;
+					break;
+				case "http":
+					resolvedURL = location.url;
+					break;
+			}
+			const resolved = await this.options.resolveURL(resolvedURL);
+			if (resolved?.path) {
+				localPath = resolved.path;
+			}
 			if (!localPath) return undefined;
 
 			// 读取文件内容，检查是否为多文件清单
@@ -177,7 +194,7 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				if (manifest.entry && manifest.files) {
 					const baseDir = await this.materializeManifest(
 						manifest,
-						localPath,
+						resolved!.cid,
 					);
 					if (baseDir) {
 						const entryPath = `${baseDir}/${manifest.entry}`;
@@ -212,68 +229,17 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 	}
 
 	/**
-	 * 解析 ScriptLocation 为 vault 中的本地路径。
-	 */
-	private async resolveToLocalPath(
-		location: ScriptLocation,
-	): Promise<string | undefined> {
-		switch (location.type) {
-			case "vault-relative":
-				return location.path;
-
-			case "internal.ipfs-locked": {
-				const resolved = await this.options.resolveURL(
-					location.sourceURL,
-				);
-				if (resolved?.path) {
-					return resolved.path;
-				}
-				return undefined;
-			}
-
-			case "ipfs": {
-				const ipfsURL = `ipfs://${location.cid}`;
-				const resolved = await this.options.resolveURL(ipfsURL);
-				if (resolved?.path) {
-					return resolved.path;
-				}
-				return undefined;
-			}
-
-			case "http": {
-				// HTTP(S) URL 总是先下载到 vault 再加载
-				const dlResult = await this.options.download(location.url);
-				if (dlResult) {
-					return dlResult.path;
-				}
-				return undefined;
-			}
-		}
-	}
-
-	/**
-	 * 计算文件内容的 CID（v1, raw codec, SHA-256）。
-	 */
-	private async computeCID(data: ArrayBuffer): Promise<string> {
-		return computeCID(data);
-	}
-
-	/**
 	 * 下载清单中所有文件到 `<pluginDir>/preprocess-scripts/<manifestCID>/` 目录。
 	 *
-	 * sources 中的 URL 统一通过 download 选项处理（包括 vault-relative 路径和 HTTPS 等）。
-	 * download 负责将内容写入本地下载目录，然后通过 copy 复制到目标路径。
+	 * sources 中的 URL 统一通过 resolveURL 选项处理（包括 vault-relative 路径和 HTTPS 等）。
+	 * resolveURL 负责将内容下载并存储，然后通过 copy 复制到目标路径。
+	 *
+	 * @param manifestCID 清单文件自身的 CID（由 resolveURL 计算）
 	 */
 	private async materializeManifest(
 		manifest: ScriptManifest,
-		manifestPath: string,
+		manifestCID: string,
 	): Promise<string | undefined> {
-		// 计算清单文件自身的 CID 作为目录名
-		const manifestContent = await this.options.readFile(manifestPath);
-		if (!manifestContent) return undefined;
-		const encoder = new TextEncoder();
-		const manifestData = encoder.encode(manifestContent).buffer;
-		const manifestCID = await this.computeCID(manifestData);
 		const baseDir = `${this.options.getPluginDir()}/pre-process-scripts/${manifestCID}`;
 
 		const entry = manifest.entry;
@@ -282,9 +248,9 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 		for (const [filename, fileSource] of Object.entries(files)) {
 			const targetPath = `${baseDir}/${filename}`;
 
-			// 检查文件是否已存在且 CID 匹配
-			const exists = await this.options.exists(targetPath);
-			if (exists) {
+			// 检查文件是否已存在
+			const targetContent = await this.options.readFile(targetPath);
+			if (targetContent !== undefined) {
 				continue;
 			}
 
@@ -292,20 +258,15 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 			let downloaded = false;
 			if (fileSource.sources) {
 				for (const sourceURL of fileSource.sources) {
-					const dlResult = await this.options.download(sourceURL);
-					if (dlResult) {
-						// 验证 CID
-						if (dlResult.cid === fileSource.cid) {
-							// 通过 CID 复制到目标路径
-							const copied = await this.options.copy(
-								dlResult.cid,
-								targetPath,
-							);
-							if (copied) {
-								downloaded = true;
-								break;
-							}
-						}
+					const resolved = await this.options.resolveURL(sourceURL);
+					if (resolved && resolved.cid === fileSource.cid) {
+						// 通过 CID 复制到目标路径
+						await this.options.copy(
+							resolved.cid,
+							targetPath,
+						);
+						downloaded = true;
+						break;
 					}
 				}
 			}
@@ -320,8 +281,8 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 
 		// 验证入口文件存在
 		const entryPath = `${baseDir}/${entry}`;
-		const entryExists = await this.options.exists(entryPath);
-		if (!entryExists) {
+		const entryContent = await this.options.readFile(entryPath);
+		if (entryContent === undefined) {
 			console.warn(
 				`[preprocess] Manifest entry file not found: ${entryPath}`,
 			);

@@ -163,9 +163,7 @@ describe("ScriptLoaderImpl.getParams", () => {
 		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
 		const loader = new ScriptLoaderImpl({
 			getResourcePath: (path: string) => path,
-			download: () => Promise.resolve(undefined),
-			copy: () => Promise.resolve(false),
-			exists: () => Promise.resolve(false),
+			copy: () => Promise.resolve(),
 			readFile: () => Promise.resolve(undefined),
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
@@ -183,9 +181,7 @@ describe("ScriptLoaderImpl.getParams", () => {
 		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
 		const loader = new ScriptLoaderImpl({
 			getResourcePath: (path: string) => path,
-			download: () => Promise.resolve(undefined),
-			copy: () => Promise.resolve(false),
-			exists: () => Promise.resolve(false),
+			copy: () => Promise.resolve(),
 			readFile: () => Promise.resolve(undefined),
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
@@ -198,9 +194,7 @@ describe("ScriptLoaderImpl.getParams", () => {
 		const { default: ScriptLoaderImpl } = await import("./ScriptLoader");
 		const loader = new ScriptLoaderImpl({
 			getResourcePath: (path: string) => path,
-			download: () => Promise.resolve(undefined),
-			copy: () => Promise.resolve(false),
-			exists: () => Promise.resolve(false),
+			copy: () => Promise.resolve(),
 			readFile: () => Promise.resolve(undefined),
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
@@ -236,7 +230,7 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 			new Uint8Array(fixtureData).buffer as ArrayBuffer,
 		);
 
-		// 动态生成 manifest 内容（使用实际 CID）
+		// 动态生成 manifest 内容（使用实际 CID）并写入 temp 目录
 		const manifestContent = JSON.stringify({
 			entry: "manifest-fixture.js",
 			files: {
@@ -249,17 +243,26 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 				},
 			},
 		});
+		const manifestPath = resolve(tempDir, "manifest-fixture.json");
+		writeFileSync(manifestPath, manifestContent, "utf-8");
 
-		const scriptDownloadDir = resolve(tempDir, ".script-downloads");
+		// resolveURL 模拟存储（仿 CAS）
+		const casStore = new Map<string, Buffer>();
 
-		// 下载目录
-		if (!existsSync(scriptDownloadDir)) {
-			mkdirSync(scriptDownloadDir, { recursive: true });
-		}
-
-		// 将 fixture JS 复制到下载目录（模拟 download 行为）
-		const downloadPath = resolve(scriptDownloadDir, fixtureCID);
-		writeFileSync(downloadPath, fixtureData);
+		// 读取 vault-relative 文件的共享工具
+		const readVaultFile = (path: string): Buffer | undefined => {
+			// 优先从 temp 目录读取（manifest 在此）
+			const tempPath = resolve(tempDir, path);
+			if (existsSync(tempPath)) {
+				return readFileSync(tempPath);
+			}
+			// 其次从 fixture 目录读取
+			const fixturePath = resolve(__dirname, path);
+			if (existsSync(fixturePath)) {
+				return readFileSync(fixturePath);
+			}
+			return undefined;
+		};
 
 		const loader = new ScriptLoaderImpl({
 			// getResourcePath 返回 file:// URL 供 import() 使用
@@ -272,15 +275,35 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 				}
 				return `file:///${path.replace(/\\/g, "/")}`;
 			},
-			download: async (url: string) => {
+			readFile: async (path: string) => {
+				// 从文件系统读取
+				const fullPath = resolve(tempDir, path);
+				if (existsSync(fullPath)) {
+					return readFileSync(fullPath, "utf-8");
+				}
+				return undefined;
+			},
+			copy: async (cid: string, dst: string) => {
+				const data = casStore.get(cid);
+				if (!data) {
+					throw new Error(`CID not found in store: ${cid}`);
+				}
+				const dstPath = resolve(tempDir, dst);
+				const dstDir = dirname(dstPath);
+				if (!existsSync(dstDir)) {
+					mkdirSync(dstDir, { recursive: true });
+				}
+				writeFileSync(dstPath, data);
+			},
+			getPluginDir: () => tempDir,
+			resolveURL: async (rawURL: string) => {
 				// 处理 vault-relative 路径和 HTTPS URL
-				const colonIndex = url.indexOf(":");
-				let data: Buffer;
+				const colonIndex = rawURL.indexOf(":");
+				let data: Buffer | undefined;
 				if (colonIndex < 0) {
-					// vault-relative：从 fixture 读取
-					const fullPath = resolve(__dirname, url);
-					if (!existsSync(fullPath)) return undefined;
-					data = readFileSync(fullPath);
+					// vault-relative：从 vault 读取
+					data = readVaultFile(rawURL);
+					if (!data) return undefined;
 				} else {
 					// HTTPS：使用 fixture 文件
 					data = fixtureData;
@@ -288,44 +311,18 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 				const cid = await computeCID(
 					new Uint8Array(data).buffer as ArrayBuffer,
 				);
-				const relPath = `.script-downloads/${cid}`;
-				const dlPath = resolve(scriptDownloadDir, cid);
-				if (!existsSync(dlPath)) {
-					writeFileSync(dlPath, data);
+				// 存储到 CAS 并写入文件系统
+				if (!casStore.has(cid)) {
+					casStore.set(cid, data);
+					const storePath = resolve(tempDir, cid);
+					writeFileSync(storePath, data);
 				}
-				return { cid, path: relPath };
+				return { cid, path: resolve(tempDir, cid) };
 			},
-			copy: async (cid: string, dst: string) => {
-				try {
-					const srcPath = resolve(scriptDownloadDir, cid);
-					const dstPath = resolve(tempDir, dst);
-					const dstDir = dirname(dstPath);
-					if (!existsSync(dstDir)) {
-						mkdirSync(dstDir, { recursive: true });
-					}
-					const data = readFileSync(srcPath);
-					writeFileSync(dstPath, data);
-					return true;
-				} catch {
-					return false;
-				}
-			},
-			exists: async (path: string) => {
-				return existsSync(resolve(tempDir, path));
-			},
-			readFile: async (path: string) => {
-				// 返回动态生成的 manifest 内容
-				if (path.includes("manifest-fixture.json")) {
-					return manifestContent;
-				}
-				return undefined;
-			},
-			getPluginDir: () => tempDir,
-			resolveURL: () => Promise.resolve(undefined),
 		});
 
 		// 使用 vault-relative 路径指向 manifest 文件
-		const manifestRelPath = "__tests__/fixtures/manifest-fixture.json";
+		const manifestRelPath = "manifest-fixture.json";
 		const module = await loader.loadScript(manifestRelPath);
 
 		// 验证模块被正确加载并包含 default 导出
@@ -341,11 +338,8 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 				const absPath = resolve(__dirname, path);
 				return `file:///${absPath.replace(/\\/g, "/")}`;
 			},
-			download: () => Promise.resolve(undefined),
-			copy: () => Promise.resolve(false),
-			exists: () => Promise.resolve(false),
+			copy: () => Promise.resolve(),
 			readFile: async (path: string) => {
-				// 返回非 JSON 内容（不是 manifest）
 				const fullPath = resolve(__dirname, path);
 				if (existsSync(fullPath)) {
 					return readFileSync(fullPath, "utf-8");
@@ -353,7 +347,16 @@ describe("ScriptLoaderImpl.loadScript with manifest", () => {
 				return undefined;
 			},
 			getPluginDir: () => tempDir,
-			resolveURL: () => Promise.resolve(undefined),
+			resolveURL: async (rawURL: string) => {
+				// vault-relative：从文件系统读取
+				const fullPath = resolve(__dirname, rawURL);
+				if (!existsSync(fullPath)) return undefined;
+				const data = readFileSync(fullPath);
+				const cid = await computeCID(
+					new Uint8Array(data).buffer as ArrayBuffer,
+				);
+				return { cid, path: rawURL };
+			},
 		});
 
 		// 直接指向 JS 文件（非 manifest）
