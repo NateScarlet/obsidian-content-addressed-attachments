@@ -11,7 +11,6 @@
  * 构建后的脚本与 magick.wasm 位于同一目录，通过相对 import.meta.url 解析。
  */
 
-import { requestUrl } from "obsidian";
 import type {
 	PreProcessInput,
 	PreProcessContext,
@@ -32,8 +31,10 @@ async function ensureInitialized(): Promise<void> {
 		const { initializeImageMagick, ConfigurationFiles } =
 			await import("@imagemagick/magick-wasm");
 		const wasmURL = new URL("magick.wasm", import.meta.url);
-		const response = await requestUrl({ url: wasmURL.href });
-		const wasmBytes = new Uint8Array(response.arrayBuffer);
+		// wasm 通过 app:// 资源协议加载，requestUrl 只支持 HTTP/HTTPS，必须使用 fetch
+		// eslint-disable-next-line no-restricted-globals
+		const response = await fetch(wasmURL);
+		const wasmBytes = new Uint8Array(await response.arrayBuffer());
 		await initializeImageMagick(wasmBytes, ConfigurationFiles.default);
 		initialized = true;
 	})();
