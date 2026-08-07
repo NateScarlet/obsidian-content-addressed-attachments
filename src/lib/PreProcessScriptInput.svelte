@@ -83,7 +83,7 @@
 			} else if (!currentText.trim()) {
 				textBuffer = "";
 			}
-			setTimeout(() => textareaEl?.focus(), 50);
+			window.setTimeout(() => textareaEl?.focus(), 50);
 		}
 	}
 </script>
