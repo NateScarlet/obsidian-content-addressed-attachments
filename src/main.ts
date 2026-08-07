@@ -173,7 +173,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					arrayBuffer = response.arrayBuffer;
 				}
 				const cid = await computeCID(arrayBuffer);
-				const relPath = `${dir}/.script-downloads/${cid}`;
+				const relPath = `${dir}/${cid}`;
 				await this.app.vault.adapter.writeBinary(
 					relPath,
 					arrayBuffer,
@@ -184,7 +184,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				try {
 					const dir =
 						this.settings.downloadDir || this.settings.primaryDir;
-					const src = `${dir}/.script-downloads/${cid}`;
+					const src = `${dir}/${cid}`;
 					const content =
 						await this.app.vault.adapter.readBinary(src);
 					await this.app.vault.adapter.writeBinary(dst, content);
