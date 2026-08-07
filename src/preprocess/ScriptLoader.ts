@@ -68,7 +68,7 @@ function parseURLForm(
 				) {
 					return undefined;
 				}
-				return { type: "https", url: baseURL, params };
+				return { type: "http", url: baseURL, params };
 			} catch {
 				return undefined;
 			}
@@ -240,8 +240,8 @@ export default class ScriptLoaderImpl implements ScriptLoader {
 				return undefined;
 			}
 
-			case "https": {
-				// HTTPS URL 总是先下载到 vault 再加载
+			case "http": {
+				// HTTP(S) URL 总是先下载到 vault 再加载
 				const dlResult = await this.options.download(location.url);
 				if (dlResult) {
 					return dlResult.path;

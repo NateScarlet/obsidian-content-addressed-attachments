@@ -63,7 +63,7 @@ export type ScriptLocation =
 			params: URLSearchParams;
 	  }
 	| { type: "ipfs"; cid: string; params: URLSearchParams }
-	| { type: "https"; url: string; params: URLSearchParams };
+	| { type: "http"; url: string; params: URLSearchParams };
 
 /**
  * 多文件预设清单中的单个文件来源描述。

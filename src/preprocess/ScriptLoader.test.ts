@@ -96,7 +96,7 @@ describe("parseScriptURL", () => {
 			"https://example.com/scripts/transform.js",
 		);
 		expect(result).toEqual({
-			type: "https",
+			type: "http",
 			url: "https://example.com/scripts/transform.js",
 			params: expect.any(URLSearchParams),
 		});
@@ -108,7 +108,7 @@ describe("parseScriptURL", () => {
 			"https://example.com/scripts/transform.js#format=avif&quality=80",
 		);
 		expect(result).toEqual({
-			type: "https",
+			type: "http",
 			url: "https://example.com/scripts/transform.js",
 			params: expect.any(URLSearchParams),
 		});
@@ -123,7 +123,7 @@ describe("parseScriptURL", () => {
 			"http://example.com/scripts/transform.js",
 		);
 		expect(result).toEqual({
-			type: "https",
+			type: "http",
 			url: "http://example.com/scripts/transform.js",
 			params: expect.any(URLSearchParams),
 		});
