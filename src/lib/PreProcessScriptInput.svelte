@@ -113,7 +113,7 @@
 			<textarea
 				bind:this={textareaEl}
 				{@attach textAreaAutoHeight(() => currentText)}
-				class="w-full resize-none rounded border border-[var(--background-modifier-border)] bg-[var(--background-primary)] px-3 py-2 text-xs font-mono text-[var(--text-normal)] break-all focus:border-[var(--interactive-accent)] focus:outline-none"
+				class="w-full resize-none rounded border border-border bg-primary px-3 py-2 text-xs font-mono text-normal break-all focus:border-interactive-accent focus:outline-none"
 				rows={2}
 				value={currentText}
 				placeholder={t("scriptURLPlaceholder")}
