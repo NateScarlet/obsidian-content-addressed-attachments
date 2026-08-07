@@ -24,7 +24,9 @@ describe("scriptIndex", () => {
 	it("has unique scriptURLs across all entries", () => {
 		const urls = SCRIPT_INDEX.map((e) => {
 			const hashIndex = e.scriptURL.indexOf("#");
-			return hashIndex >= 0 ? e.scriptURL.slice(0, hashIndex) : e.scriptURL;
+			return hashIndex >= 0
+				? e.scriptURL.slice(0, hashIndex)
+				: e.scriptURL;
 		});
 		const uniqueUrls = new Set(urls);
 		expect(uniqueUrls.size).toBe(urls.length);

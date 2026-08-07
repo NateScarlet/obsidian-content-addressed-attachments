@@ -118,8 +118,7 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			}
 
 			// 普通单文件脚本
-			const servableURL =
-				this.options.adapter.getResourcePath(localPath);
+			const servableURL = this.options.adapter.getResourcePath(localPath);
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
 			const mod: PreProcessScriptModule = await import(
 				/* @vite-ignore */ servableURL
@@ -167,7 +166,10 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			if (fileSource.sources) {
 				for (const sourceURL of fileSource.sources) {
 					const resolved = await this.options.resolveURL(sourceURL);
-					if (resolved && resolved.cid.equals(CID.parse(fileSource.cid))) {
+					if (
+						resolved &&
+						resolved.cid.equals(CID.parse(fileSource.cid))
+					) {
 						// 从 source 路径复制到目标路径
 						await this.options.adapter.copy(
 							resolved.path,

@@ -227,7 +227,9 @@ export async function reprocessWholeVault(
 				// 先显示确认对话框
 				const confirmModal = new Modal(ctx.app);
 				confirmModal.setTitle(t("reprocessWholeVault"));
-				confirmModal.contentEl.createEl("p", { text: t("reprocessConfirm") });
+				confirmModal.contentEl.createEl("p", {
+					text: t("reprocessConfirm"),
+				});
 				new Setting(confirmModal.contentEl)
 					.addButton((btn) =>
 						btn.setButtonText(t("confirm")).onClick(() => {
@@ -243,7 +245,10 @@ export async function reprocessWholeVault(
 				confirmModal.open();
 
 				function startReprocess() {
-					const modal = new ProgressModal(ctx.app, t("reprocessWholeVault"));
+					const modal = new ProgressModal(
+						ctx.app,
+						t("reprocessWholeVault"),
+					);
 					modal.open();
 					void (async () => {
 						try {
@@ -251,7 +256,9 @@ export async function reprocessWholeVault(
 							let totalReprocessed = 0;
 							let processed = 0;
 
-							modal.update(t("reprocessProgress")(0, files.length));
+							modal.update(
+								t("reprocessProgress")(0, files.length),
+							);
 
 							for (const file of files) {
 								if (modal.isCancelled) {
@@ -259,7 +266,9 @@ export async function reprocessWholeVault(
 									break;
 								}
 
-								const transformer = new VaultLinkTransformer(ctx.app);
+								const transformer = new VaultLinkTransformer(
+									ctx.app,
+								);
 								const count = await transformer.transformFile(
 									file,
 									async (_match, linkText) => {
@@ -273,17 +282,26 @@ export async function reprocessWholeVault(
 								totalReprocessed += count;
 								processed++;
 								modal.update(
-									t("reprocessProgress")(processed, files.length),
+									t("reprocessProgress")(
+										processed,
+										files.length,
+									),
 								);
 							}
 
 							modal.close();
-							new Notice(t("reprocessComplete")(totalReprocessed));
+							new Notice(
+								t("reprocessComplete")(totalReprocessed),
+							);
 							resolve(totalReprocessed);
 						} catch (err) {
 							modal.close();
 							showError(err);
-							reject(err instanceof Error ? err : new Error(String(err)));
+							reject(
+								err instanceof Error
+									? err
+									: new Error(String(err)),
+							);
 						}
 					})();
 				}

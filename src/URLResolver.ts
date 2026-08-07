@@ -246,8 +246,7 @@ export class URLResolver {
 		rawURL: string,
 	): Promise<ResolveURLResult | undefined> {
 		try {
-			const content =
-				await this.app.vault.adapter.readBinary(rawURL);
+			const content = await this.app.vault.adapter.readBinary(rawURL);
 			const cid = await computeCID(content);
 			return {
 				path: rawURL,
