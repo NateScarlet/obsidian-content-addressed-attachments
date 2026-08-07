@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, MarkdownView, requestUrl } from "obsidian";
+import { Notice, Plugin, TFile, MarkdownView } from "obsidian";
 import MainPluginSettingTab from "./ui/MainPluginSettingTab";
 import { MigrationManager } from "./MigrationManager";
 import defineLocales from "./utils/defineLocales";
@@ -50,9 +50,7 @@ import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import ScriptLoaderImpl from "./preprocess/ScriptLoader";
-import computeCID from "./utils/computeCID";
-import { CID } from "multiformats/cid";
-import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
+import ScriptLoaderAdapter from "./preprocess/ScriptLoaderAdapter";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -151,69 +149,18 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.lockManager = this.stack.use(new LockManager(this));
 
 		// 初始化预处理管线
-		this.scriptLoader = new ScriptLoaderImpl({
-			getResourcePath: (path) =>
-				this.app.vault.adapter.getResourcePath(path),
-			copy: async (cidStr, dst) => {
-				const cid = CID.parse(cidStr);
-				const match = await this.cas.load(cid);
-				if (!match) {
-					throw new Error(
-						`[copy] CID not found in CAS: ${cidStr}`,
-					);
-				}
-				const content =
-					await this.app.vault.adapter.readBinary(
-						match.normalizedPath,
-					);
-				await this.app.vault.adapter.writeBinary(dst, content);
-			},
-			readFile: (path) => this.app.vault.adapter.read(path),
-			getPluginDir: () =>
-				`${this.app.vault.configDir}/plugins/content-addressed-attachments`,
-			resolveURL: async (rawURL) => {
-				// 优先使用 URLResolver 处理 ipfs 和 internal.ipfs-locked URL
-				const urlResolverResult =
-					await this.urlResolver.resolveURL(rawURL);
-				if (urlResolverResult?.path) {
-					// 从 URL 中提取 CID
-					const lockedURL = parseIPFSLockedURL(rawURL);
-					let cidStr: string;
-					if (lockedURL) {
-						cidStr = lockedURL.cid.toString();
-					} else {
-						const url = new URL(rawURL);
-						cidStr = url.host;
-					}
-					return { cid: cidStr, path: urlResolverResult.path };
-				}
-
-				// 处理 HTTP(S) URL 和 vault-relative 路径
-				const dir =
-					this.settings.downloadDir || this.settings.primaryDir;
-				const colonIndex = rawURL.indexOf(":");
-				let arrayBuffer: ArrayBuffer;
-				if (colonIndex < 0) {
-					// 无 scheme → vault-relative 路径
-					const content =
-						await this.app.vault.adapter.readBinary(rawURL);
-					arrayBuffer = content;
-				} else {
-					const response = await requestUrl({
-						url: rawURL,
-						throw: false,
-					});
-					if (response.status !== 200) return undefined;
-					arrayBuffer = response.arrayBuffer;
-				}
-				const cid = await computeCID(arrayBuffer);
-				const file = new File([arrayBuffer], "download");
-				const { cid: cidObj } = await this.cas.save(dir, file);
-				const relPath =
-					this.cas.formatNormalizePath(dir, cidObj);
-				return { cid, path: relPath };
+		const adapter = new ScriptLoaderAdapter({
+			app: this.app,
+			cas: this.cas,
+			urlResolver: this.urlResolver,
+			getSettings: () => this.settings,
+			onScriptURLResolved: (_originalURL, lockedURL, cid) => {
+				this.settings.preProcess.scriptURL = lockedURL;
+				this.saveData(this.settings).catch(showError);
+				new Notice(`HTTPS script locked to CID: ${cid}`);
 			},
 		});
+		this.scriptLoader = new ScriptLoaderImpl(adapter.createOptions());
 		this.pipeline = new TransformPipeline(
 			this.scriptLoader,
 			() => this.settings.preProcess.scriptURL,
@@ -630,35 +577,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 
-		// HTTPS 自动锁定：下载后计算 CID，重写设置为 internal.ipfs-locked:<cid>,<srcURL>
-		const scriptURL = this.settings.preProcess.scriptURL;
-		if (
-			scriptURL?.startsWith("https://") ||
-			scriptURL?.startsWith("http://")
-		) {
-			try {
-				const response = await requestUrl({
-					url: scriptURL,
-					throw: false,
-				});
-				if (response.status === 200) {
-					const cid = await computeCID(response.arrayBuffer);
-					this.settings.preProcess.scriptURL = `internal.ipfs-locked:${cid},${scriptURL}`;
-					await this.saveData(this.settings);
-					new Notice(`HTTPS script locked to CID: ${cid}`);
-				}
-			} catch (err) {
-				console.warn(
-					`[saveSettings] Failed to lock HTTPS script:`,
-					err,
-				);
-				new Notice(
-					"Failed to lock HTTPS script; will retry on next save",
-				);
-			}
-		}
-
-		// 设置保存时提前加载脚本，消除首次粘贴的延迟
+		// 保存时加载脚本以触发锁定（resolveURL 在加载路径中处理 HTTPS→CID 锁定）
 		if (this.settings.preProcess.scriptURL) {
 			this.scriptLoader
 				.loadScript(this.settings.preProcess.scriptURL)
