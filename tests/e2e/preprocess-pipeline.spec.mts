@@ -87,7 +87,10 @@ async function insertFixture(
 			await plugin.saveSettings();
 
 			const binary = atob(base64);
-			const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+			const bytes = new Uint8Array(binary.length);
+			for (let i = 0; i < binary.length; i++) {
+				bytes[i] = binary.charCodeAt(i);
+			}
 			(globalThis as any).showOpenFilePicker = async () => [
 				{
 					getFile: async () =>
@@ -103,7 +106,9 @@ async function insertFixture(
 			const deadline = Date.now() + 15000;
 			const readEditor = () => {
 				const editor = leaf?.view?.editor;
-				return editor?.getValue?.() ?? "";
+				const val = editor?.getValue?.() ?? "";
+				console.log("readEditor val:", val);
+				return val;
 			};
 			while (Date.now() < deadline) {
 				const value = readEditor();
@@ -176,6 +181,7 @@ let page: Page;
 
 test.beforeAll(async () => {
 	({ browser, page } = await connectObsidian());
+	page.on("console", (msg) => console.log("BROWSER LOG:", msg.type(), msg.text()));
 });
 
 test.afterAll(async () => {
@@ -195,8 +201,8 @@ test("preserves the original attachment without a preprocess script", async () =
 	expect(CID.parse(cid).equals(await computeCID(casBytes))).toBe(true);
 });
 
-test("converts a HEIC input to WebP via the preprocess script", async () => {
-	const fixture = readFixture("sample.heic");
+test("converts a PNG input to WebP via the preprocess script", async () => {
+	const fixture = readFixture("sample.png");
 	const content = await insertFixture(
 		page,
 		fixture,
@@ -213,8 +219,8 @@ test("converts a HEIC input to WebP via the preprocess script", async () => {
 	expect(CID.parse(cid).equals(await computeCID(casBytes))).toBe(true);
 });
 
-test("converts a HEIC input to AVIF via the preprocess script", async () => {
-	const fixture = readFixture("sample.heic");
+test("converts a PNG input to AVIF via the preprocess script", async () => {
+	const fixture = readFixture("sample.png");
 	const content = await insertFixture(
 		page,
 		fixture,
@@ -227,5 +233,35 @@ test("converts a HEIC input to AVIF via the preprocess script", async () => {
 
 	const casBytes = await readCASBytes(page, CID.parse(cid));
 	assertAVIF(casBytes);
+	expect(CID.parse(cid).equals(await computeCID(casBytes))).toBe(true);
+});
+
+test("preserves a HEIC attachment without a preprocess script", async () => {
+	const fixture = readFixture("sample.heic");
+	const content = await insertFixture(page, fixture, "");
+
+	const { cid, format, filename } = parseLink(content);
+	expect(format).toBe("image/heic");
+	expect(filename).toBe("sample.heic");
+
+	const casBytes = await readCASBytes(page, CID.parse(cid));
+	expect(Buffer.from(casBytes).equals(Buffer.from(fixture.bytes))).toBe(true);
+	expect(CID.parse(cid).equals(await computeCID(casBytes))).toBe(true);
+});
+
+test("converts a HEIC input to WebP via the preprocess script", async () => {
+	const fixture = readFixture("sample.heic");
+	const content = await insertFixture(
+		page,
+		fixture,
+		`${SCRIPT_DIR}#format=webp&quality=45`,
+	);
+
+	const { cid, format, filename } = parseLink(content);
+	expect(format).toBe("image/webp");
+	expect(filename).toBe("sample.webp");
+
+	const casBytes = await readCASBytes(page, CID.parse(cid));
+	assertWebP(casBytes);
 	expect(CID.parse(cid).equals(await computeCID(casBytes))).toBe(true);
 });

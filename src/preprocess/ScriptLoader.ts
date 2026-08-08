@@ -84,8 +84,9 @@ export default class DefaultScriptLoader implements ScriptLoader {
 		scriptURL: string,
 	): Promise<PreProcessScriptModule | undefined> {
 		try {
+			const { baseURL } = parseURLSearchParams(scriptURL);
 			// 所有 URL 类型统一通过 resolveURL 处理
-			const resolved = await this.options.resolveURL(scriptURL);
+			const resolved = await this.options.resolveURL(baseURL);
 			if (!resolved?.path) return undefined;
 			const localPath = resolved.path;
 
@@ -107,9 +108,10 @@ export default class DefaultScriptLoader implements ScriptLoader {
 						const entryPath = `${baseDir}/${manifest.entry}`;
 						const servableURL =
 							this.options.adapter.getResourcePath(entryPath);
+						const cleanURL = servableURL.split("#")[0];
 						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
 						const mod: PreProcessScriptModule = await import(
-							/* @vite-ignore */ servableURL
+							/* @vite-ignore */ cleanURL
 						);
 						return mod;
 					}
@@ -119,9 +121,10 @@ export default class DefaultScriptLoader implements ScriptLoader {
 
 			// 普通单文件脚本
 			const servableURL = this.options.adapter.getResourcePath(localPath);
+			const cleanURL = servableURL.split("#")[0];
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
 			const mod: PreProcessScriptModule = await import(
-				/* @vite-ignore */ servableURL
+				/* @vite-ignore */ cleanURL
 			);
 			return mod;
 		} catch (err) {

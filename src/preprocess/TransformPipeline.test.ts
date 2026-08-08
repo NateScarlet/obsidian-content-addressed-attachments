@@ -45,7 +45,7 @@ describe("TransformPipeline", () => {
 				mimeType: "image/png",
 				filename: "test.png",
 			}),
-		).rejects.toThrow("has no default export");
+		).rejects.toThrow("Script default export must be a function");
 	});
 
 	it("throws when script loader fails", async () => {

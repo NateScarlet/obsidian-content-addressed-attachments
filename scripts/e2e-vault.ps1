@@ -39,6 +39,12 @@ $dst = Join-Path $pluginDir "dist\preprocess-scripts"
 Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue
 $dstParent = Split-Path $dst -Parent
 if (-not (Test-Path $dstParent)) { New-Item -ItemType Directory -Path $dstParent -Force }
+# 复制编译后的 main.js 到插件目录
+$mainJsSrc = Join-Path $RepoRoot "main.js"
+if (Test-Path $mainJsSrc) {
+    Copy-Item $mainJsSrc (Join-Path $pluginDir "main.js") -Force
+}
+
 Copy-Item $src $dst -Recurse
 
 Write-Host "装配完成: dist\preprocess-scripts -> $dst"

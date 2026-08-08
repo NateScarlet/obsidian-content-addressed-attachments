@@ -11,13 +11,19 @@
  * 构建后的脚本与 magick.wasm 位于同一目录，通过相对 import.meta.url 解析。
  */
 
+import {
+	initializeImageMagick,
+	ConfigurationFiles,
+	ImageMagick,
+	MagickFormat,
+	type IMagickImage,
+} from "@imagemagick/magick-wasm";
 import type {
 	PreProcessInput,
-	PreProcessContext,
 	PreProcessOutput,
+	PreProcessContext,
 	PreProcessScriptModule,
 } from "../src/preprocess/shared-types";
-import type { IMagickImage } from "@imagemagick/magick-wasm";
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -28,8 +34,6 @@ async function ensureInitialized(): Promise<void> {
 	if (initPromise) return initPromise;
 
 	initPromise = (async () => {
-		const { initializeImageMagick, ConfigurationFiles } =
-			await import("@imagemagick/magick-wasm");
 		const wasmURL = new URL("magick.wasm", import.meta.url);
 		// wasm 通过 app:// 资源协议加载，requestUrl 只支持 HTTP/HTTPS，必须使用 fetch
 		// eslint-disable-next-line no-restricted-globals
@@ -80,10 +84,13 @@ const transform = async function (
 
 	await ensureInitialized();
 
-	const { ImageMagick, MagickFormat } =
-		await import("@imagemagick/magick-wasm");
 	const targetFormat =
 		MagickFormat[config.magick as keyof typeof MagickFormat];
+	if (targetFormat === undefined) {
+		throw new Error(
+			`Unknown MagickFormat: ${config.magick} for format: ${format}`,
+		);
+	}
 
 	try {
 		const resultData = ImageMagick.read<Uint8Array | null>(
@@ -104,11 +111,15 @@ const transform = async function (
 		);
 
 		if (!resultData) {
+			console.error("[imagemagick.ts] ImageMagick.read returned null for " + input.filename);
 			return undefined;
 		}
 
-		// 转换后比原始文件节省不足 10% 时保留原始文件
-		if (resultData.byteLength > 0.9 * input.data.byteLength) {
+		// 同格式转换且节省不足 10% 时保留原始文件；跨格式转码（如 HEIC -> WebP/AVIF）始终完成转换
+		if (
+			input.mimeType === targetMime &&
+			resultData.byteLength > 0.9 * input.data.byteLength
+		) {
 			ctx.log(
 				`${format.toUpperCase()} output saves less than 10%, keeping original: ${input.filename}`,
 			);
@@ -120,7 +131,10 @@ const transform = async function (
 		const ext = format === "jpeg" ? "jpg" : format;
 
 		return {
-			data: resultData.buffer as ArrayBuffer,
+			data: (resultData.buffer as ArrayBuffer).slice(
+				resultData.byteOffset,
+				resultData.byteOffset + resultData.byteLength,
+			),
 			mimeType: targetMime,
 			filename: `${baseName}.${ext}`,
 		};

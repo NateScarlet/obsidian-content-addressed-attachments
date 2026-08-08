@@ -1,6 +1,10 @@
 import { Notice } from "obsidian";
 import mimeTypeByExtension from "#src/utils/mimeTypeByExtension";
-import type { PreProcessInput, PreProcessOutput, ScriptLoader } from "./types";
+import type {
+	PreProcessInput,
+	PreProcessOutput,
+	ScriptLoader,
+} from "./types";
 
 /**
  * 预处理管线：将文件通过预处理脚本转换后返回。
@@ -13,7 +17,7 @@ import type { PreProcessInput, PreProcessOutput, ScriptLoader } from "./types";
 export default class TransformPipeline {
 	constructor(
 		private scriptLoader: ScriptLoader,
-		private getScriptURL: () => string,
+		public getScriptURL: () => string,
 	) {}
 
 	/**
@@ -32,16 +36,26 @@ export default class TransformPipeline {
 		if (!module) {
 			throw new Error(`[preprocess] Failed to load script: ${scriptURL}`);
 		}
-		if (!module.default) {
+		const rawModule = module as any;
+		const transformFn: ((...args: any[]) => any) | undefined =
+			typeof module.default === "function"
+				? module.default
+				: typeof rawModule.default?.default === "function"
+					? rawModule.default.default
+					: typeof rawModule === "function"
+						? rawModule
+						: undefined;
+
+		if (!transformFn) {
 			throw new Error(
-				`[preprocess] Script "${scriptURL}" has no default export`,
+				`[preprocess] Script default export must be a function: ${scriptURL}`,
 			);
 		}
 
 		const params = this.scriptLoader.getParams(scriptURL);
 
-		const result = await module.default(input, {
-			log: (message) => new Notice(`[preprocess] ${message}`),
+		const result = await transformFn(input, {
+			log: (message: string) => new Notice(`[preprocess] ${message}`),
 			params,
 			mimeTypeByExtension,
 		});

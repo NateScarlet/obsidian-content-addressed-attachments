@@ -1,1 +1,1 @@
-该目录存放 E2E 测试使用的附件 fixture。实际用例见 ../e2e/*.spec.ts。
+该目录存放 E2E 测试使用的附件 fixture（由 scripts/generate-fixtures.py 生成，完全自主合成无版权风险）。实际用例见 ../e2e/*.spec.ts。

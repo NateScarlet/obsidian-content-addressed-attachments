@@ -173,15 +173,22 @@ export class URLResolver {
 			return downloaded;
 		}
 
-		// vault-relative / HTTP(S) URL 通过 singleflight 去重
-		if (
+		// vault-relative / 本地绝对路径 / HTTP(S) URL
+		const isNetworkURL =
+			rawURL.startsWith("https://") || rawURL.startsWith("http://");
+		const isLocalPath =
 			rawURL.indexOf(":") < 0 ||
-			rawURL.startsWith("https://") ||
-			rawURL.startsWith("http://")
-		) {
+			/^[a-zA-Z]:[\\/]/.test(rawURL) ||
+			rawURL.startsWith("file://");
+
+		if (isLocalPath || isNetworkURL) {
 			const { result } = await this.flight.do(rawURL, () => {
-				if (rawURL.indexOf(":") < 0) {
-					return this.resolveVaultRelative(rawURL);
+				if (isLocalPath) {
+					// 如果是 file:// 协议，剥离协议头
+					const cleanPath = rawURL.startsWith("file://")
+						? rawURL.slice(7)
+						: rawURL;
+					return this.resolveVaultRelative(cleanPath);
 				}
 				return this.resolveHTTP(rawURL);
 			});

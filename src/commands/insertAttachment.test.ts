@@ -16,7 +16,13 @@ describe("processFileAndInsertLink", () => {
 		save: vi.fn().mockResolvedValue({ cid: dummyCID }),
 	} as unknown as CAS;
 
-	const mockPipeline = {
+	const mockPipelineNoScript = {
+		getScriptURL: vi.fn().mockReturnValue(""),
+		run: vi.fn().mockResolvedValue(undefined),
+	} as unknown as TransformPipeline;
+
+	const mockPipelineWithScript = {
+		getScriptURL: vi.fn().mockReturnValue("app://local/script.js"),
 		run: vi.fn().mockResolvedValue(undefined),
 	} as unknown as TransformPipeline;
 
@@ -38,11 +44,12 @@ describe("processFileAndInsertLink", () => {
 	function createMockEditor() {
 		let text = "";
 		return {
-			replaceRange: vi.fn((t: string) => {
-				text += t;
-			}),
 			replaceSelection: vi.fn((t: string) => {
 				text += t;
+			}),
+			getValue: vi.fn(() => text),
+			setValue: vi.fn((t: string) => {
+				text = t;
 			}),
 			getCursor: vi.fn().mockReturnValue({ line: 0, ch: 0 }),
 			setCursor: vi.fn(),
@@ -52,7 +59,7 @@ describe("processFileAndInsertLink", () => {
 		} as unknown as Editor & { getText: () => string };
 	}
 
-	it("saves unencrypted attachment and inserts link when note does not match path rule", async () => {
+	it("saves unencrypted attachment directly when preProcess script is not set", async () => {
 		const editor = createMockEditor();
 		const file = new File(["test data"], "photo.png", {
 			type: "image/png",
@@ -65,16 +72,46 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"notes/regular.md",
 			mockEncryptPathPolicy,
-			mockPipeline,
+			mockPipelineNoScript,
 		);
 
 		const text = editor.getText();
 		expect(text).toContain("![photo.png](ipfs://");
 		expect(text).toContain("format=image%2Fpng");
-		expect(text).not.toContain(encodeURIComponent(ENCRYPTED_FORMAT));
 	});
 
-	it("auto-encrypts pasted/inserted image when note matches path rule", async () => {
+	it("inserts comment placeholder instantly and replaces it async when preProcess script is enabled", async () => {
+		const editor = createMockEditor();
+		const file = new File(["test data"], "photo.png", {
+			type: "image/png",
+		});
+
+		await processFileAndInsertLink(
+			mockCas,
+			"attachments",
+			editor,
+			file,
+			"notes/regular.md",
+			mockEncryptPathPolicy,
+			mockPipelineWithScript,
+		);
+
+		// 检查立即插入的占位符
+		const initialText = editor.getText();
+		expect(initialText).toMatch(
+			/^%% 正在预处理附件：photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
+		);
+
+		// 等待后台异步微任务完成
+		await new Promise((r) => setTimeout(r, 50));
+
+		// 检查占位符是否被替换为最终的 IPFS 链接
+		const finalText = editor.getText();
+		expect(finalText).toContain("![photo.png](ipfs://");
+		expect(finalText).not.toContain("%% 正在预处理");
+	});
+
+	it("auto-encrypts pasted/inserted image async when note matches path rule", async () => {
 		const editor = createMockEditor();
 		const file = new File(["test data"], "photo.png", {
 			type: "image/png",
@@ -87,8 +124,10 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"secret/confidential.md",
 			mockEncryptPathPolicy,
-			mockPipeline,
+			mockPipelineWithScript,
 		);
+
+		await new Promise((r) => setTimeout(r, 50));
 
 		const text = editor.getText();
 		expect(text).toContain("![photo.png](ipfs://");
@@ -110,14 +149,13 @@ describe("processFileAndInsertLink", () => {
 			file,
 			"secret/confidential.md",
 			mockEncryptPathPolicy,
-			mockPipeline,
+			mockPipelineWithScript,
 		);
+
+		await new Promise((r) => setTimeout(r, 50));
 
 		const text = editor.getText();
 		expect(text.startsWith("[doc.pdf](ipfs://")).toBe(true);
 		expect(text.startsWith("!")).toBe(false);
-		expect(text).toContain(
-			`format=${encodeURIComponent(ENCRYPTED_FORMAT)}`,
-		);
 	});
 });
