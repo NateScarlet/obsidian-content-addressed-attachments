@@ -114,16 +114,21 @@ When a script depends on additional assets (such as WASM modules or data files),
 
 ---
 
-## 4. Reference Example
+## 4. Example Script Code Walkthrough (`imagemagick.ts`)
 
 The `preprocess-scripts/imagemagick.ts` file in this repository provides a complete reference implementation using `@imagemagick/magick-wasm`:
 
 - Source code: `preprocess-scripts/imagemagick.ts`
 - Build script: `scripts/build-preprocess-scripts.mjs`
-- Supported parameters:
-  - `format`: Target output image format (`avif` | `webp` | `jpeg` | `png`, default: `avif`)
-  - `quality`: Encoding quality integer (`1-100`, default: `80`)
-  - Example URL: `.obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.json#format=webp&quality=80`
+
+### Reading Fragment Parameters in Code
+```ts
+// Scripts read URL fragment parameters via ctx.params (e.g. #format=webp&quality=80)
+const format = ctx.params.get("format") || "avif";
+const quality = parseInt(ctx.params.get("quality") || "80", 10);
+
+// Perform ImageMagick WASM transformation...
+```
 
 ---
 

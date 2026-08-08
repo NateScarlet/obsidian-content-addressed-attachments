@@ -114,16 +114,21 @@ export default function transform(
 
 ---
 
-## 4. 参考示例
+## 4. 示例脚本代码解析 (`imagemagick.ts`)
 
-仓库中的 `preprocess-scripts/imagemagick.ts` 提供了使用 `@imagemagick/magick-wasm` 实现多格式图片转换的完整参考代码：
+仓库中的 `preprocess-scripts/imagemagick.ts` 提供了使用 `@imagemagick/magick-wasm` 实现多格式图片转换的完整参考实现：
 
 - 源码位置：`preprocess-scripts/imagemagick.ts`
 - 构建配置：`scripts/build-preprocess-scripts.mjs`
-- 支持参数：
-  - `format`: 转换后的图片目标格式（`avif` | `webp` | `jpeg` | `png`，默认 `avif`）
-  - `quality`: 图片编码与压缩质量（数值 `1-100`，默认 `80`）
-  - 示例 URL: `.obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.json#format=webp&quality=80`
+
+### 脚本参数读取示例
+```ts
+// 脚本在转换逻辑中通过 ctx.params 读取 Fragment 参数（如 #format=webp&quality=80）
+const format = ctx.params.get("format") || "avif";
+const quality = parseInt(ctx.params.get("quality") || "80", 10);
+
+// 调用 ImageMagick WASM 执行转码与压缩...
+```
 
 ---
 
