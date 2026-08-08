@@ -148,7 +148,7 @@ If you have developed a useful pre-processing script and want to share it with o
      {
        "name": "Script Name",
        "description": "Short description of functionality and options",
-       "scriptURL": "preprocess-scripts/my-script.json#format=webp&quality=80"
+       "scriptURL": "https://example.com/path/to/script.json#format=webp&quality=80"
      }
    ]
    ```
