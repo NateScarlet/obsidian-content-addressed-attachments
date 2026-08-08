@@ -132,9 +132,9 @@ const quality = parseInt(ctx.params.get("quality") || "80", 10);
 
 ---
 
-## 5. 贡献社区预设脚本 (`community-registry.json`)
+## 5. 贡献社区预设脚本 (`registry.json`)
 
-如果您开发了有用的预处理脚本并希望分享给其他用户，欢迎将其提交至社区注册表 `preprocess-scripts/community-registry.json`。
+如果您开发了有用的预处理脚本并希望分享给其他用户，欢迎将其提交至注册表 `preprocess-scripts/registry.json`。
 
 ### 提交步骤
 
@@ -142,7 +142,7 @@ const quality = parseInt(ctx.params.get("quality") || "80", 10);
    将您开发的 `.js` 脚本或 `.json` 清单发布到公开网络（例如 GitHub Releases、GitHub Gist 或任意 HTTPS 服务器）。
 
 2. **提交 Pull Request**：
-   Fork 本项目仓库，在 `preprocess-scripts/community-registry.json` 文件中追加您的脚本条目：
+   Fork 本项目仓库，在 `preprocess-scripts/registry.json` 文件中追加您的脚本条目：
    ```json
    [
      {
@@ -165,8 +165,8 @@ const quality = parseInt(ctx.params.get("quality") || "80", 10);
 > 1. **PR 提交阶段**：贡献者提交 PR 时可以填入标准的 HTTPS URL。
 > 2. **PR 审核与合并阶段**：仓库维护者在接受 PR 时会运行 Pin 脚本：
 >    ```bash
->    pnpm run preprocess:pin-community
+>    pnpm run preprocess:pin-registry
 >    ```
->    该脚本会直接抓取该 HTTPS 脚本的内容，计算其 SHA-256 哈希 CID，并将 `community-registry.json` 中对应的 `scriptURL` **原地替换并锁定为 `internal.ipfs-locked:<CID>,<HTTPS_URL>`** 格式再合并入主分支。
+>    该脚本会直接抓取该 HTTPS 脚本的内容，计算其 SHA-256 哈希 CID，并将 `registry.json` 中对应的 `scriptURL` **原地替换并锁定为 `internal.ipfs-locked:<CID>,<HTTPS_URL>`** 格式再合并入主分支。
 > 3. **后续版本更新**：若作者后续发布了新版本脚本，**必须重新提交 PR**。未经 PR 代码审核并更新 CID 锁定的远程文件修改，会在插件运行时因 CID 校验失败而被拒绝执行。
 

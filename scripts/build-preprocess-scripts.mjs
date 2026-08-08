@@ -125,11 +125,11 @@ for (const script of scripts) {
 }
 
 // 自动同步开发模式索引文件 src/preprocess/script-index.generated.json
-const communityRegistryPath = resolve(root, "preprocess-scripts", "community-registry.json");
+const registryPath = resolve(root, "preprocess-scripts", "registry.json");
 const scriptIndexPath = resolve(root, "src", "preprocess", "script-index.generated.json");
 
-const entries = existsSync(communityRegistryPath)
-	? JSON.parse(readFileSync(communityRegistryPath, "utf-8"))
+const entries = existsSync(registryPath)
+	? JSON.parse(readFileSync(registryPath, "utf-8"))
 	: [];
 
 writeFileSync(scriptIndexPath, JSON.stringify(entries, null, "\t") + "\n", "utf-8");

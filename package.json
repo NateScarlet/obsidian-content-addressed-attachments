@@ -17,7 +17,7 @@
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"preprocess:build": "node scripts/build-preprocess-scripts.mjs",
 		"preprocess:update-index": "node scripts/update-preprocess-index.mjs",
-		"preprocess:pin-community": "node scripts/pin-community-registry.mjs",
+		"preprocess:pin-registry": "node scripts/pin-registry.mjs",
 		"preprocess:release": "pnpm run preprocess:build && pnpm run preprocess:update-index",
 		"e2e:vault": "pwsh scripts/e2e-vault.ps1",
 		"e2e": "playwright test --project e2e"

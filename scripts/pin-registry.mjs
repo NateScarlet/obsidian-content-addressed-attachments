@@ -1,12 +1,12 @@
 /**
- * 为 preprocess-scripts/community-registry.json 中的 HTTP(S) URL 生成 CID 内容锁定。
+ * 为 preprocess-scripts/registry.json 中的 HTTP(S) URL 生成 CID 内容锁定。
  *
  * 维护者在接受 PR 时运行此脚本，将未锁定的 HTTP(S) URL 转换为 internal.ipfs-locked:<cid>,<url> 格式，
- * 确保写入仓库的社区条目具有绝对防篡改性。
+ * 确保写入仓库的条目具有绝对防篡改性。
  *
  * 用法:
- *   node scripts/pin-community-registry.mjs
- *   pnpm run preprocess:pin-community
+ *   node scripts/pin-registry.mjs
+ *   pnpm run preprocess:pin-registry
  */
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
@@ -17,10 +17,10 @@ import { sha256 } from "multiformats/hashes/sha2";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
-const communityRegistryPath = resolve(
+const registryPath = resolve(
 	root,
 	"preprocess-scripts",
-	"community-registry.json",
+	"registry.json",
 );
 
 function baseURL(scriptURL) {
@@ -28,21 +28,21 @@ function baseURL(scriptURL) {
 	return hashIndex >= 0 ? scriptURL.slice(0, hashIndex) : scriptURL;
 }
 
-async function pinCommunityRegistry() {
-	if (!existsSync(communityRegistryPath)) {
-		console.log("No community registry found.");
+async function pinRegistry() {
+	if (!existsSync(registryPath)) {
+		console.log("No registry found.");
 		return;
 	}
 
-	const communityEntries = JSON.parse(
-		readFileSync(communityRegistryPath, "utf-8"),
+	const registryEntries = JSON.parse(
+		readFileSync(registryPath, "utf-8"),
 	);
 	let updatedCount = 0;
 
-	for (const entry of communityEntries) {
+	for (const entry of registryEntries) {
 		const base = baseURL(entry.scriptURL);
 		if (base.startsWith("http://") || base.startsWith("https://")) {
-			console.log(`Pinning community script '${entry.name}' from ${base}...`);
+			console.log(`Pinning script '${entry.name}' from ${base}...`);
 			const hashIndex = entry.scriptURL.indexOf("#");
 			const fragment = hashIndex >= 0 ? entry.scriptURL.slice(hashIndex) : "";
 
@@ -69,21 +69,21 @@ async function pinCommunityRegistry() {
 
 	if (updatedCount > 0) {
 		writeFileSync(
-			communityRegistryPath,
-			JSON.stringify(communityEntries, null, 2) + "\n",
+			registryPath,
+			JSON.stringify(registryEntries, null, 2) + "\n",
 			"utf-8",
 		);
 		console.log(
-			`\nSuccessfully pinned ${updatedCount} entry/entries in ${communityRegistryPath}`,
+			`\nSuccessfully pinned ${updatedCount} entry/entries in ${registryPath}`,
 		);
 	} else {
 		console.log(
-			"All community registry entries are already pinned with internal.ipfs-locked: URLs.",
+			"All registry entries are already pinned with internal.ipfs-locked: URLs or vault-relative paths.",
 		);
 	}
 }
 
-pinCommunityRegistry().catch((err) => {
+pinRegistry().catch((err) => {
 	console.error(err);
 	process.exit(1);
 });

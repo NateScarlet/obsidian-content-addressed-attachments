@@ -132,9 +132,9 @@ const quality = parseInt(ctx.params.get("quality") || "80", 10);
 
 ---
 
-## 5. Contributing Community Preset Scripts (`community-registry.json`)
+## 5. Contributing Preset Scripts (`registry.json`)
 
-If you have developed a useful pre-processing script and want to share it with other users, you are welcome to submit it to the community registry `preprocess-scripts/community-registry.json`.
+If you have developed a useful pre-processing script and want to share it with other users, you are welcome to submit it to the registry `preprocess-scripts/registry.json`.
 
 ### Submission Steps
 
@@ -142,7 +142,7 @@ If you have developed a useful pre-processing script and want to share it with o
    Publish your `.js` script or `.json` manifest to a public network endpoint (such as GitHub Releases, GitHub Gist, or any HTTPS server).
 
 2. **Submit a Pull Request**:
-   Fork this repository and append a new entry to `preprocess-scripts/community-registry.json`:
+   Fork this repository and append a new entry to `preprocess-scripts/registry.json`:
    ```json
    [
      {
@@ -165,8 +165,8 @@ If you have developed a useful pre-processing script and want to share it with o
 > 1. **PR Submission**: Contributors may submit standard HTTPS URLs in their PR.
 > 2. **PR Review & Merge**: Maintainers run the pin script when reviewing and accepting the PR:
 >    ```bash
->    pnpm run preprocess:pin-community
+>    pnpm run preprocess:pin-registry
 >    ```
->    This command fetches the script, computes its SHA-256 CID hash, and **pins the URL in-place within `community-registry.json` to `internal.ipfs-locked:<CID>,<HTTPS_URL>`** before merging.
+>    This command fetches the script, computes its SHA-256 CID hash, and **pins the URL in-place within `registry.json` to `internal.ipfs-locked:<CID>,<HTTPS_URL>`** before merging.
 > 3. **Script Updates**: If the author releases a new version of the script later, **they must submit a new PR**. Remote file changes on external servers without a new PR update will fail CID verification and be rejected at runtime by the plugin.
 

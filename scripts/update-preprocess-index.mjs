@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const scriptDistDir = resolve(root, "dist", "preprocess-scripts");
 const scriptIndexPath = resolve(root, "src", "preprocess", "script-index.generated.json");
-const communityRegistryPath = resolve(root, "preprocess-scripts", "community-registry.json");
+const registryPath = resolve(root, "preprocess-scripts", "registry.json");
 
 /** release asset 下载 URL 模板 */
 const RELEASE_ASSET_URL =
@@ -92,10 +92,10 @@ async function main() {
 		return;
 	}
 
-	// 从 community-registry.json 读取所有预设条目，将 Vault 相对路径重写为 internal.ipfs-locked: 发布格式
+	// 从 registry.json 读取所有预设条目，将 Vault 相对路径重写为 internal.ipfs-locked: 发布格式
 	const releaseAssetBase = `${RELEASE_ASSET_URL}${releaseTag}/`;
-	const entries = existsSync(communityRegistryPath)
-		? JSON.parse(readFileSync(communityRegistryPath, "utf-8"))
+	const entries = existsSync(registryPath)
+		? JSON.parse(readFileSync(registryPath, "utf-8"))
 		: [];
 
 	const updatedEntries = [];
