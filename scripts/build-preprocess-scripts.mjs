@@ -132,7 +132,18 @@ const entries = existsSync(registryPath)
 	? JSON.parse(readFileSync(registryPath, "utf-8"))
 	: [];
 
-writeFileSync(scriptIndexPath, JSON.stringify(entries, null, "\t") + "\n", "utf-8");
+const devEntries = entries.map((entry) => {
+	if (entry.scriptURL.startsWith("preprocess-scripts/")) {
+		const relativePath = entry.scriptURL.slice("preprocess-scripts/".length);
+		return {
+			...entry,
+			scriptURL: `${VAULT_RELATIVE_PREFIX}/${relativePath}`,
+		};
+	}
+	return entry;
+});
+
+writeFileSync(scriptIndexPath, JSON.stringify(devEntries, null, "\t") + "\n", "utf-8");
 console.log(`Generated script index: ${scriptIndexPath}`);
 
 console.log("All preprocess scripts built successfully.");

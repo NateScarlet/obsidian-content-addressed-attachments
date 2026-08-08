@@ -148,7 +148,7 @@ const quality = parseInt(ctx.params.get("quality") || "80", 10);
      {
        "name": "脚本名称",
        "description": "简短描述该脚本的功能与作用（如转换格式、压缩参数等）",
-       "scriptURL": "https://example.com/path/to/script.json#format=webp&quality=80"
+       "scriptURL": "preprocess-scripts/my-script.json#format=webp&quality=80"
      }
    ]
    ```
