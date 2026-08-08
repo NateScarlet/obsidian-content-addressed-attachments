@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-	import { getAbortSignal } from "svelte";
+	import { getAbortSignal, untrack } from "svelte";
 	import { setContext, Mode } from "./CASFileExplorerContext";
 	import { type App } from "obsidian";
 	import type {
@@ -123,30 +123,33 @@
 	let hasNextPage = $state(false);
 
 	// 提供 context
-	setContext({
-		cas,
-		casMetadata,
-		referenceManager,
-		app,
-		encryptionService,
-		mode: {
-			get value() {
-				return mode;
+	// 依赖服务实例（referenceManager/app/encryptionService）为稳定引用，仅在初始化时读取
+	setContext(
+		untrack(() => ({
+			cas,
+			casMetadata,
+			referenceManager,
+			app,
+			encryptionService,
+			mode: {
+				get value() {
+					return mode;
+				},
+				set value(v) {
+					mode = v;
+				},
 			},
-			set value(v) {
-				mode = v;
+			query: {
+				get value() {
+					return query;
+				},
+				set value(v) {
+					query = v;
+				},
 			},
-		},
-		query: {
-			get value() {
-				return query;
-			},
-			set value(v) {
-				query = v;
-			},
-		},
-		fetchMore,
-	});
+			fetchMore,
+		})),
+	);
 
 	$effect(() => {
 		return casMetadataSave.subscribe((e) => {
