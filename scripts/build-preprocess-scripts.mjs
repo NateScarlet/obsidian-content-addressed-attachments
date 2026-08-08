@@ -44,6 +44,9 @@ const RELEASE_ASSET_URL =
 
 const scripts = ["imagemagick.ts"];
 
+// 每个脚本配套的 Web Worker 入口（若存在，需一并构建并加入清单）
+const workerScripts = ["imagemagick.worker.ts"];
+
 if (!existsSync(scriptDistDir)) {
 	mkdirSync(scriptDistDir, { recursive: true });
 }
@@ -73,6 +76,28 @@ for (const script of scripts) {
 	console.log(`Built script: ${script} -> ${distPath}`);
 }
 
+// 构建 worker 脚本
+for (const worker of workerScripts) {
+	const srcPath = resolve(scriptSrcDir, worker);
+	if (!existsSync(srcPath)) {
+		console.warn(`Skip missing worker: ${worker}`);
+		continue;
+	}
+	const distPath = resolve(scriptDistDir, worker.replace(/\.ts$/, ".js"));
+
+	await esbuild.build({
+		entryPoints: [srcPath],
+		outfile: distPath,
+		bundle: true,
+		format: "esm",
+		platform: "browser",
+		target: "es2020",
+		minify: true,
+	});
+
+	console.log(`Built worker: ${worker} -> ${distPath}`);
+}
+
 // 复制 magick.wasm
 if (existsSync(wasmSrc)) {
 	const wasmDist = resolve(scriptDistDir, "magick.wasm");
@@ -94,6 +119,13 @@ for (const script of scripts) {
 		const wasmDist = resolve(scriptDistDir, "magick.wasm");
 		const wasmCID = await computeCID(wasmDist);
 		extraFiles.push({ filename: "magick.wasm", cid: wasmCID });
+	}
+	// 配套 worker 文件（imagemagick.ts → imagemagick.worker.js）
+	const baseName = script.replace(/\.ts$/, "");
+	const workerDist = resolve(scriptDistDir, `${baseName}.worker.js`);
+	if (existsSync(workerDist)) {
+		const workerCID = await computeCID(workerDist);
+		extraFiles.push({ filename: `${baseName}.worker.js`, cid: workerCID });
 	}
 
 	// sources：相对路径在前（开销小），HTTPS URL 在后（发布时引用）

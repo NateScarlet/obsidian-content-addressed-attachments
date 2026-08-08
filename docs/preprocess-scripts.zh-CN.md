@@ -98,35 +98,76 @@ export default function transform(
         ".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/magick.wasm",
         "https://example.com/releases/download/v0.1.0/magick.wasm"
       ]
+    },
+    "imagemagick.worker.js": {
+      "cid": "bafkreib...",
+      "sources": [
+        ".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.worker.js",
+        "https://example.com/releases/download/v0.1.0/imagemagick.worker.js"
+      ]
     }
   }
 }
 ```
 
 - **工作机制**：插件加载器会根据 CID 和 `sources` 自动下载并解包清单中的所有文件到 `<pluginDir>/preprocess-scripts/<manifestCID>/` 缓存目录中，然后加载 `entry` 文件。
-- **资源定位**：在 `entry` 脚本中，可以通过 `import.meta.url` 相对加载同目录资源：
+- **资源定位**：`files` 不限于入口脚本，可包含 WASM、Worker、数据文件等一切运行时依赖，它们都会被下载到同一目录。在 `entry` 脚本中可通过 `import.meta.url` 相对加载同目录资源：
   ```ts
   const wasmURL = new URL("magick.wasm", import.meta.url);
   const response = await fetch(wasmURL);
   ```
+- 内置的 ImageMagick 预设正是利用多文件清单把 `magick.wasm` 与 Web Worker 脚本（`imagemagick.worker.js`，在后台线程执行同步转码、避免阻塞界面）与入口脚本一并发布。
 
 ---
 
-## 4. 示例脚本代码解析 (`imagemagick.ts`)
+## 4. 最小示例：写一个脚本 (Quick Start)
 
-仓库中的 `preprocess-scripts/imagemagick.ts` 提供了使用 `@imagemagick/magick-wasm` 实现多格式图片转换的完整参考实现：
+下面是一个自包含的完整示例，不依赖任何外部库。仓库内置的 ImageMagick 预设（`preprocess-scripts/imagemagick.ts`）是功能更完整、可直接使用的参考实现。
 
-- 源码位置：`preprocess-scripts/imagemagick.ts`
-- 构建配置：`scripts/build-preprocess-scripts.mjs`
+### 4.1 创建脚本
 
-### 脚本参数读取示例
-```ts
-// 脚本在转换逻辑中通过 ctx.params 读取 Fragment 参数（如 #format=webp&quality=80）
-const format = ctx.params.get("format") || "avif";
-const quality = parseInt(ctx.params.get("quality") || "80", 10);
+将下面代码保存为 vault 内的 `scripts/my-script.js`：
 
-// 调用 ImageMagick WASM 执行转码与压缩...
+```js
+// scripts/my-script.js
+// 最小示例：从 URL fragment 读取参数，给所有附件文件名加前缀。
+// 不依赖任何外部库；返回 undefined 表示保留原始文件。
+export default async function transform(input, ctx) {
+  // ctx.params 来自 scriptURL 的 fragment（如 #prefix=draft）
+  const prefix = ctx.params.get("prefix");
+
+  // ctx.log 在 Obsidian 中弹出通知
+  ctx.log(`Processing ${input.filename} (${input.mimeType})`);
+
+  // 未传 prefix 参数 → 保留原始文件
+  if (!prefix) {
+    return undefined;
+  }
+
+  return {
+    data: input.data,           // 原样返回数据（不做转换）
+    mimeType: input.mimeType,   // 保持原 MIME 类型
+    filename: `${prefix}-${input.filename}`, // 只改文件名
+  };
+}
 ```
+
+### 4.2 配置与使用
+
+在插件设置的预处理脚本中填入 vault 相对路径（可带 fragment 参数）：
+
+```text
+scripts/my-script.js#prefix=draft
+```
+
+之后插入的附件都会被命名为 `draft-<原名>`；去掉 fragment 中的参数则保留原文件。
+
+### 4.3 要点回顾
+
+- **默认导出函数**：`(input, ctx) => PreProcessOutput | undefined`，可同步或返回 `Promise`。
+- **返回 `undefined`**：表示"保留原始文件"（例如输入已是目标格式、压缩不划算）。
+- **`ctx.params`**：URL fragment 解析出的 `URLSearchParams`，脚本无需自行解析 URL。
+- 需要依赖 WASM / Worker / 数据文件时，改用多文件清单（见第 3 节）。
 
 ---
 

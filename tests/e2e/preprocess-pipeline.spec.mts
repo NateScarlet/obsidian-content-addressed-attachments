@@ -225,7 +225,7 @@ test("converts a PNG input to AVIF via the preprocess script", async () => {
 	const content = await insertFixture(
 		page,
 		fixture,
-		`${SCRIPT_DIR}#format=avif&quality=45`,
+		`${SCRIPT_DIR}#format=avif&quality=45&minSavings=0`,
 	);
 
 	const { cid, format, filename } = parseLink(content);

@@ -98,35 +98,77 @@ When a script depends on additional assets (such as WASM modules or data files),
         ".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/magick.wasm",
         "https://example.com/releases/download/v0.1.0/magick.wasm"
       ]
+    },
+    "imagemagick.worker.js": {
+      "cid": "bafkreib...",
+      "sources": [
+        ".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.worker.js",
+        "https://example.com/releases/download/v0.1.0/imagemagick.worker.js"
+      ]
     }
   }
 }
 ```
 
 - **Mechanism**: The plugin loader automatically downloads and unpacks all files in the manifest into `<pluginDir>/preprocess-scripts/<manifestCID>/` cache directory based on CIDs and `sources`, and then imports the `entry` file.
-- **Resource Resolution**: In the `entry` script, companion assets can be loaded relative to `import.meta.url`:
+- **Resource Resolution**: `files` is not limited to the entry script — it can hold WASM modules, workers, data files, or any other runtime dependency, all downloaded into the same directory. In the `entry` script, companion assets can be loaded relative to `import.meta.url`:
   ```ts
   const wasmURL = new URL("magick.wasm", import.meta.url);
   const response = await fetch(wasmURL);
   ```
+- The built-in ImageMagick preset uses a multi-file manifest to ship `magick.wasm` and a Web Worker script (`imagemagick.worker.js`, which runs the synchronous transcoding in a background thread to avoid blocking the UI) alongside the entry script.
 
 ---
 
-## 4. Example Script Code Walkthrough (`imagemagick.ts`)
+## 4. Minimal Example: Writing a Script (Quick Start)
 
-The `preprocess-scripts/imagemagick.ts` file in this repository provides a complete reference implementation using `@imagemagick/magick-wasm`:
+Below is a self-contained, complete example that depends on no external libraries. The built-in ImageMagick preset (`preprocess-scripts/imagemagick.ts`) is a more complete, ready-to-use reference implementation.
 
-- Source code: `preprocess-scripts/imagemagick.ts`
-- Build script: `scripts/build-preprocess-scripts.mjs`
+### 4.1 Create the Script
 
-### Reading Fragment Parameters in Code
-```ts
-// Scripts read URL fragment parameters via ctx.params (e.g. #format=webp&quality=80)
-const format = ctx.params.get("format") || "avif";
-const quality = parseInt(ctx.params.get("quality") || "80", 10);
+Save the following code as `scripts/my-script.js` inside your vault:
 
-// Perform ImageMagick WASM transformation...
+```js
+// scripts/my-script.js
+// Minimal example: read a parameter from the URL fragment and prefix every
+// attachment filename. No external dependencies; return undefined to keep
+// the original file.
+export default async function transform(input, ctx) {
+  // ctx.params comes from the scriptURL fragment (e.g. #prefix=draft)
+  const prefix = ctx.params.get("prefix");
+
+  // ctx.log shows a notice in Obsidian
+  ctx.log(`Processing ${input.filename} (${input.mimeType})`);
+
+  // No prefix parameter → keep the original file
+  if (!prefix) {
+    return undefined;
+  }
+
+  return {
+    data: input.data,           // pass data through unchanged
+    mimeType: input.mimeType,   // keep the original MIME type
+    filename: `${prefix}-${input.filename}`, // rename only
+  };
+}
 ```
+
+### 4.2 Configure and Use
+
+Enter a vault-relative path in the plugin's pre-processing setting (optionally with fragment parameters):
+
+```text
+scripts/my-script.js#prefix=draft
+```
+
+Attachments inserted afterwards will be named `draft-<original>`; drop the fragment parameters to keep the original files.
+
+### 4.3 Key Points
+
+- **Default export function**: `(input, ctx) => PreProcessOutput | undefined`, synchronous or returning a `Promise`.
+- **Return `undefined`**: means "keep the original file" (e.g. input is already the target format, or compression is not worthwhile).
+- **`ctx.params`**: a `URLSearchParams` parsed from the URL fragment; scripts never parse the URL themselves.
+- When the script needs WASM / Worker / data-file dependencies, switch to a multi-file manifest (see section 3).
 
 ---
 
