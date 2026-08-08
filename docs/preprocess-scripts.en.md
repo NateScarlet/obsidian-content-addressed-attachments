@@ -48,8 +48,6 @@ export interface PreProcessContext {
   log: (message: string) => void;
   /** Parameters parsed from the scriptURL fragment */
   params: URLSearchParams;
-  /** Helper function to derive MIME type from file extension */
-  mimeTypeByExtension: (ext: string) => string;
 }
 
 /** Transformed output result */

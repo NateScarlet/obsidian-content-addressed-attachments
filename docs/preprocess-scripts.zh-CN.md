@@ -48,8 +48,6 @@ export interface PreProcessContext {
   log: (message: string) => void;
   /** 从 URL fragment 解析出的参数对象 */
   params: URLSearchParams;
-  /** 根据文件扩展名推导 MIME 类型的辅助函数 */
-  mimeTypeByExtension: (ext: string) => string;
 }
 
 /** 转换后的输出结果 */

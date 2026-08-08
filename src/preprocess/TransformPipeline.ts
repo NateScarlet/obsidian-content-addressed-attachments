@@ -1,5 +1,4 @@
 import { Notice } from "obsidian";
-import mimeTypeByExtension from "#src/utils/mimeTypeByExtension";
 import type {
 	PreProcessInput,
 	PreProcessOutput,
@@ -72,7 +71,6 @@ export default class TransformPipeline {
 		const result: PreProcessOutput | undefined = await transformFn(input, {
 			log: (message: string) => new Notice(`[preprocess] ${message}`),
 			params,
-			mimeTypeByExtension,
 		});
 
 		if (!result) {
