@@ -129,6 +129,50 @@ describe("TransformPipeline", () => {
 		).rejects.toThrow("Script error");
 	});
 
+	it("throws when script output is missing data", async () => {
+		const loader = createMockScriptLoader({
+			default: () =>
+				({
+					mimeType: "image/avif",
+					filename: "test.avif",
+				}) as never,
+		});
+		const pipeline = new TransformPipeline(
+			loader,
+			() => "scripts/transform.js",
+		);
+
+		await expect(
+			pipeline.run({
+				data: new ArrayBuffer(8),
+				mimeType: "image/png",
+				filename: "test.png",
+			}),
+		).rejects.toThrow("'data' must be an ArrayBuffer");
+	});
+
+	it("throws when script output data is not an ArrayBuffer", async () => {
+		const loader = createMockScriptLoader({
+			default: () =>
+				({
+					data: "not an array buffer",
+					mimeType: "image/avif",
+				}) as never,
+		});
+		const pipeline = new TransformPipeline(
+			loader,
+			() => "scripts/transform.js",
+		);
+
+		await expect(
+			pipeline.run({
+				data: new ArrayBuffer(8),
+				mimeType: "image/png",
+				filename: "test.png",
+			}),
+		).rejects.toThrow("'data' must be an ArrayBuffer");
+	});
+
 	it("falls back to input mimeType when result has no mimeType", async () => {
 		const loader = createMockScriptLoader({
 			default: (input) => ({

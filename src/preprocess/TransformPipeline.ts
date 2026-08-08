@@ -1,4 +1,5 @@
 import { Notice } from "obsidian";
+import { assertScriptOutput } from "./validateScriptOutput";
 import type {
 	PreProcessInput,
 	PreProcessOutput,
@@ -76,6 +77,8 @@ export default class TransformPipeline {
 		if (!result) {
 			return undefined;
 		}
+
+		assertScriptOutput(result, scriptURL);
 
 		return {
 			data: result.data,
