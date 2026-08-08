@@ -124,29 +124,15 @@ for (const script of scripts) {
 	console.log(`  ${filename}: ${cid}`);
 }
 
-// 自动合成开发模式索引文件 src/preprocess/script-index.generated.json
-const officialRegistryPath = resolve(root, "preprocess-scripts", "official-registry.json");
+// 自动同步开发模式索引文件 src/preprocess/script-index.generated.json
 const communityRegistryPath = resolve(root, "preprocess-scripts", "community-registry.json");
 const scriptIndexPath = resolve(root, "src", "preprocess", "script-index.generated.json");
 
-const officialEntries = existsSync(officialRegistryPath)
-	? JSON.parse(readFileSync(officialRegistryPath, "utf-8"))
-	: [];
-const communityEntries = existsSync(communityRegistryPath)
+const entries = existsSync(communityRegistryPath)
 	? JSON.parse(readFileSync(communityRegistryPath, "utf-8"))
 	: [];
 
-const combinedEntries = [...officialEntries];
-const seen = new Set(officialEntries.map((e) => e.scriptURL.split("#")[0]));
-for (const entry of communityEntries) {
-	const base = entry.scriptURL.split("#")[0];
-	if (!seen.has(base)) {
-		seen.add(base);
-		combinedEntries.push(entry);
-	}
-}
-
-writeFileSync(scriptIndexPath, JSON.stringify(combinedEntries, null, "\t") + "\n", "utf-8");
+writeFileSync(scriptIndexPath, JSON.stringify(entries, null, "\t") + "\n", "utf-8");
 console.log(`Generated script index: ${scriptIndexPath}`);
 
 console.log("All preprocess scripts built successfully.");
