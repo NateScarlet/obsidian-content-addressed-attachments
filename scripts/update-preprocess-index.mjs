@@ -132,12 +132,10 @@ async function main() {
 		return;
 	}
 
-	// 从 official-registry.json 生成 internal.ipfs-locked: 格式的索引条目
+	// 从 official-registry.json 读取官方源条目，生成 internal.ipfs-locked: 格式的发布索引
 	const officialRegistryPath = resolve(root, "preprocess-scripts", "official-registry.json");
 	const releaseAssetBase = `${RELEASE_ASSET_URL}${releaseTag}/`;
-	const entries = existsSync(officialRegistryPath)
-		? JSON.parse(readFileSync(officialRegistryPath, "utf-8"))
-		: JSON.parse(readFileSync(scriptIndexPath, "utf-8"));
+	const entries = JSON.parse(readFileSync(officialRegistryPath, "utf-8"));
 
 	const updatedEntries = [];
 	for (const entry of entries) {
