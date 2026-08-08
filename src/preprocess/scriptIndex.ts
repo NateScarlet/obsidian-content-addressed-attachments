@@ -3,7 +3,7 @@ import type { ScriptIndexEntry } from "./types";
 
 /**
  * 脚本索引，直接从 JSON 文件导入。
- * 在发布流程中，scripts/update-preprocess-index.mjs 会更新 JSON 中的 CID。
+ * 在发布流程中，scripts/generate-preprocess-index.mjs 会更新 JSON 中的 CID。
  */
 export const SCRIPT_INDEX: ScriptIndexEntry[] = scriptIndexJson;
 

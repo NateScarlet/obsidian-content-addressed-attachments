@@ -7,11 +7,11 @@
  * 3. 为每个脚本生成 per-script 清单 (.json)，包含 CID 与 sources
  *
  * 清单中 sources 优先使用 vault-relative 路径（开发环境），
- * 其次为 release asset HTTPS URL（<TAG> 占位符由 update-preprocess-index.mjs 替换）。
+ * 其次为 release asset HTTPS URL（<TAG> 占位符由 generate-preprocess-index.mjs 替换）。
  * CID 直接写入清单，下游直接读取即可。
  *
  * 注意：本脚本不负责生成 src/preprocess/script-index.generated.json，
- * 该索引由 scripts/update-preprocess-index.mjs 负责。
+ * 该索引由 scripts/generate-preprocess-index.mjs 负责。
  */
 
 import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";

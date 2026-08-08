@@ -8,8 +8,8 @@
  * 3. 已 Pin 的社区条目（internal.ipfs-locked:）保持原样
  *
  * 用法:
- *   node scripts/update-preprocess-index.mjs              # 仅替换清单中的 <TAG>
- *   node scripts/update-preprocess-index.mjs <tag>        # 替换 <TAG> 并生成 release 索引
+ *   node scripts/generate-preprocess-index.mjs              # 仅替换清单中的 <TAG>
+ *   node scripts/generate-preprocess-index.mjs <tag>        # 替换 <TAG> 并生成 release 索引
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
@@ -89,7 +89,7 @@ async function main() {
 
 	if (!releaseTag) {
 		console.log("\nNo release tag specified. Skipping release index update.");
-		console.log("Run 'pnpm run preprocess:update-index <tag>' to update the release index.");
+		console.log("Run 'pnpm run preprocess:generate-index <tag>' to update the release index.");
 		return;
 	}
 
