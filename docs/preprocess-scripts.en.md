@@ -120,6 +120,10 @@ The `preprocess-scripts/imagemagick.ts` file in this repository provides a compl
 
 - Source code: `preprocess-scripts/imagemagick.ts`
 - Build script: `scripts/build-preprocess-scripts.mjs`
+- Supported parameters:
+  - `format`: Target output image format (`avif` | `webp` | `jpeg` | `png`, default: `avif`)
+  - `quality`: Encoding quality integer (`1-100`, default: `60`)
+  - Example URL: `.obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.json#format=webp&quality=80`
 
 ---
 

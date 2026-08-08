@@ -120,6 +120,10 @@ export default function transform(
 
 - 源码位置：`preprocess-scripts/imagemagick.ts`
 - 构建配置：`scripts/build-preprocess-scripts.mjs`
+- 支持参数：
+  - `format`: 转换后的图片目标格式（`avif` | `webp` | `jpeg` | `png`，默认 `avif`）
+  - `quality`: 图片编码与压缩质量（数值 `1-100`，默认 `60`）
+  - 示例 URL: `.obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.json#format=webp&quality=80`
 
 ---
 
