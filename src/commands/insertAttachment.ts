@@ -53,7 +53,11 @@ export async function processFileAndInsertLink(
 	// 2. 启用了预处理：瞬间生成唯一注释占位符并插入光标处（UI 0 延迟卡顿）
 	const { placeholder } = createPreprocessPlaceholder(file.name);
 	insertPlaceholderAtCursor(editor, placeholder);
-	new Notice(`[preprocess] 正在后台处理附件：${file.name}...`);
+	// 传入 timeout 0 使 Notification 在预处理期间持续展示，避免超时提前消失
+	const notice = new Notice(
+		`[preprocess] 正在后台处理附件：${file.name}...`,
+		0,
+	);
 
 	// 3. 启动后台异步任务进行转码、加密与落盘，完成后替换占位符
 	const backgroundProcess = async () => {
@@ -73,41 +77,43 @@ export async function processFileAndInsertLink(
 					{ type: result.mimeType },
 				);
 			}
+
+			// 加密策略决定是否加密
+			const fileToSave =
+				(await encryptPathPolicy.ensureEncrypted(fileToProcess, notePath)) ??
+				fileToProcess;
+			const { cid } = await cas.save(dir, fileToSave);
+			const linkMarkdown = formatIPFSLinkMarkdown(fileToProcess, fileToSave, cid);
+
+			// 替换编辑器或 Vault 磁盘中的占位符
+			if (app) {
+				await replacePlaceholderInEditorOrVault(
+					app,
+					notePath,
+					placeholder,
+					linkMarkdown,
+					editor,
+				);
+			} else {
+				// 在纯 Editor 上测试的降级路径
+				const currentText = editor.getValue();
+				const updatedText = replacePlaceholderInContent(
+					currentText,
+					placeholder,
+					linkMarkdown,
+				);
+				if (updatedText !== currentText) {
+					editor.setValue(updatedText);
+				}
+			}
 		} catch (err) {
 			console.warn(
 				"[preprocess] Pipeline failed, falling back to original file:",
 				err,
 			);
 			new Notice(`[preprocess] 附件 ${file.name} 预处理失败，使用原图落盘`);
-		}
-
-		// 加密策略决定是否加密
-		const fileToSave =
-			(await encryptPathPolicy.ensureEncrypted(fileToProcess, notePath)) ??
-			fileToProcess;
-		const { cid } = await cas.save(dir, fileToSave);
-		const linkMarkdown = formatIPFSLinkMarkdown(fileToProcess, fileToSave, cid);
-
-		// 替换编辑器或 Vault 磁盘中的占位符
-		if (app) {
-			await replacePlaceholderInEditorOrVault(
-				app,
-				notePath,
-				placeholder,
-				linkMarkdown,
-				editor,
-			);
-		} else {
-			// 在纯 Editor 上测试的降级路径
-			const currentText = editor.getValue();
-			const updatedText = replacePlaceholderInContent(
-				currentText,
-				placeholder,
-				linkMarkdown,
-			);
-			if (updatedText !== currentText) {
-				editor.setValue(updatedText);
-			}
+		} finally {
+			notice.hide();
 		}
 	};
 
