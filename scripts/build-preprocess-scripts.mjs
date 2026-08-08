@@ -1,13 +1,17 @@
 /**
- * 构建预处理脚本并生成清单文件。
+ * 构建预处理脚本并生成清单文件（纯构建产物，不涉及运行时索引）。
  *
- * 使用 esbuild 将 ImageMagick WASM 预处理脚本打包为单文件 bundle，
- * 输出到 dist/preprocess-scripts/ 目录。
- * 同时复制 magick.wasm 文件到同一目录，并生成 per-script 清单文件。
+ * 职责：
+ * 1. 使用 esbuild 将 preprocess-scripts/*.ts 编译为 dist/preprocess-scripts/*.js
+ * 2. 复制依赖的 WASM 文件到 dist/preprocess-scripts/
+ * 3. 为每个脚本生成 per-script 清单 (.json)，包含 CID 与 sources
  *
  * 清单中 sources 优先使用 vault-relative 路径（开发环境），
  * 其次为 release asset HTTPS URL（<TAG> 占位符由 update-preprocess-index.mjs 替换）。
  * CID 直接写入清单，下游直接读取即可。
+ *
+ * 注意：本脚本不负责生成 src/preprocess/script-index.generated.json，
+ * 该索引由 scripts/update-preprocess-index.mjs 负责。
  */
 
 import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
@@ -123,16 +127,5 @@ for (const script of scripts) {
 	console.log(`Generated manifest: ${manifestPath}`);
 	console.log(`  ${filename}: ${cid}`);
 }
-
-// 自动同步开发模式索引文件 src/preprocess/script-index.generated.json
-const registryPath = resolve(root, "preprocess-scripts", "registry.json");
-const scriptIndexPath = resolve(root, "src", "preprocess", "script-index.generated.json");
-
-const entries = existsSync(registryPath)
-	? JSON.parse(readFileSync(registryPath, "utf-8"))
-	: [];
-
-writeFileSync(scriptIndexPath, JSON.stringify(entries, null, "\t") + "\n", "utf-8");
-console.log(`Generated script index: ${scriptIndexPath}`);
 
 console.log("All preprocess scripts built successfully.");

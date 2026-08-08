@@ -1,10 +1,11 @@
 /**
- * 更新预处理脚本索引。
+ * 更新预处理脚本索引（生成 src/preprocess/script-index.generated.json）。
  *
- * 从 dist/preprocess-scripts/ 读取 per-script 清单文件，
- * 替换其中 HTTPS URL 的 <TAG> 占位符为实际 release tag。
- * 如果指定了 release tag，将 script-index.generated.json 中的 vault-relative 路径
- * 替换为 internal.ipfs-locked:<cid>,<release asset URL> 格式。
+ * 职责：
+ * 1. 替换 dist/preprocess-scripts/ 清单中 HTTPS URL 的 <TAG> 占位符为实际 release tag
+ * 2. 从 preprocess-scripts/registry.json 读取预设条目，将本地相对路径重写为
+ *    internal.ipfs-locked:<cid>,<release asset URL> 格式，写入 script-index.generated.json
+ * 3. 已 Pin 的社区条目（internal.ipfs-locked:）保持原样
  *
  * 用法:
  *   node scripts/update-preprocess-index.mjs              # 仅替换清单中的 <TAG>
