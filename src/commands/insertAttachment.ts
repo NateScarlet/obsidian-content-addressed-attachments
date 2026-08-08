@@ -71,19 +71,23 @@ export async function processFileAndInsertLink(
 			};
 			const result = await pipeline.run(input);
 			if (result) {
-				fileToProcess = new File(
-					[result.data],
-					result.filename,
-					{ type: result.mimeType },
-				);
+				fileToProcess = new File([result.data], result.filename, {
+					type: result.mimeType,
+				});
 			}
 
 			// 加密策略决定是否加密
 			const fileToSave =
-				(await encryptPathPolicy.ensureEncrypted(fileToProcess, notePath)) ??
-				fileToProcess;
+				(await encryptPathPolicy.ensureEncrypted(
+					fileToProcess,
+					notePath,
+				)) ?? fileToProcess;
 			const { cid } = await cas.save(dir, fileToSave);
-			const linkMarkdown = formatIPFSLinkMarkdown(fileToProcess, fileToSave, cid);
+			const linkMarkdown = formatIPFSLinkMarkdown(
+				fileToProcess,
+				fileToSave,
+				cid,
+			);
 
 			// 替换编辑器或 Vault 磁盘中的占位符
 			if (app) {
@@ -111,7 +115,9 @@ export async function processFileAndInsertLink(
 				"[preprocess] Pipeline failed, falling back to original file:",
 				err,
 			);
-			new Notice(`[preprocess] 附件 ${file.name} 预处理失败，使用原图落盘`);
+			new Notice(
+				`[preprocess] 附件 ${file.name} 预处理失败，使用原图落盘`,
+			);
 		} finally {
 			notice.hide();
 		}

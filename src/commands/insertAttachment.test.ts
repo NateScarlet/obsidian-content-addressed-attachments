@@ -7,6 +7,12 @@ import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
 
+/* eslint-disable */
+if (typeof (globalThis as any).window === "undefined") {
+	(globalThis as any).window = globalThis;
+}
+/* eslint-enable */
+
 describe("processFileAndInsertLink", () => {
 	const validCIDString =
 		"bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di";
@@ -103,7 +109,7 @@ describe("processFileAndInsertLink", () => {
 		);
 
 		// 等待后台异步微任务完成
-		await new Promise((r) => setTimeout(r, 50));
+		await new Promise((r) => window.setTimeout(r, 50));
 
 		// 检查占位符是否被替换为最终的 IPFS 链接
 		const finalText = editor.getText();
@@ -127,7 +133,7 @@ describe("processFileAndInsertLink", () => {
 			mockPipelineWithScript,
 		);
 
-		await new Promise((r) => setTimeout(r, 50));
+		await new Promise((r) => window.setTimeout(r, 50));
 
 		const text = editor.getText();
 		expect(text).toContain("![photo.png](ipfs://");
@@ -152,7 +158,7 @@ describe("processFileAndInsertLink", () => {
 			mockPipelineWithScript,
 		);
 
-		await new Promise((r) => setTimeout(r, 50));
+		await new Promise((r) => window.setTimeout(r, 50));
 
 		const text = editor.getText();
 		expect(text.startsWith("[doc.pdf](ipfs://")).toBe(true);

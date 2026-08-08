@@ -15,7 +15,7 @@ import * as raw from "multiformats/codecs/raw";
 const fixturesDir = path.resolve("./tests/e2e-vault/fixtures");
 const PLUGIN_ID = "content-addressed-attachments";
 const SCRIPT_DIR =
-	".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.js";
+	".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.json";
 const NOTE_PATH = "e2e.md";
 
 interface Fixture {
@@ -81,6 +81,7 @@ async function insertFixture(
 				state: { file: note, mode: "source" },
 			});
 			await obsidianApp.workspace.setActiveLeaf(leaf);
+			leaf?.view?.editor?.setValue?.("");
 
 			// 设置预处理脚本（空字符串 = 跳过，保留原始文件）
 			plugin.settings.preProcess.scriptURL = scriptURL;

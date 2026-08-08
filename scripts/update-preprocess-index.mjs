@@ -40,8 +40,8 @@ function baseURL(scriptURL) {
 	return hashIndex >= 0 ? scriptURL.slice(0, hashIndex) : scriptURL;
 }
 
-/** 将社区注册表条目合并进生成的索引，按基础 URL 去重 */
-function mergeCommunityEntries(indexPath) {
+/** 将社区注册表条目合并进生成的索引，按基础 URL 去重，并将 HTTP(S) URL 锁定为 internal.ipfs-locked: 格式 */
+async function mergeCommunityEntries(indexPath) {
 	if (!existsSync(communityRegistryPath)) {
 		console.log("No community registry found, skipping merge.");
 		return;
@@ -61,10 +61,34 @@ function mergeCommunityEntries(indexPath) {
 			console.log(`Skipped duplicate community entry: ${entry.name} (${base})`);
 			continue;
 		}
-		seen.add(base);
-		entries.push(entry);
+
+		let scriptURL = entry.scriptURL;
+		if (base.startsWith("http://") || base.startsWith("https://")) {
+			console.log(`Pinning community script ${entry.name} from ${base}...`);
+			const hashIndex = entry.scriptURL.indexOf("#");
+			const fragment = hashIndex >= 0 ? entry.scriptURL.slice(hashIndex) : "";
+
+			const resp = await fetch(base);
+			if (!resp.ok) {
+				console.error(`Failed to fetch community script from ${base}: ${resp.status} ${resp.statusText}`);
+				process.exit(1);
+			}
+			const buffer = await resp.arrayBuffer();
+			const digest = await sha256.digest(new Uint8Array(buffer));
+			const cid = CID.create(1, 0x55, digest).toString();
+			scriptURL = `internal.ipfs-locked:${cid},${base}${fragment}`;
+			console.log(`  Pinned ${entry.name} -> ${scriptURL}`);
+		} else if (!base.startsWith("internal.ipfs-locked:")) {
+			console.warn(`Warning: Community entry ${entry.name} scriptURL is not HTTP(S) or internal.ipfs-locked: format`);
+		}
+
+		seen.add(baseURL(scriptURL));
+		entries.push({
+			...entry,
+			scriptURL,
+		});
 		added++;
-		console.log(`Merged community entry: ${entry.name} (${base})`);
+		console.log(`Merged community entry: ${entry.name}`);
 	}
 
 	if (added > 0) {
@@ -167,8 +191,8 @@ async function main() {
 	writeFileSync(scriptIndexPath, JSON.stringify(updatedEntries, null, "\t") + "\n", "utf-8");
 	console.log(`\nUpdated ${scriptIndexPath} with internal.ipfs-locked: format`);
 
-	// 合并社区注册表条目
-	mergeCommunityEntries(scriptIndexPath);
+	// 合并社区注册表条目（包含 CID 内容锁定与 Pin 校验）
+	await mergeCommunityEntries(scriptIndexPath);
 
 	console.log("\nScript index updated successfully for release.");
 	console.log("Run 'pnpm run build:esbuild production' to rebuild the plugin with the updated index.");

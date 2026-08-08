@@ -3,6 +3,7 @@ import mimeTypeByExtension from "#src/utils/mimeTypeByExtension";
 import type {
 	PreProcessInput,
 	PreProcessOutput,
+	PreProcessContext,
 	ScriptLoader,
 } from "./types";
 
@@ -36,14 +37,28 @@ export default class TransformPipeline {
 		if (!module) {
 			throw new Error(`[preprocess] Failed to load script: ${scriptURL}`);
 		}
-		const rawModule = module as any;
-		const transformFn: ((...args: any[]) => any) | undefined =
+		const rawModule = module as Record<string, unknown>;
+		const rawDefault = rawModule.default as
+			Record<string, unknown> | undefined;
+		const transformFn =
 			typeof module.default === "function"
 				? module.default
-				: typeof rawModule.default?.default === "function"
-					? rawModule.default.default
-					: typeof rawModule === "function"
-						? rawModule
+				: typeof rawDefault?.default === "function"
+					? (rawDefault.default as (
+							input: PreProcessInput,
+							ctx: PreProcessContext,
+						) =>
+							| Promise<PreProcessOutput | undefined>
+							| PreProcessOutput
+							| undefined)
+					: typeof module === "function"
+						? (module as (
+								input: PreProcessInput,
+								ctx: PreProcessContext,
+							) =>
+								| Promise<PreProcessOutput | undefined>
+								| PreProcessOutput
+								| undefined)
 						: undefined;
 
 		if (!transformFn) {
@@ -54,13 +69,13 @@ export default class TransformPipeline {
 
 		const params = this.scriptLoader.getParams(scriptURL);
 
-		const result = await transformFn(input, {
+		const result: PreProcessOutput | undefined = await transformFn(input, {
 			log: (message: string) => new Notice(`[preprocess] ${message}`),
 			params,
 			mimeTypeByExtension,
 		});
 
-		if (result === undefined) {
+		if (!result) {
 			return undefined;
 		}
 

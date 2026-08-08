@@ -591,12 +591,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		// 保存时加载脚本以触发锁定（resolveURL 在加载路径中处理 HTTPS→CID 锁定）
 		if (this.settings.preProcess.scriptURL) {
 			try {
-				await this.scriptLoader.loadScript(this.settings.preProcess.scriptURL);
-			} catch (err) {
-				console.warn(
-					`[saveSettings] Failed to preload script:`,
-					err,
+				await this.scriptLoader.loadScript(
+					this.settings.preProcess.scriptURL,
 				);
+			} catch (err) {
+				console.warn(`[saveSettings] Failed to preload script:`, err);
 			}
 		}
 	}

@@ -111,7 +111,10 @@ const transform = async function (
 		);
 
 		if (!resultData) {
-			console.error("[imagemagick.ts] ImageMagick.read returned null for " + input.filename);
+			console.error(
+				"[imagemagick.ts] ImageMagick.read returned null for " +
+					input.filename,
+			);
 			return undefined;
 		}
 

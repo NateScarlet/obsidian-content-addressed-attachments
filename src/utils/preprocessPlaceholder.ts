@@ -32,7 +32,9 @@ export function createPreprocessPlaceholder(
 /**
  * 从文本中提取 Block ID
  */
-export function extractBlockIdFromPlaceholder(placeholder: string): string | null {
+export function extractBlockIdFromPlaceholder(
+	placeholder: string,
+): string | null {
 	const match = /\^(prep-[0-9a-z]+-[0-9a-z]+)/.exec(placeholder);
 	return match ? match[1] : null;
 }

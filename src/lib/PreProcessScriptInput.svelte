@@ -7,11 +7,17 @@
 			scriptURLPlaceholder:
 				"Vault-relative path, ipfs://, internal.ipfs-locked:, or https:// URL. Add parameters in fragment (e.g. #quality=80)",
 			preProcessScriptName: "Pre-processing script",
+			devGuideLink: "Script Development Guide",
+			devGuideUrl:
+				"https://github.com/NateScarlet/obsidian-content-addressed-attachments/blob/main/docs/preprocess-scripts.en.md",
 		},
 		zh: {
 			scriptURLPlaceholder:
 				"Vault 相对路径、ipfs://、internal.ipfs-locked: 或 https:// URL。在 fragment 中添加参数（如 #quality=80）",
 			preProcessScriptName: "预处理脚本",
+			devGuideLink: "脚本开发指南",
+			devGuideUrl:
+				"https://github.com/NateScarlet/obsidian-content-addressed-attachments/blob/main/docs/preprocess-scripts.zh-CN.md",
 		},
 	});
 	//#endregion
@@ -90,7 +96,17 @@
 
 <div class="setting-item flex-wrap">
 	<div class="setting-item-info">
-		<div class="setting-item-name">{t("preProcessScriptName")}</div>
+		<div class="setting-item-name">
+			{t("preProcessScriptName")}
+			<a
+				href={t("devGuideUrl")}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="external-link ml-2 font-normal opacity-70 hover:opacity-100"
+			>
+				{t("devGuideLink")}
+			</a>
+		</div>
 		<div class="setting-item-description">{description}</div>
 	</div>
 

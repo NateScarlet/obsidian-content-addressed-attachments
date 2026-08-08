@@ -52,6 +52,8 @@ describe("preprocessPlaceholder", () => {
 			placeholder,
 			replacement,
 		);
-		expect(updated).toEqual("# Note\n\n![test.png](ipfs://bafkreidummy)\nDone");
+		expect(updated).toEqual(
+			"# Note\n\n![test.png](ipfs://bafkreidummy)\nDone",
+		);
 	});
 });

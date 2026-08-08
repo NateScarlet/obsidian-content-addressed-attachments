@@ -25,8 +25,11 @@ function parseURLSearchParams(url: string): {
 
 /** ScriptLoader 构造函数选项 */
 export interface ScriptLoaderOptions {
-	/** vault DataAdapter 方法（getResourcePath / read / copy / exists） */
-	adapter: Pick<DataAdapter, "getResourcePath" | "read" | "copy" | "exists">;
+	/** vault DataAdapter 方法（getResourcePath / read / copy / exists / mkdir） */
+	adapter: Pick<
+		DataAdapter,
+		"getResourcePath" | "read" | "copy" | "exists" | "mkdir"
+	>;
 	/** 获取插件数据目录（用于存放预处理的脚本文件） */
 	getPluginDir: () => string;
 	/**
@@ -37,6 +40,26 @@ export interface ScriptLoaderOptions {
 	resolveURL: (
 		rawURL: string,
 	) => Promise<{ cid: CID; path: string } | undefined>;
+}
+
+/**
+ * 递归确保目录存在（Obsidian DataAdapter.mkdir 非递归）。
+ */
+async function ensureDir(
+	adapter: Pick<DataAdapter, "exists" | "mkdir">,
+	dirPath: string,
+): Promise<void> {
+	const normalized = dirPath.replace(/\\/g, "/").replace(/\/+$/, "");
+	if (!normalized || (await adapter.exists(normalized))) return;
+	const parentDir = normalized.slice(0, normalized.lastIndexOf("/"));
+	if (parentDir && parentDir !== normalized) {
+		await ensureDir(adapter, parentDir);
+	}
+	try {
+		await adapter.mkdir(normalized);
+	} catch {
+		// Ignore if created concurrently
+	}
 }
 
 /**
@@ -150,7 +173,8 @@ export default class DefaultScriptLoader implements ScriptLoader {
 		manifest: ScriptManifest,
 		manifestCID: CID,
 	): Promise<string | undefined> {
-		const baseDir = `${this.options.getPluginDir()}/pre-process-scripts/${manifestCID.toString()}`;
+		const baseDir = `${this.options.getPluginDir()}/preprocess-scripts/${manifestCID.toString()}`;
+		await ensureDir(this.options.adapter, baseDir);
 
 		const entry = manifest.entry;
 		const files = manifest.files;
@@ -173,6 +197,13 @@ export default class DefaultScriptLoader implements ScriptLoader {
 						resolved &&
 						resolved.cid.equals(CID.parse(fileSource.cid))
 					) {
+						if (filename.includes("/")) {
+							const targetDir = targetPath.slice(
+								0,
+								targetPath.lastIndexOf("/"),
+							);
+							await ensureDir(this.options.adapter, targetDir);
+						}
 						// 从 source 路径复制到目标路径
 						await this.options.adapter.copy(
 							resolved.path,

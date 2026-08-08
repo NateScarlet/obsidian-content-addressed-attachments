@@ -24,6 +24,7 @@ describe("DefaultScriptLoader.getParams", () => {
 				read: () => Promise.reject(new Error("not used")),
 				copy: () => Promise.resolve(),
 				exists: () => Promise.resolve(false),
+				mkdir: () => Promise.resolve(),
 			},
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
@@ -45,6 +46,7 @@ describe("DefaultScriptLoader.getParams", () => {
 				read: () => Promise.reject(new Error("not used")),
 				copy: () => Promise.resolve(),
 				exists: () => Promise.resolve(false),
+				mkdir: () => Promise.resolve(),
 			},
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
@@ -61,6 +63,7 @@ describe("DefaultScriptLoader.getParams", () => {
 				read: () => Promise.reject(new Error("not used")),
 				copy: () => Promise.resolve(),
 				exists: () => Promise.resolve(false),
+				mkdir: () => Promise.resolve(),
 			},
 			getPluginDir: () => "",
 			resolveURL: () => Promise.resolve(undefined),
@@ -154,6 +157,13 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 			},
 			exists: (path: string) =>
 				Promise.resolve(existsSync(resolve(tempDir, path))),
+			mkdir: (path: string) => {
+				const fullPath = resolve(tempDir, path);
+				if (!existsSync(fullPath)) {
+					mkdirSync(fullPath, { recursive: true });
+				}
+				return Promise.resolve();
+			},
 		};
 
 		const loader = new DefaultScriptLoader({
@@ -207,6 +217,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 			copy: () => Promise.resolve(),
 			exists: (path: string) =>
 				Promise.resolve(existsSync(resolve(__dirname, path))),
+			mkdir: () => Promise.resolve(),
 		};
 
 		const loader = new DefaultScriptLoader({
