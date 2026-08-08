@@ -117,6 +117,7 @@
 				rows={2}
 				value={currentText}
 				placeholder={t("scriptURLPlaceholder")}
+				spellcheck="false"
 				oninput={(e) => handleInput((e.target as HTMLTextAreaElement).value)}
 			></textarea>
 		</div>
