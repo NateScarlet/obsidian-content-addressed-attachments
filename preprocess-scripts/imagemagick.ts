@@ -6,7 +6,7 @@
  *
  * 参数：
  *   - format: 输出格式（avif | webp | jpeg | png），默认 avif
- *   - quality: 编码质量（1-100），默认 60
+ *   - quality: 编码质量（1-100），默认 80
  *
  * 构建后的脚本与 magick.wasm 位于同一目录，通过相对 import.meta.url 解析。
  */
@@ -60,7 +60,7 @@ const FORMAT_CONFIG: Record<string, { magick: string; mime: string }> = {
  *
  * - auto-orient：自动校正朝向
  * - strip：移除元数据
- * - quality：编码质量（默认 60）
+ * - quality：编码质量（默认 80）
  * - 如果转换后相比原始文件节省不足 10%，保留原始文件
  */
 const transform = async function (
@@ -73,7 +73,7 @@ const transform = async function (
 	}
 
 	const format = ctx.params.get("format") || "avif";
-	const quality = parseInt(ctx.params.get("quality") || "60", 10);
+	const quality = parseInt(ctx.params.get("quality") || "80", 10);
 	const config = FORMAT_CONFIG[format] ?? FORMAT_CONFIG.avif;
 	const targetMime = config.mime;
 
