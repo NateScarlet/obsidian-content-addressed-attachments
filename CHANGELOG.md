@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.16](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.15...0.1.16) (2026-08-09)
+
+
+### Features
+
+* **encryption:** support attachment encryption with AES-256-GCM ([#22](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/22)) ([009b809](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/009b809a14f61a261c5c46d71551e24e72930f09))
+
+
+### Bug Fixes
+
+* **encryption:** decrypt downloaded non-local encrypted files immediately upon resolution ([e137d99](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/e137d999d9b829e4b1ec6b3b6280702b0ae86430))
+* **encryption:** preserve deleted status on key import and auto-refresh settings UI ([8349cf4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/8349cf4b98755d7ed638debcfbb3f2c66200c1a4))
+* **test:** polyfill DisposableStack in Vitest setup for CI environments ([55b2ce6](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/55b2ce6e36ce37827bcc3e549a95f3bbb52edddf))
+* **ui:** clear svelte-check state_referenced_locally warnings in CASFileExplorer ([05feddf](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/05feddfce12a6d56d114966c930d478791b7e7fa))
+* **ui:** make svelte-check and tsc pass on Svelte 5 component instances ([aa97b86](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/aa97b86d6d40c9cccd7373bdab7c2bff83f52e48))
+* **ui:** use unique index keys for CASFileExplorer loading skeleton items ([56fbe2c](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/56fbe2cbd5327e914b144a7eac2db8523014664a))
+
 ## [0.1.15](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.14...0.1.15) (2026-06-26)
 
 
