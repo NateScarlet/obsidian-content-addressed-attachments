@@ -45,7 +45,7 @@
 	let query = $state("");
 
 	let activeNoteContent = useActiveNoteContent(
-		app,
+		untrack(() => app),
 		() => mode === Mode.ACTIVE_NOTE,
 	);
 

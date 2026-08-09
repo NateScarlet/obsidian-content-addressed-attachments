@@ -4,7 +4,8 @@ import MigrationProgressComponent from "#src/lib/MigrationProgress.svelte";
 import { mount, unmount } from "svelte";
 
 export class MigrationProgressModal extends Modal {
-	private component?: MigrationProgressComponent & {
+	/** Svelte 5 组件实例（mount 返回值，即组件 export 的字段） */
+	private component?: {
 		progress: MigrationProgress;
 		isCancelled: boolean;
 		error: string;
@@ -24,7 +25,7 @@ export class MigrationProgressModal extends Modal {
 				ctr: this.ctr,
 				onClose: () => this.close(),
 			},
-		});
+		}) as MigrationProgressModal["component"];
 	}
 
 	onClose(): void {

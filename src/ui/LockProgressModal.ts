@@ -4,7 +4,8 @@ import LockProgressComponent from "#src/lib/LockProgress.svelte";
 import { mount, unmount } from "svelte";
 
 export class LockProgressModal extends Modal {
-	private component?: LockProgressComponent & {
+	/** Svelte 5 组件实例（mount 返回值，即组件 export 的字段） */
+	private component?: {
 		progress: LockProgress;
 		isCancelled: boolean;
 		error: string;
@@ -24,7 +25,7 @@ export class LockProgressModal extends Modal {
 				ctr: this.ctr,
 				onClose: () => this.close(),
 			},
-		});
+		}) as LockProgressModal["component"];
 	}
 
 	onClose(): void {
