@@ -6,6 +6,7 @@ import type { Editor } from "obsidian";
 import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
+import type { PlaceholderReplaceVault } from "#src/utils/preprocessPlaceholder";
 
 /* eslint-disable */
 if (typeof (globalThis as any).window === "undefined") {
@@ -49,18 +50,30 @@ describe("processFileAndInsertLink", () => {
 
 	function createMockEditor() {
 		let text = "";
+		const posToOffset = (pos: { line: number; ch: number }) => {
+			const lines = text.split("\n");
+			return (
+				lines
+					.slice(0, pos.line)
+					.reduce((acc, l) => acc + l.length + 1, 0) + pos.ch
+			);
+		};
 		return {
 			replaceSelection: vi.fn((t: string) => {
 				text += t;
 			}),
 			getValue: vi.fn(() => text),
-			setValue: vi.fn((t: string) => {
-				text = t;
-			}),
-			getCursor: vi.fn().mockReturnValue({ line: 0, ch: 0 }),
-			setCursor: vi.fn(),
-			getSelection: vi.fn().mockReturnValue(""),
-			getLine: vi.fn().mockReturnValue(""),
+			replaceRange: vi.fn(
+				(
+					t: string,
+					from: { line: number; ch: number },
+					to?: { line: number; ch: number },
+				) => {
+					const start = posToOffset(from);
+					const end = to ? posToOffset(to) : start;
+					text = text.slice(0, start) + t + text.slice(end);
+				},
+			),
 			offsetToPos: vi.fn((offset: number) => {
 				const before = text.slice(0, offset);
 				const lines = before.split("\n");
@@ -73,8 +86,16 @@ describe("processFileAndInsertLink", () => {
 		} as unknown as Editor & { getText: () => string };
 	}
 
+	function createMockVault(): PlaceholderReplaceVault {
+		return {
+			getAbstractFileByPath: vi.fn().mockReturnValue(null),
+			process: vi.fn().mockResolvedValue(""),
+		};
+	}
+
 	it("saves unencrypted attachment directly when preProcess script is not set", async () => {
 		const editor = createMockEditor();
+		const vault = createMockVault();
 		const file = new File(["test data"], "photo.png", {
 			type: "image/png",
 		});
@@ -87,6 +108,7 @@ describe("processFileAndInsertLink", () => {
 			"notes/regular.md",
 			mockEncryptPathPolicy,
 			mockPipelineNoScript,
+			vault,
 		);
 
 		const text = editor.getText();
@@ -96,6 +118,7 @@ describe("processFileAndInsertLink", () => {
 
 	it("inserts comment placeholder instantly and replaces it async when preProcess script is enabled", async () => {
 		const editor = createMockEditor();
+		const vault = createMockVault();
 		const file = new File(["test data"], "photo.png", {
 			type: "image/png",
 		});
@@ -108,6 +131,7 @@ describe("processFileAndInsertLink", () => {
 			"notes/regular.md",
 			mockEncryptPathPolicy,
 			mockPipelineWithScript,
+			vault,
 		);
 
 		// 检查立即插入的占位符
@@ -127,6 +151,7 @@ describe("processFileAndInsertLink", () => {
 
 	it("auto-encrypts pasted/inserted image async when note matches path rule", async () => {
 		const editor = createMockEditor();
+		const vault = createMockVault();
 		const file = new File(["test data"], "photo.png", {
 			type: "image/png",
 		});
@@ -139,6 +164,7 @@ describe("processFileAndInsertLink", () => {
 			"secret/confidential.md",
 			mockEncryptPathPolicy,
 			mockPipelineWithScript,
+			vault,
 		);
 
 		await new Promise((r) => window.setTimeout(r, 50));
@@ -152,6 +178,7 @@ describe("processFileAndInsertLink", () => {
 
 	it("auto-encrypts non-image file without ! embed prefix when note matches path rule", async () => {
 		const editor = createMockEditor();
+		const vault = createMockVault();
 		const file = new File(["test data"], "doc.pdf", {
 			type: "application/pdf",
 		});
@@ -164,6 +191,7 @@ describe("processFileAndInsertLink", () => {
 			"secret/confidential.md",
 			mockEncryptPathPolicy,
 			mockPipelineWithScript,
+			vault,
 		);
 
 		await new Promise((r) => window.setTimeout(r, 50));

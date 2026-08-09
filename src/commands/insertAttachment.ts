@@ -3,17 +3,20 @@ import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import IPFSLink from "#src/utils/IPFSLink";
+import defineLocales from "#src/utils/defineLocales";
 import {
 	createPreprocessPlaceholder,
-	replacePlaceholderInEditor,
 	replacePlaceholderInEditorOrVault,
+	type PlaceholderReplaceVault,
 } from "#src/utils/preprocessPlaceholder";
 
-// #region 辅助函数：插入占位符与格式化 IPFS 链接
-function insertPlaceholderAtCursor(editor: Editor, placeholder: string): void {
-	editor.replaceSelection(placeholder);
-}
+/** 插入附件所需的最小 Editor 接口 */
+type InsertAttachmentEditor = Pick<
+	Editor,
+	"replaceSelection" | "getValue" | "offsetToPos" | "replaceRange"
+>;
 
+// #region 辅助函数：格式化 IPFS 链接
 function formatIPFSLinkMarkdown(
 	fileToProcess: File,
 	fileToSave: File,
@@ -32,12 +35,12 @@ function formatIPFSLinkMarkdown(
 export async function processFileAndInsertLink(
 	cas: CAS,
 	dir: string,
-	editor: Editor,
+	editor: InsertAttachmentEditor,
 	file: File,
 	notePath: string,
 	encryptPathPolicy: EncryptPathPolicy,
 	pipeline: TransformPipeline,
-	app?: App,
+	vault: PlaceholderReplaceVault,
 ): Promise<void> {
 	// 1. 检查是否启用了预处理脚本（若没有脚本 URL 则无需占位符，直接即时落盘）
 	const scriptURL = pipeline.getScriptURL();
@@ -52,12 +55,9 @@ export async function processFileAndInsertLink(
 
 	// 2. 启用了预处理：瞬间生成唯一注释占位符并插入光标处（UI 0 延迟卡顿）
 	const { placeholder } = createPreprocessPlaceholder(file.name);
-	insertPlaceholderAtCursor(editor, placeholder);
+	editor.replaceSelection(placeholder);
 	// 传入 timeout 0 使 Notification 在预处理期间持续展示，避免超时提前消失
-	const notice = new Notice(
-		`[preprocess] 正在后台处理附件：${file.name}...`,
-		0,
-	);
+	const notice = new Notice(t("processing")(file.name), 0);
 
 	// 3. 启动后台异步任务进行转码、加密与落盘，完成后替换占位符
 	const backgroundProcess = async () => {
@@ -90,26 +90,22 @@ export async function processFileAndInsertLink(
 			);
 
 			// 替换编辑器或 Vault 磁盘中的占位符
-			if (app) {
-				await replacePlaceholderInEditorOrVault(
-					app,
-					notePath,
-					placeholder,
-					linkMarkdown,
-					editor,
-				);
-			} else {
-				// 在纯 Editor 上测试的降级路径
-				replacePlaceholderInEditor(editor, placeholder, linkMarkdown);
+			const replaced = await replacePlaceholderInEditorOrVault(
+				vault,
+				editor,
+				notePath,
+				placeholder,
+				linkMarkdown,
+			);
+			if (!replaced) {
+				new Notice(t("replaceFailed")(file.name, linkMarkdown));
 			}
 		} catch (err) {
 			console.warn(
 				"[preprocess] Pipeline failed, falling back to original file:",
 				err,
 			);
-			new Notice(
-				`[preprocess] 附件 ${file.name} 预处理失败，使用原图落盘`,
-			);
+			new Notice(t("processFailed")(file.name));
 		} finally {
 			notice.hide();
 		}
@@ -147,8 +143,27 @@ export default async function insertAttachment(
 			notePath,
 			encryptPathPolicy,
 			pipeline,
-			app,
+			app.vault,
 		);
 	}
 }
 // #endregion
+
+const { t } = defineLocales({
+	en: {
+		processing: (name: string) =>
+			`[preprocess] Preprocessing attachment: ${name}...`,
+		processFailed: (name: string) =>
+			`[preprocess] Preprocessing ${name} failed, falling back to original file`,
+		replaceFailed: (name: string, link: string) =>
+			`[preprocess] ${name} processed but its placeholder was not found; insert the link manually: ${link}`,
+	},
+	zh: {
+		processing: (name: string) =>
+			`[preprocess] 正在后台处理附件：${name}...`,
+		processFailed: (name: string) =>
+			`[preprocess] 附件 ${name} 预处理失败，使用原图落盘`,
+		replaceFailed: (name: string, link: string) =>
+			`[preprocess] 附件 ${name} 已处理完成，但未找到占位符自动替换，请手动插入：${link}`,
+	},
+});

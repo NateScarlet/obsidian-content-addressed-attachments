@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import type { Editor } from "obsidian";
+import { TFile } from "obsidian";
 import {
 	createPreprocessPlaceholder,
 	replacePlaceholderInContent,
 	replacePlaceholderInEditor,
+	replacePlaceholderInEditorOrVault,
+	type PlaceholderReplaceVault,
 } from "./preprocessPlaceholder";
 import findIPFSLinks from "./findIPFSLinks";
 
@@ -15,21 +17,38 @@ function posAt(text: string, offset: number) {
 
 type MockEditor = {
 	getValue: () => string;
-	setValue: (t: string) => void;
-	setCursor: (pos: { line: number; ch: number }) => void;
 	offsetToPos: (offset: number) => { line: number; ch: number };
+	replaceRange: (
+		replacement: string,
+		from: { line: number; ch: number },
+		to?: { line: number; ch: number },
+	) => void;
 	getText: () => string;
 };
 
 function createMockEditor(initialText: string): MockEditor {
 	let text = initialText;
+	const posToOffset = (pos: { line: number; ch: number }) => {
+		const lines = text.split("\n");
+		return (
+			lines.slice(0, pos.line).reduce((acc, l) => acc + l.length + 1, 0) +
+			pos.ch
+		);
+	};
 	return {
-		setValue: vi.fn((t: string) => {
-			text = t;
-		}),
 		getValue: vi.fn(() => text),
-		setCursor: vi.fn(),
 		offsetToPos: vi.fn((offset: number) => posAt(text, offset)),
+		replaceRange: vi.fn(
+			(
+				t: string,
+				from: { line: number; ch: number },
+				to?: { line: number; ch: number },
+			) => {
+				const start = posToOffset(from);
+				const end = to ? posToOffset(to) : start;
+				text = text.slice(0, start) + t + text.slice(end);
+			},
+		),
 		getText: () => text,
 	};
 }
@@ -91,17 +110,16 @@ describe("preprocessPlaceholder", () => {
 		const editor = createMockEditor("# Note\n\nNo placeholder here");
 
 		const replaced = replacePlaceholderInEditor(
-			editor as unknown as Editor,
+			editor,
 			placeholder,
 			"![test.png](ipfs://bafkreidummy)",
 		);
 
 		expect(replaced).toBe(false);
-		expect(editor.setValue).not.toHaveBeenCalled();
-		expect(editor.setCursor).not.toHaveBeenCalled();
+		expect(editor.replaceRange).not.toHaveBeenCalled();
 	});
 
-	it("keeps cursor at the end of the replaced link instead of resetting to file start", () => {
+	it("replaces the placeholder range via replaceRange, keeping cursor in place", () => {
 		const { placeholder } = createPreprocessPlaceholder("test.png");
 		const prefix = "# Heading\n\nIntro text\n\n";
 		const suffix = "\n\nOutro text";
@@ -110,18 +128,117 @@ describe("preprocessPlaceholder", () => {
 		const replacement = "![test.png](ipfs://bafkreidummy)";
 
 		const replaced = replacePlaceholderInEditor(
-			editor as unknown as Editor,
+			editor,
 			placeholder,
 			replacement,
 		);
 
 		expect(replaced).toBe(true);
 		expect(editor.getText()).toBe(`${prefix}${replacement}${suffix}`);
-		// 占位符被替换为更长的链接，光标应位于替换后链接的末尾，
-		// 而不是被 setValue 重置到文档开头
-		const expectedOffset = prefix.length + replacement.length;
-		expect(editor.setCursor).toHaveBeenCalledWith(
-			posAt(editor.getText(), expectedOffset),
+		// 仅局部替换占位符区间，光标由 CodeMirror 事务保留在替换文本末尾
+		expect(editor.replaceRange).toHaveBeenCalledWith(
+			replacement,
+			posAt(content, prefix.length),
+			posAt(content, prefix.length + placeholder.length),
 		);
+	});
+});
+
+describe("replacePlaceholderInEditorOrVault", () => {
+	const { placeholder } = createPreprocessPlaceholder("test.png");
+	const replacement = "![test.png](ipfs://bafkreidummy)";
+
+	it("replaces in editor when placeholder is still there", async () => {
+		const editor = createMockEditor(`# Note\n\n${placeholder}\nEnd`);
+		const vault: PlaceholderReplaceVault = {
+			getAbstractFileByPath: vi.fn(),
+			process: vi.fn(),
+		};
+
+		const replaced = await replacePlaceholderInEditorOrVault(
+			vault,
+			editor,
+			"notes/regular.md",
+			placeholder,
+			replacement,
+		);
+
+		expect(replaced).toBe(true);
+		expect(editor.getText()).toBe(`# Note\n\n${replacement}\nEnd`);
+		expect(vault.getAbstractFileByPath).not.toHaveBeenCalled();
+	});
+
+	it("falls back to vault file when editor no longer holds the placeholder", async () => {
+		const editor = createMockEditor("# Note\n\nNo placeholder here");
+		const file = new TFile();
+		file.path = "notes/regular.md";
+		const vault: PlaceholderReplaceVault = {
+			getAbstractFileByPath: vi.fn().mockReturnValue(file),
+			process: vi
+				.fn()
+				.mockImplementation(
+					(_file: TFile, fn: (content: string) => string) =>
+						Promise.resolve(fn(`# Note\n\n${placeholder}\nEnd`)),
+				),
+		};
+
+		const replaced = await replacePlaceholderInEditorOrVault(
+			vault,
+			editor,
+			"notes/regular.md",
+			placeholder,
+			replacement,
+		);
+
+		expect(replaced).toBe(true);
+		expect(vault.getAbstractFileByPath).toHaveBeenCalledWith(
+			"notes/regular.md",
+		);
+		expect(vault.process).toHaveBeenCalledWith(file, expect.any(Function));
+	});
+
+	it("returns false when placeholder is found in neither editor nor vault", async () => {
+		const editor = createMockEditor("# Note\n\nNo placeholder here");
+		const file = new TFile();
+		file.path = "notes/regular.md";
+		const vault: PlaceholderReplaceVault = {
+			getAbstractFileByPath: vi.fn().mockReturnValue(file),
+			process: vi
+				.fn()
+				.mockImplementation(
+					(_file: TFile, fn: (content: string) => string) =>
+						Promise.resolve(fn("# Note\n\nStill nothing")),
+				),
+		};
+
+		const replaced = await replacePlaceholderInEditorOrVault(
+			vault,
+			editor,
+			"notes/regular.md",
+			placeholder,
+			replacement,
+		);
+
+		expect(replaced).toBe(false);
+	});
+
+	it("returns false without touching vault when notePath is empty", async () => {
+		const editor = createMockEditor("# Note\n\nNo placeholder here");
+		const vault: PlaceholderReplaceVault = {
+			getAbstractFileByPath: vi.fn(),
+			process: vi.fn(),
+		};
+
+		const replaced = await replacePlaceholderInEditorOrVault(
+			vault,
+			editor,
+			"",
+			placeholder,
+			replacement,
+		);
+
+		expect(replaced).toBe(false);
+		expect(vault.getAbstractFileByPath).not.toHaveBeenCalled();
+		expect(vault.process).not.toHaveBeenCalled();
 	});
 });

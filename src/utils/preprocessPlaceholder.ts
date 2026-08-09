@@ -1,5 +1,17 @@
-import type { App, Editor } from "obsidian";
-import { MarkdownView, TFile } from "obsidian";
+import type { Editor, Vault } from "obsidian";
+import { TFile } from "obsidian";
+
+/** Vault 占位符替换所需的最小接口 */
+export type PlaceholderReplaceVault = Pick<
+	Vault,
+	"getAbstractFileByPath" | "process"
+>;
+
+/** Editor 占位符替换所需的最小接口 */
+export type PlaceholderReplaceEditor = Pick<
+	Editor,
+	"getValue" | "offsetToPos" | "replaceRange"
+>;
 
 // #region 递增序列号与生成器
 let sequence = 0;
@@ -94,93 +106,73 @@ export function replacePlaceholderInContent(
 }
 
 /**
- * 在编辑器中替换占位符，并通过内容长度变化量恢复光标位置。
+ * 在编辑器中局部替换占位符区间。
  *
- * `setValue` 整体重写文档会把光标重置到开头；这里先记录占位符起始偏移，
- * 替换后把光标定位到替换文本末尾，保持插入位置不漂移。
+ * 通过 `replaceRange` 仅改写占位符区间，CodeMirror 事务自动把光标保持在替换文本末尾，
+ * 若用户已把光标移到他处则不被强制跳回。
  *
  * 返回是否发生了替换。
  */
 export function replacePlaceholderInEditor(
-	editor: Editor,
+	editor: PlaceholderReplaceEditor,
 	placeholder: string,
 	replacement: string,
 ): boolean {
-	const currentContent = editor.getValue();
-	const updatedContent = replacePlaceholderInContent(
-		currentContent,
-		placeholder,
-		replacement,
-	);
-	if (updatedContent === currentContent) {
+	const content = editor.getValue();
+	const offset = findPlaceholderOffset(content, placeholder);
+	if (offset < 0) {
 		return false;
 	}
 
-	// 占位符起始偏移，加上替换文本长度即得替换后该处末尾的全局偏移
-	const placeholderOffset = findPlaceholderOffset(
-		currentContent,
-		placeholder,
+	editor.replaceRange(
+		replacement,
+		editor.offsetToPos(offset),
+		editor.offsetToPos(offset + placeholder.length),
 	);
-	editor.setValue(updatedContent);
-	if (placeholderOffset >= 0) {
-		const newOffset = Math.min(
-			placeholderOffset + replacement.length,
-			updatedContent.length,
-		);
-		editor.setCursor(editor.offsetToPos(newOffset));
-	}
-
 	return true;
 }
 // #endregion
 
 // #region 编辑器与 Vault 异步落盘替换
 /**
- * 在编辑器视图或磁盘文件 Vault 中搜索并替换占位符。
+ * 替换编辑器或磁盘 Vault 中的占位符。
  *
- * 1. 若给定的 notePath 正处于活态 MarkdownView 的 Editor 中，使用 Editor 操作无缝替换；
- * 2. 否则通过 app.vault.process 修改磁盘上对应的 TFile。
+ * 1. 优先在传入的 Editor 中局部替换（view 仍打开时保留光标）；
+ * 2. 若占位符已不在 Editor 中（view 被关闭、内容已落盘），回退到 Vault 磁盘文件替换；
+ * 3. 两处都未找到占位符时返回 false，由调用方显式通知用户。
+ *
+ * @returns 是否成功替换占位符
  */
 export async function replacePlaceholderInEditorOrVault(
-	app: App,
+	vault: PlaceholderReplaceVault,
+	editor: PlaceholderReplaceEditor,
 	notePath: string,
 	placeholder: string,
 	replacement: string,
-	fallbackEditor?: Editor,
-): Promise<void> {
-	// 1. 尝试在所有活动 Markdown 视图的 Editor 中查找并替换
-	const leaves = app.workspace.getLeavesOfType("markdown");
-	for (const leaf of leaves) {
-		const view = leaf.view;
-		if (view instanceof MarkdownView) {
-			if (!notePath || view.file?.path === notePath) {
-				const editor: Editor = view.editor;
-				if (
-					replacePlaceholderInEditor(editor, placeholder, replacement)
-				) {
-					return;
-				}
-			}
-		}
+): Promise<boolean> {
+	// 1. 编辑器优先（view 仍打开时保留光标）
+	if (replacePlaceholderInEditor(editor, placeholder, replacement)) {
+		return true;
 	}
 
-	// 2. 尝试在 fallbackEditor 句柄中直接替换
-	if (fallbackEditor) {
-		if (
-			replacePlaceholderInEditor(fallbackEditor, placeholder, replacement)
-		) {
-			return;
-		}
-	}
-
-	// 3. 若处于后台或离线状态，通过 Vault 磁盘文件修改
+	// 2. 编辑器已被关闭/内容已落盘，回退到 Vault 磁盘文件修改
 	if (notePath) {
-		const file = app.vault.getAbstractFileByPath(notePath);
+		const file = vault.getAbstractFileByPath(notePath);
 		if (file instanceof TFile) {
-			await app.vault.process(file, (content) =>
-				replacePlaceholderInContent(content, placeholder, replacement),
-			);
+			let changed = false;
+			await vault.process(file, (content: string) => {
+				const updated = replacePlaceholderInContent(
+					content,
+					placeholder,
+					replacement,
+				);
+				changed = updated !== content;
+				return updated;
+			});
+			return changed;
 		}
 	}
+
+	return false;
 }
 // #endregion

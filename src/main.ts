@@ -194,7 +194,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							notePath,
 							this.encryptPathPolicy,
 							this.pipeline,
-							this.app,
+							this.app.vault,
 						);
 					}
 				}
@@ -220,7 +220,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							notePath,
 							this.encryptPathPolicy,
 							this.pipeline,
-							this.app,
+							this.app.vault,
 						);
 					}
 				}
