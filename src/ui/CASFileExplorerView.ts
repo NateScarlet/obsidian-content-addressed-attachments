@@ -7,7 +7,8 @@ import defineLocales from "../utils/defineLocales";
 export const CAS_FILE_EXPLORER_VIEW_TYPE = "cas-file-explorer-8974b7f23c81";
 
 export class CASFileExplorerView extends ItemView {
-	private component?: CASFileExplorer;
+	/** Svelte 5 组件实例（mount 返回值；CASFileExplorer 无导出字段） */
+	private component?: Record<string, unknown>;
 
 	constructor(
 		leaf: WorkspaceLeaf,
