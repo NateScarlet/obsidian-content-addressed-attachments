@@ -61,6 +61,14 @@ describe("processFileAndInsertLink", () => {
 			setCursor: vi.fn(),
 			getSelection: vi.fn().mockReturnValue(""),
 			getLine: vi.fn().mockReturnValue(""),
+			offsetToPos: vi.fn((offset: number) => {
+				const before = text.slice(0, offset);
+				const lines = before.split("\n");
+				return {
+					line: lines.length - 1,
+					ch: lines[lines.length - 1].length,
+				};
+			}),
 			getText: () => text,
 		} as unknown as Editor & { getText: () => string };
 	}

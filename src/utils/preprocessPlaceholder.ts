@@ -40,6 +40,33 @@ export function extractBlockIdFromPlaceholder(
 }
 
 /**
+ * 找出占位符（精确字符串匹配或 Block ID 行匹配）在内容中的起始偏移。
+ * 找不到时返回 -1。
+ */
+export function findPlaceholderOffset(
+	content: string,
+	placeholder: string,
+): number {
+	// 精确字符串匹配
+	const exact = content.indexOf(placeholder);
+	if (exact >= 0) {
+		return exact;
+	}
+
+	// 提取 Block ID 进行保底行匹配
+	const blockId = extractBlockIdFromPlaceholder(placeholder);
+	if (blockId) {
+		const regex = new RegExp(`%%[^\n]*\\^${blockId}[^\n]*%%`);
+		const match = regex.exec(content);
+		if (match?.index !== undefined) {
+			return match.index;
+		}
+	}
+
+	return -1;
+}
+
+/**
  * 在 Markdown 内容中将占位符替换为最终的目标文本。
  *
  * 优先匹配全量 placeholder 字符串；若未精确匹配，尝试提取 ID 并按 Block ID 所在行替换。
@@ -65,6 +92,46 @@ export function replacePlaceholderInContent(
 
 	return content;
 }
+
+/**
+ * 在编辑器中替换占位符，并通过内容长度变化量恢复光标位置。
+ *
+ * `setValue` 整体重写文档会把光标重置到开头；这里先记录占位符起始偏移，
+ * 替换后把光标定位到替换文本末尾，保持插入位置不漂移。
+ *
+ * 返回是否发生了替换。
+ */
+export function replacePlaceholderInEditor(
+	editor: Editor,
+	placeholder: string,
+	replacement: string,
+): boolean {
+	const currentContent = editor.getValue();
+	const updatedContent = replacePlaceholderInContent(
+		currentContent,
+		placeholder,
+		replacement,
+	);
+	if (updatedContent === currentContent) {
+		return false;
+	}
+
+	// 占位符起始偏移，加上替换文本长度即得替换后该处末尾的全局偏移
+	const placeholderOffset = findPlaceholderOffset(
+		currentContent,
+		placeholder,
+	);
+	editor.setValue(updatedContent);
+	if (placeholderOffset >= 0) {
+		const newOffset = Math.min(
+			placeholderOffset + replacement.length,
+			updatedContent.length,
+		);
+		editor.setCursor(editor.offsetToPos(newOffset));
+	}
+
+	return true;
+}
 // #endregion
 
 // #region 编辑器与 Vault 异步落盘替换
@@ -88,14 +155,9 @@ export async function replacePlaceholderInEditorOrVault(
 		if (view instanceof MarkdownView) {
 			if (!notePath || view.file?.path === notePath) {
 				const editor: Editor = view.editor;
-				const currentContent = editor.getValue();
-				const newContent = replacePlaceholderInContent(
-					currentContent,
-					placeholder,
-					replacement,
-				);
-				if (newContent !== currentContent) {
-					editor.setValue(newContent);
+				if (
+					replacePlaceholderInEditor(editor, placeholder, replacement)
+				) {
 					return;
 				}
 			}
@@ -104,14 +166,9 @@ export async function replacePlaceholderInEditorOrVault(
 
 	// 2. 尝试在 fallbackEditor 句柄中直接替换
 	if (fallbackEditor) {
-		const currentContent = fallbackEditor.getValue();
-		const newContent = replacePlaceholderInContent(
-			currentContent,
-			placeholder,
-			replacement,
-		);
-		if (newContent !== currentContent) {
-			fallbackEditor.setValue(newContent);
+		if (
+			replacePlaceholderInEditor(fallbackEditor, placeholder, replacement)
+		) {
 			return;
 		}
 	}

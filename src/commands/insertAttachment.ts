@@ -5,7 +5,7 @@ import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import IPFSLink from "#src/utils/IPFSLink";
 import {
 	createPreprocessPlaceholder,
-	replacePlaceholderInContent,
+	replacePlaceholderInEditor,
 	replacePlaceholderInEditorOrVault,
 } from "#src/utils/preprocessPlaceholder";
 
@@ -100,15 +100,7 @@ export async function processFileAndInsertLink(
 				);
 			} else {
 				// 在纯 Editor 上测试的降级路径
-				const currentText = editor.getValue();
-				const updatedText = replacePlaceholderInContent(
-					currentText,
-					placeholder,
-					linkMarkdown,
-				);
-				if (updatedText !== currentText) {
-					editor.setValue(updatedText);
-				}
+				replacePlaceholderInEditor(editor, placeholder, linkMarkdown);
 			}
 		} catch (err) {
 			console.warn(
