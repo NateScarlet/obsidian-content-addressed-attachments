@@ -1,6 +1,6 @@
-# Obsidian Content-Addressed Attachments Plugin
-
 [简体中文](./README.zh.md)
+
+# Obsidian Content-Addressed Attachments Plugin
 
 Implements content-addressed storage for attachments, providing IPFS-like functionality with local and external gateway/file-hosting support.
 
@@ -59,7 +59,6 @@ Automatically transform attachments (e.g. image format conversion, quality tunin
 
 3. **Developing & Contributing Custom Scripts**:
    - Learn how to author ESM transformation scripts or JSON manifests in the [Script Development Guide](./docs/preprocess-scripts.en.md).
-   - Chinese guide: [预处理脚本开发指南](./docs/preprocess-scripts.zh-CN.md) (also available in [README.zh.md](./README.zh.md)).
 
 ### Locking Web Images
 

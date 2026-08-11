@@ -17,7 +17,7 @@ type InsertAttachmentEditor = Pick<
 	"replaceSelection" | "getValue" | "offsetToPos" | "replaceRange"
 >;
 
-// #region 辅助函数：格式化 IPFS 链接
+// #region 插入附件：链接格式化与处理主流程
 function formatIPFSLinkMarkdown(
 	fileToProcess: File,
 	fileToSave: File,
@@ -30,9 +30,7 @@ function formatIPFSLinkMarkdown(
 	});
 	return link.toMarkdown(fileToProcess.type.startsWith("image/"));
 }
-// #endregion
 
-// #region 核心处理主流程
 export async function processFileAndInsertLink(
 	cas: CAS,
 	dir: string,
@@ -62,17 +60,6 @@ export async function processFileAndInsertLink(
 
 	// 3. 启动后台异步任务进行转码、加密与落盘，完成后替换占位符
 	const backgroundProcess = async () => {
-		/** 加密并保存文件，返回落盘后的 Markdown 链接 */
-		const saveAndFormatLink = async (fileToProcess: File) => {
-			const fileToSave =
-				(await encryptPathPolicy.ensureEncrypted(
-					fileToProcess,
-					notePath,
-				)) ?? fileToProcess;
-			const { cid } = await cas.save(dir, fileToSave);
-			return formatIPFSLinkMarkdown(fileToProcess, fileToSave, cid);
-		};
-
 		const input = {
 			data: await file.arrayBuffer(),
 			mimeType: file.type,
@@ -80,17 +67,14 @@ export async function processFileAndInsertLink(
 		};
 
 		// 只有管线执行失败才回退到原始文件；加密/落盘错误原样向上抛，交由外层处理
-		let result: Awaited<ReturnType<TransformPipeline["run"]>>;
-		try {
-			result = await pipeline.run(input);
-		} catch (err) {
+		const result = await pipeline.run(input).catch((err) => {
 			console.warn(
 				"[preprocess] Pipeline failed, falling back to original file:",
 				err,
 			);
-			result = undefined;
 			new Notice(t("processFailed")(file.name));
-		}
+			return undefined;
+		});
 
 		// 管线返回 undefined（脚本放弃转换）或失败时都用原始文件落盘
 		const fileToProcess = result
@@ -98,7 +82,17 @@ export async function processFileAndInsertLink(
 					type: result.mimeType,
 				})
 			: file;
-		const linkMarkdown = await saveAndFormatLink(fileToProcess);
+		const fileToSave =
+			(await encryptPathPolicy.ensureEncrypted(
+				fileToProcess,
+				notePath,
+			)) ?? fileToProcess;
+		const { cid } = await cas.save(dir, fileToSave);
+		const linkMarkdown = formatIPFSLinkMarkdown(
+			fileToProcess,
+			fileToSave,
+			cid,
+		);
 		notice.hide();
 
 		// 替换编辑器或 Vault 磁盘中的占位符
@@ -118,7 +112,8 @@ export async function processFileAndInsertLink(
 	void backgroundProcess().catch((err) => {
 		notice.hide();
 		console.error("[preprocess] Failed to save attachment:", err);
-		new Notice(t("saveFailed")(file.name));
+		const errorMessage = err instanceof Error ? err.message : String(err);
+		new Notice(t("saveFailed")(file.name, errorMessage));
 	});
 }
 
@@ -162,8 +157,8 @@ const { t } = defineLocales({
 			`[preprocess] Preprocessing attachment: ${name}...`,
 		processFailed: (name: string) =>
 			`[preprocess] Preprocessing ${name} failed, falling back to original file`,
-		saveFailed: (name: string) =>
-			`[preprocess] Failed to save attachment ${name}; insert it manually`,
+		saveFailed: (name: string, error: string) =>
+			`[preprocess] Failed to save attachment ${name}: ${error}`,
 		replaceFailed: (name: string, link: string) =>
 			`[preprocess] ${name} processed but its placeholder was not found; insert the link manually: ${link}`,
 	},
@@ -172,8 +167,8 @@ const { t } = defineLocales({
 			`[preprocess] 正在后台处理附件：${name}...`,
 		processFailed: (name: string) =>
 			`[preprocess] 附件 ${name} 预处理失败，使用原图落盘`,
-		saveFailed: (name: string) =>
-			`[preprocess] 附件 ${name} 落盘失败，请手动插入`,
+		saveFailed: (name: string, error: string) =>
+			`[preprocess] 附件 ${name} 落盘失败：${error}`,
 		replaceFailed: (name: string, link: string) =>
 			`[preprocess] 附件 ${name} 已处理完成，但未找到占位符自动替换，请手动插入：${link}`,
 	},

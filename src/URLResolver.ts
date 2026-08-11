@@ -181,14 +181,14 @@ export class URLResolver {
 		if (isVaultRelative || isNetworkURL) {
 			const { result } = await this.flight.do(rawURL, () => {
 				return isVaultRelative
-					? this.resolveVaultRelative(rawURL)
+					? this.resolveVaultRelativePath(rawURL)
 					: this.resolveHTTP(rawURL);
 			});
 			return result;
 		}
 
-		// file:// 与绝对路径不在 spec 支持范围内（adapter.readBinary 不支持），明确报错
-		if (rawURL.startsWith("file://") || /^[a-zA-Z]:[\\/]/.test(rawURL)) {
+		// 白名单检查：至此仅接受 ipfs://，其余协议明确报错
+		if (!rawURL.startsWith("ipfs://")) {
 			throw new Error(
 				`Unsupported URL: ${rawURL}. Only vault-relative, http(s), ipfs:// and internal.ipfs-locked: URLs are supported.`,
 			);
@@ -245,53 +245,49 @@ export class URLResolver {
 
 	/**
 	 * 读取 vault-relative 路径的文件，计算 CID 并返回 ResolveURLResult。
-	 * vault-relative 路径没有 scheme（如 "path/to/file.js"），
+	 * 本方法仅接收 vault-relative 路径（无 scheme，如 "path/to/file.js"），
 	 * 文件已在 vault 中，无需保存到 CAS。
 	 */
-	private async resolveVaultRelative(
-		rawURL: string,
+	private async resolveVaultRelativePath(
+		relPath: string,
 	): Promise<ResolveURLResult | undefined> {
 		// 文件不存在是合法结果（脚本未配置/未同步），其他读取错误应让调用方可见
-		if (!(await this.app.vault.adapter.exists(rawURL))) {
+		if (!(await this.app.vault.adapter.exists(relPath))) {
 			return undefined;
 		}
-		const content = await this.app.vault.adapter.readBinary(rawURL);
+		const content = await this.app.vault.adapter.readBinary(relPath);
 		const cid = await computeCID(content);
 		return {
-			path: rawURL,
-			url: this.app.vault.adapter.getResourcePath(rawURL),
+			path: relPath,
+			url: this.app.vault.adapter.getResourcePath(relPath),
 			cid,
 		};
 	}
 
 	/**
 	 * 下载 HTTP(S) URL 的内容，保存到 CAS 并返回 ResolveURLResult。
+	 * 网络/存储错误原样向上抛，由调用方决定如何处理。
 	 */
 	private async resolveHTTP(
 		rawURL: string,
 	): Promise<ResolveURLResult | undefined> {
-		try {
-			const resp = await requestUrl({
-				url: rawURL,
-				throw: false,
-			});
-			if (resp.status !== 200) return undefined;
-			const dir =
-				this.settings().downloadDir || this.settings().primaryDir;
-			const file = new File(
-				[resp.arrayBuffer],
-				rawURL.split("/").pop() || "download",
-			);
-			const { cid } = await this.cas.save(dir, file);
-			const path = this.cas.formatNormalizePath(dir, cid);
-			return {
-				path,
-				url: this.app.vault.adapter.getResourcePath(path),
-				cid,
-			};
-		} catch {
-			return undefined;
-		}
+		const resp = await requestUrl({
+			url: rawURL,
+			throw: false,
+		});
+		if (resp.status !== 200) return undefined;
+		const dir = this.settings().downloadDir || this.settings().primaryDir;
+		const file = new File(
+			[resp.arrayBuffer],
+			rawURL.split("/").pop() || "download",
+		);
+		const { cid } = await this.cas.save(dir, file);
+		const path = this.cas.formatNormalizePath(dir, cid);
+		return {
+			path,
+			url: this.app.vault.adapter.getResourcePath(path),
+			cid,
+		};
 	}
 
 	private async doResolveURL(

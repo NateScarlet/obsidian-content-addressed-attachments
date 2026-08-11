@@ -51,4 +51,6 @@ export interface ScriptLoader {
 	loadScript(scriptURL: string): Promise<PreProcessScriptModule | undefined>;
 	/** 获取参数 */
 	getParams(scriptURL: string): URLSearchParams;
+	/** 清空已加载模块缓存 */
+	clearCache(): void;
 }

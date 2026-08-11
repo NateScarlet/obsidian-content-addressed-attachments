@@ -90,4 +90,17 @@ describe("URLResolver", () => {
 		// Result URL should be a blob URL, NOT the raw ciphertext app:// URL
 		expect(result?.url).toMatch(/^blob:/);
 	});
+
+	it("rejects unsupported URL protocols with a clear error", async () => {
+		for (const rawURL of [
+			"file:///C:/tmp/script.js",
+			"ftp://example.com/script.js",
+			"anyprotocol:abc",
+			"C:\\tmp\\script.js",
+		]) {
+			await expect(resolver.resolveURL(rawURL)).rejects.toThrow(
+				"Unsupported URL",
+			);
+		}
+	});
 });

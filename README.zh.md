@@ -1,6 +1,6 @@
-# Obsidian 内容寻址附件插件
-
 [English](./README.md)
+
+# Obsidian 内容寻址附件插件
 
 为附件实现内容寻址存储，提供类 IPFS 的功能，支持本地存储与外部网关/文件托管。
 
@@ -59,7 +59,6 @@
 
 3. **开发与贡献自定义脚本**：
    - 了解如何编写 ESM 转换脚本或 JSON 清单：[预处理脚本开发指南](./docs/preprocess-scripts.zh-CN.md)。
-   - 英文版：[Script Development Guide](./docs/preprocess-scripts.en.md)（也参见 [English README](./README.md)）。
 
 ### 锁定网络图片
 

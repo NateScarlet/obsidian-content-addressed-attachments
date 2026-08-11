@@ -9,7 +9,6 @@ import { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
-import type KeyManager from "#src/lib/encryption/KeyManager";
 import ProgressModal from "#src/ui/ProgressModal";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
 import { trashIfUnreferenced } from "./trashIfUnreferenced";
@@ -29,7 +28,6 @@ const { t } = defineLocales({
 			`Reprocessed ${count} attachment(s)`,
 		reprocessProgress: (current: number, total: number) =>
 			`Reprocessing attachment ${current}/${total}`,
-		noScriptConfigured: "No pre-processing script configured",
 		noAttachmentsFound: "No attachments found to reprocess",
 	},
 	zh: {
@@ -43,7 +41,6 @@ const { t } = defineLocales({
 		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
 		reprocessProgress: (current: number, total: number) =>
 			`正在重新处理附件 ${current}/${total}`,
-		noScriptConfigured: "未配置预处理脚本",
 		noAttachmentsFound: "未找到需要重新处理的附件",
 	},
 });
@@ -56,10 +53,8 @@ export interface ReprocessContext {
 	encryptionService: EncryptionService;
 	urlResolver: URLResolver;
 	referenceManager: ReferenceManager;
-	keyManager: KeyManager;
 	encryptPathPolicy: EncryptPathPolicy;
 	pipeline: TransformPipeline;
-	scriptURL: string;
 	dir: string;
 }
 
@@ -75,11 +70,6 @@ async function reprocessSingleLink(
 	linkText: string,
 	notePath: string,
 ): Promise<string | undefined> {
-	if (!ctx.scriptURL) {
-		new Notice(t("noScriptConfigured"));
-		return undefined;
-	}
-
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed) return undefined;
 
@@ -92,17 +82,14 @@ async function reprocessSingleLink(
 	);
 	if (!buffer) return undefined;
 
-	// ensureDecrypted 内部已实现"如果文件是加密的，先解密"，
-	// 这里不再根据链接的 format 参数重复判断是否加密，直接用其结果
+	// ensureDecrypted 负责解密：文件为密文时返回解密后的数据与 MIME 类型，
+	// 否则原样返回数据，MIME 类型按链接解析
 	const decrypted = await ctx.encryptionService.ensureDecrypted(buffer);
 	const plaintext = decrypted.data;
 	const originalMimeType =
 		decrypted.layers.length > 0
 			? decrypted.mimeType
 			: parsed.resolveMimeType();
-
-	// 记录原链接是否有 filename 参数，避免处理后无端多出 filename=file
-	const hasOriginalFilename = !!parsed.filename;
 
 	// 运行管线
 	const result = await ctx.pipeline.run({
@@ -142,24 +129,20 @@ async function reprocessSingleLink(
 		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid);
 	}
 
-	// 原链接没有 filename 参数时，输出链接也保持不携带 filename
+	// 输出链接携带脚本返回的文件名；脚本返回空（原样传递空文件名）时保持不携带
 	return new IPFSLink({
 		cid: newCid,
-		filename: hasOriginalFilename ? fileToSave.name : "",
+		filename: fileToSave.name,
 		format: fileToSave.type,
 	}).toURL();
 }
 
 //#endregion
 
-//#region Single-flight guard
+//#region Public commands
 
 /** 防止并发重新处理 */
 const reprocessFlight = new SingleFlightGroup<number>();
-
-//#endregion
-
-//#region Public commands
 
 /**
  * 重新处理当前笔记的所有附件引用。

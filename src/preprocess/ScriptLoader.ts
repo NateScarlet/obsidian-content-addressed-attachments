@@ -6,6 +6,7 @@ import type {
 import type { DataAdapter } from "obsidian";
 import { CID } from "multiformats/cid";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
+import { stripFragment } from "./stripFragment";
 
 /** 使用 URL 构造函数解析获取 params */
 function parseURLSearchParams(url: string): {
@@ -18,7 +19,7 @@ function parseURLSearchParams(url: string): {
 	}
 	const fragment = url.slice(hashIndex + 1);
 	return {
-		baseURL: url.slice(0, hashIndex),
+		baseURL: stripFragment(url),
 		params: new URLSearchParams(fragment),
 	};
 }
@@ -57,10 +58,12 @@ async function ensureDir(
 	}
 	try {
 		await adapter.mkdir(normalized);
-	} catch {
+	} catch (err) {
 		// 并发创建时 mkdir 可能失败，重新确认目录确实存在，否则让错误传播
 		if (!(await adapter.exists(normalized))) {
-			throw new Error(`Failed to create directory: ${normalized}`);
+			throw new Error(`Failed to create directory: ${normalized}`, {
+				cause: err,
+			});
 		}
 	}
 }
@@ -108,6 +111,22 @@ export default class DefaultScriptLoader implements ScriptLoader {
 		this.moduleCache.clear();
 	}
 
+	/**
+	 * 从本地文件路径动态 import 脚本模块。
+	 * servable URL 可能携带 fragment 参数，import 前需去除。
+	 */
+	private async loadModuleFromPath(
+		localPath: string,
+	): Promise<PreProcessScriptModule> {
+		const servableURL = this.options.adapter.getResourcePath(localPath);
+		const cleanURL = stripFragment(servableURL);
+		// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
+		const mod: PreProcessScriptModule = await import(
+			/* @vite-ignore */ cleanURL
+		);
+		return mod;
+	}
+
 	private async doLoadScript(
 		scriptURL: string,
 	): Promise<PreProcessScriptModule | undefined> {
@@ -122,40 +141,31 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			// read 对不存在的文件返回 undefined，不需要 try/catch 处理
 			const content = await this.options.adapter.read(localPath);
 			if (content?.trimStart().startsWith("{")) {
+				// 内容以 { 开头即视为清单，非法清单直接报错而不是静默回退到单文件加载
 				const manifest = JSON.parse(content) as ScriptManifest;
-				// 下载前检查清单合法：entry 必须是 files 中的 key，避免下载完才发现无效
 				if (
-					manifest.entry &&
-					manifest.files &&
-					manifest.files[manifest.entry]
+					!manifest.entry ||
+					!manifest.files ||
+					!manifest.files[manifest.entry]
 				) {
-					const baseDir = await this.materializeManifest(
-						manifest,
-						resolved.cid,
+					throw new Error(
+						`[preprocess] Invalid manifest: entry must be a key in files: ${scriptURL}`,
 					);
-					if (baseDir) {
-						const entryPath = `${baseDir}/${manifest.entry}`;
-						const servableURL =
-							this.options.adapter.getResourcePath(entryPath);
-						const cleanURL = servableURL.split("#")[0];
-						// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
-						const mod: PreProcessScriptModule = await import(
-							/* @vite-ignore */ cleanURL
-						);
-						return mod;
-					}
-					return undefined;
 				}
+				const baseDir = await this.materializeManifest(
+					manifest,
+					resolved.cid,
+				);
+				if (!baseDir) {
+					throw new Error(
+						`[preprocess] Failed to materialize manifest: ${scriptURL}`,
+					);
+				}
+				return this.loadModuleFromPath(`${baseDir}/${manifest.entry}`);
 			}
 
 			// 普通单文件脚本
-			const servableURL = this.options.adapter.getResourcePath(localPath);
-			const cleanURL = servableURL.split("#")[0];
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, no-unsanitized/method
-			const mod: PreProcessScriptModule = await import(
-				/* @vite-ignore */ cleanURL
-			);
-			return mod;
+			return this.loadModuleFromPath(localPath);
 		} catch (err) {
 			console.warn(
 				`[preprocess] Failed to load script: ${scriptURL}`,
@@ -163,7 +173,10 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			);
 			throw err instanceof Error
 				? err
-				: new Error(`[preprocess] Failed to load script: ${scriptURL}`);
+				: new Error(
+						`[preprocess] Failed to load script: ${scriptURL}`,
+						{ cause: err },
+					);
 		}
 	}
 

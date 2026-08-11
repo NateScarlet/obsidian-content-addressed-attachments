@@ -53,7 +53,7 @@ export default class TransformPipeline {
 			return undefined;
 		}
 
-		assertScriptOutput(result, scriptURL);
+		assertScriptOutput(result, input, scriptURL);
 
 		return {
 			data: result.data,

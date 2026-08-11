@@ -14,6 +14,7 @@ describe("TransformPipeline", () => {
 		return {
 			loadScript: vi.fn().mockResolvedValue(module),
 			getParams: vi.fn().mockReturnValue(urlSearchParams),
+			clearCache: vi.fn(),
 		};
 	}
 
@@ -203,6 +204,7 @@ describe("TransformPipeline", () => {
 		const loader = {
 			loadScript: vi.fn().mockResolvedValue({ default: defaultFn }),
 			getParams: vi.fn().mockReturnValue(urlSearchParams),
+			clearCache: vi.fn(),
 		};
 		const pipeline = new TransformPipeline(
 			loader,

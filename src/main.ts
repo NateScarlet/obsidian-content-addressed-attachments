@@ -50,6 +50,7 @@ import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import DefaultScriptLoader from "./preprocess/ScriptLoader";
+import type { ScriptLoader } from "./preprocess/types";
 import createScriptLoaderOptions from "./preprocess/createScriptLoaderOptions";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
@@ -72,7 +73,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public migrationManager!: MigrationManager;
 	public lockManager!: LockManager;
 	public pipeline!: TransformPipeline;
-	public scriptLoader!: DefaultScriptLoader;
+	public scriptLoader!: ScriptLoader;
 
 	private placeholderImageURL!: string;
 	private notFoundImageURL!: string;
@@ -432,10 +433,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			encryptionService: this.encryptionService,
 			urlResolver: this.urlResolver,
 			referenceManager: this.referenceManager,
-			keyManager: this.keyManager,
 			encryptPathPolicy: this.encryptPathPolicy,
 			pipeline: this.pipeline,
-			scriptURL: this.settings.preProcess.scriptURL,
 			dir: this.settings.primaryDir,
 		});
 

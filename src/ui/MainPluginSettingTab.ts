@@ -340,10 +340,8 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						encryptionService: this.plugin.encryptionService,
 						urlResolver: this.plugin.urlResolver,
 						referenceManager: this.plugin.referenceManager,
-						keyManager: this.plugin.keyManager,
 						encryptPathPolicy: this.plugin.encryptPathPolicy,
 						pipeline: this.plugin.pipeline,
-						scriptURL: this.plugin.settings.preProcess.scriptURL,
 						dir: this.plugin.settings.primaryDir,
 					};
 					reprocessWholeVault(ctx).catch(showError);

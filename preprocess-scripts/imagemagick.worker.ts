@@ -80,7 +80,7 @@ const FORMAT_CONFIG: Record<string, { magick: MagickFormatKey; mime: string }> =
 		png: { magick: "Png", mime: "image/png" },
 	};
 
-/** 获取 format 对应的配置，不支持的格式直接报错而不是静默回退 */
+/** 获取 format 对应的配置，非空且不支持的格式直接报错而不是静默回退 */
 function getFormatConfig(format: string): {
 	magick: MagickFormatKey;
 	mime: string;
@@ -90,6 +90,11 @@ function getFormatConfig(format: string): {
 		throw new Error(`Unsupported output format: ${format}`);
 	}
 	return config;
+}
+
+/** 空 format 默认 avif（与主脚本参数缺省行为一致），非空则原样返回 */
+function normalizeFormat(format: string): string {
+	return format || "avif";
 }
 
 /**
@@ -129,7 +134,6 @@ function convertImage(
 	return { data: resultData, mime: targetMime };
 }
 
-// #region Worker 消息处理
 self.onmessage = async (event: MessageEvent<ConvertRequest>) => {
 	const request = event.data;
 	if (!request || request.type !== "convert") return;
@@ -138,7 +142,9 @@ self.onmessage = async (event: MessageEvent<ConvertRequest>) => {
 	try {
 		await ensureInitialized(request.wasmURL);
 
-		const config = getFormatConfig(request.format);
+		// 空 format 默认 avif，非空且不支持的格式由 getFormatConfig 报错
+		const format = normalizeFormat(request.format);
+		const config = getFormatConfig(format);
 
 		// 已经是目标格式，跳过（返回 undefined 保留原始文件）
 		if (request.input.mimeType === config.mime) {
@@ -147,11 +153,11 @@ self.onmessage = async (event: MessageEvent<ConvertRequest>) => {
 			// 生成新文件名
 			const baseName =
 				request.input.filename.replace(/\.[^.]+$/, "") || "image";
-			const ext = request.format === "jpeg" ? "jpg" : request.format;
+			const ext = format === "jpeg" ? "jpg" : format;
 
 			const { data, mime } = convertImage(
 				request.input,
-				request.format,
+				format,
 				request.quality,
 			);
 
@@ -183,4 +189,3 @@ self.onmessage = async (event: MessageEvent<ConvertRequest>) => {
 		output ? [output.data] : [],
 	);
 };
-// #endregion
