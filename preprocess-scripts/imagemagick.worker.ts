@@ -68,14 +68,29 @@ function ensureInitialized(wasmURL: string): Promise<void> {
 	return initPromise;
 }
 
+type MagickFormatKey = keyof typeof MagickFormat;
+
 /** format 参数 → MagickFormat 常量名与 MIME 类型映射 */
-const FORMAT_CONFIG: Record<string, { magick: string; mime: string }> = {
-	avif: { magick: "Avif", mime: "image/avif" },
-	webp: { magick: "WebP", mime: "image/webp" },
-	jpeg: { magick: "Jpeg", mime: "image/jpeg" },
-	jpg: { magick: "Jpeg", mime: "image/jpeg" },
-	png: { magick: "Png", mime: "image/png" },
-};
+const FORMAT_CONFIG: Record<string, { magick: MagickFormatKey; mime: string }> =
+	{
+		avif: { magick: "Avif", mime: "image/avif" },
+		webp: { magick: "WebP", mime: "image/webp" },
+		jpeg: { magick: "Jpeg", mime: "image/jpeg" },
+		jpg: { magick: "Jpeg", mime: "image/jpeg" },
+		png: { magick: "Png", mime: "image/png" },
+	};
+
+/** 获取 format 对应的配置，不支持的格式直接报错而不是静默回退 */
+function getFormatConfig(format: string): {
+	magick: MagickFormatKey;
+	mime: string;
+} {
+	const config = FORMAT_CONFIG[format];
+	if (!config) {
+		throw new Error(`Unsupported output format: ${format}`);
+	}
+	return config;
+}
 
 /**
  * 执行一次图片转换。
@@ -86,16 +101,9 @@ function convertImage(
 	format: string,
 	quality: number,
 ): { data: Uint8Array; mime: string } {
-	const config = FORMAT_CONFIG[format] ?? FORMAT_CONFIG.avif;
+	const config = getFormatConfig(format);
 	const targetMime = config.mime;
-
-	const targetFormat =
-		MagickFormat[config.magick as keyof typeof MagickFormat];
-	if (targetFormat === undefined) {
-		throw new Error(
-			`Unknown MagickFormat: ${config.magick} for format: ${format}`,
-		);
-	}
+	const targetFormat = MagickFormat[config.magick];
 
 	const resultData = ImageMagick.read<Uint8Array | null>(
 		new Uint8Array(input.data),
@@ -130,7 +138,7 @@ self.onmessage = async (event: MessageEvent<ConvertRequest>) => {
 	try {
 		await ensureInitialized(request.wasmURL);
 
-		const config = FORMAT_CONFIG[request.format] ?? FORMAT_CONFIG.avif;
+		const config = getFormatConfig(request.format);
 
 		// 已经是目标格式，跳过（返回 undefined 保留原始文件）
 		if (request.input.mimeType === config.mime) {

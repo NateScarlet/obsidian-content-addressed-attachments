@@ -1,5 +1,10 @@
 type WellKnownDirectory =
-	"desktop" | "documents" | "downloads" | "music" | "pictures" | "videos";
+	| "desktop"
+	| "documents"
+	| "downloads"
+	| "music"
+	| "pictures"
+	| "videos";
 
 interface Window {
 	electron?: {

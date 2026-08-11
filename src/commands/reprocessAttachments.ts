@@ -5,7 +5,6 @@ import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type { URLResolver } from "#src/URLResolver";
 import type ReferenceManager from "#src/ReferenceManager";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
-import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
@@ -94,24 +93,23 @@ async function reprocessSingleLink(
 	);
 	if (!buffer) return undefined;
 
-	// 如果文件是加密的，先解密
-	let plaintext: ArrayBuffer;
-	let originalMimeType: string;
-	if (parsed.format === ENCRYPTED_FORMAT) {
-		const decrypted = await ctx.encryptionService.ensureDecrypted(buffer);
-		if (decrypted.layers.length === 0) return undefined;
-		plaintext = decrypted.data;
-		originalMimeType = decrypted.mimeType;
-	} else {
-		plaintext = buffer;
-		originalMimeType = parsed.resolveMimeType();
-	}
+	// ensureDecrypted 内部已实现"如果文件是加密的，先解密"，
+	// 这里不再根据链接的 format 参数重复判断是否加密，直接用其结果
+	const decrypted = await ctx.encryptionService.ensureDecrypted(buffer);
+	const plaintext = decrypted.data;
+	const originalMimeType =
+		decrypted.layers.length > 0
+			? decrypted.mimeType
+			: parsed.resolveMimeType();
+
+	// 记录原链接是否有 filename 参数，避免处理后无端多出 filename=file
+	const hasOriginalFilename = !!parsed.filename;
 
 	// 运行管线
 	const result = await ctx.pipeline.run({
 		data: plaintext,
 		mimeType: originalMimeType,
-		filename: parsed.filename || "file",
+		filename: parsed.filename,
 	});
 
 	// 如果管线返回 undefined，保留原始文件
@@ -145,9 +143,10 @@ async function reprocessSingleLink(
 		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, parsed.cid);
 	}
 
+	// 原链接没有 filename 参数时，输出链接也保持不携带 filename
 	return new IPFSLink({
 		cid: newCid,
-		filename: fileToSave.name,
+		filename: hasOriginalFilename ? fileToSave.name : "",
 		format: fileToSave.type,
 	}).toURL();
 }

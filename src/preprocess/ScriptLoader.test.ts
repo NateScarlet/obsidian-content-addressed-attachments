@@ -4,7 +4,6 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { readFileSync, mkdirSync, writeFileSync, existsSync, rmSync } from "fs";
 import computeCID from "#src/utils/computeCID";
-import { CID } from "multiformats/cid";
 
 /** 将 URLSearchParams 转为普通对象以便断言 */
 function paramsToObject(params: URLSearchParams): Record<string, string> {
@@ -26,7 +25,7 @@ describe("DefaultScriptLoader.getParams", () => {
 				exists: () => Promise.resolve(false),
 				mkdir: () => Promise.resolve(),
 			},
-			getPluginDir: () => "",
+			pluginDir: "",
 			resolveURL: () => Promise.resolve(undefined),
 		});
 		const params = loader.getParams(
@@ -48,7 +47,7 @@ describe("DefaultScriptLoader.getParams", () => {
 				exists: () => Promise.resolve(false),
 				mkdir: () => Promise.resolve(),
 			},
-			getPluginDir: () => "",
+			pluginDir: "",
 			resolveURL: () => Promise.resolve(undefined),
 		});
 		const params = loader.getParams("scripts/transform.js");
@@ -65,7 +64,7 @@ describe("DefaultScriptLoader.getParams", () => {
 				exists: () => Promise.resolve(false),
 				mkdir: () => Promise.resolve(),
 			},
-			getPluginDir: () => "",
+			pluginDir: "",
 			resolveURL: () => Promise.resolve(undefined),
 		});
 		expect(paramsToObject(loader.getParams(""))).toEqual({});
@@ -102,7 +101,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 			entry: "manifest-fixture.js",
 			files: {
 				"manifest-fixture.js": {
-					cid: fixtureCID,
+					cid: fixtureCID.toString(),
 					sources: [
 						"__tests__/fixtures/manifest-fixture.js",
 						"https://example.com/releases/download/v0.1.0/manifest-fixture.js",
@@ -168,7 +167,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 
 		const loader = new DefaultScriptLoader({
 			adapter,
-			getPluginDir: () => tempDir,
+			pluginDir: tempDir,
 			resolveURL: async (rawURL: string) => {
 				// 处理 vault-relative 路径和 HTTPS URL
 				const colonIndex = rawURL.indexOf(":");
@@ -181,12 +180,12 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 					// HTTPS：使用 fixture 文件
 					data = fixtureData;
 				}
-				const cidStr = await computeCID(new Uint8Array(data).buffer);
-				const storePath = resolve(tempDir, cidStr);
+				const cid = await computeCID(new Uint8Array(data).buffer);
+				const storePath = resolve(tempDir, cid.toString());
 				if (!existsSync(storePath)) {
 					writeFileSync(storePath, data);
 				}
-				return { cid: CID.parse(cidStr), path: storePath };
+				return { cid, path: storePath };
 			},
 		});
 
@@ -222,14 +221,14 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 
 		const loader = new DefaultScriptLoader({
 			adapter,
-			getPluginDir: () => tempDir,
+			pluginDir: tempDir,
 			resolveURL: async (rawURL: string) => {
 				// vault-relative：从文件系统读取
 				const fullPath = resolve(__dirname, rawURL);
 				if (!existsSync(fullPath)) return undefined;
 				const data = readFileSync(fullPath);
-				const cidStr = await computeCID(new Uint8Array(data).buffer);
-				return { cid: CID.parse(cidStr), path: rawURL };
+				const cid = await computeCID(new Uint8Array(data).buffer);
+				return { cid, path: rawURL };
 			},
 		});
 

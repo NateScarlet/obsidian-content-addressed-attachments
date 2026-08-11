@@ -42,6 +42,9 @@ const VAULT_RELATIVE_PREFIX =
 const RELEASE_ASSET_URL =
 	"https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/<TAG>/";
 
+/** release asset 名称统一加 preprocess- 前缀，避免与主插件资源混在一起 */
+const releaseAssetName = (name) => `preprocess-${name}`;
+
 const scripts = ["imagemagick.ts"];
 
 // 每个脚本配套的 Web Worker 入口（若存在，需一并构建并加入清单）
@@ -134,7 +137,7 @@ for (const script of scripts) {
 			cid,
 			sources: [
 				`${VAULT_RELATIVE_PREFIX}/${filename}`,
-				`${RELEASE_ASSET_URL}${filename}`,
+				`${RELEASE_ASSET_URL}${releaseAssetName(filename)}`,
 			],
 		},
 	};
@@ -143,7 +146,7 @@ for (const script of scripts) {
 			cid: extra.cid,
 			sources: [
 				`${VAULT_RELATIVE_PREFIX}/${extra.filename}`,
-				`${RELEASE_ASSET_URL}${extra.filename}`,
+				`${RELEASE_ASSET_URL}${releaseAssetName(extra.filename)}`,
 			],
 		};
 	}

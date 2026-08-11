@@ -173,7 +173,7 @@ describe("TransformPipeline", () => {
 		).rejects.toThrow("'data' must be an ArrayBuffer");
 	});
 
-	it("falls back to input mimeType when result has no mimeType", async () => {
+	it("throws when result mimeType is empty instead of falling back", async () => {
 		const loader = createMockScriptLoader({
 			default: (input) => ({
 				data: new ArrayBuffer(4),
@@ -186,13 +186,13 @@ describe("TransformPipeline", () => {
 			() => "scripts/transform.js",
 		);
 
-		const result = await pipeline.run({
-			data: new ArrayBuffer(8),
-			mimeType: "image/png",
-			filename: "test.png",
-		});
-
-		expect(result?.mimeType).toBe("image/png");
+		await expect(
+			pipeline.run({
+				data: new ArrayBuffer(8),
+				mimeType: "image/png",
+				filename: "test.png",
+			}),
+		).rejects.toThrow("'mimeType' must be a non-empty string");
 	});
 
 	it("passes params to script context", async () => {

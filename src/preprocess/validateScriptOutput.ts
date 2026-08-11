@@ -22,10 +22,12 @@ export function assertScriptOutput(
 	if (!(data instanceof ArrayBuffer)) {
 		throw new Error(`${location} 'data' must be an ArrayBuffer`);
 	}
-	if (mimeType !== undefined && typeof mimeType !== "string") {
-		throw new Error(`${location} 'mimeType' must be a string`);
+	// mimeType/filename 类型定义中为必填且不能为空，脚本可以直接使用 input 值，
+	// 返回空值说明脚本内部实现有问题
+	if (typeof mimeType !== "string" || mimeType === "") {
+		throw new Error(`${location} 'mimeType' must be a non-empty string`);
 	}
-	if (filename !== undefined && typeof filename !== "string") {
-		throw new Error(`${location} 'filename' must be a string`);
+	if (typeof filename !== "string" || filename === "") {
+		throw new Error(`${location} 'filename' must be a non-empty string`);
 	}
 }

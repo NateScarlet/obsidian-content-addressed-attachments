@@ -1,4 +1,5 @@
 import { MarkdownView, Notice, type App, type Editor } from "obsidian";
+import type { CID } from "multiformats/cid";
 import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
@@ -20,7 +21,7 @@ type InsertAttachmentEditor = Pick<
 function formatIPFSLinkMarkdown(
 	fileToProcess: File,
 	fileToSave: File,
-	cid: import("multiformats/cid").CID,
+	cid: CID,
 ): string {
 	const link = new IPFSLink({
 		cid,

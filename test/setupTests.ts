@@ -14,6 +14,16 @@ if (typeof Symbol.asyncDispose === "undefined") {
 	});
 }
 
+// 测试环境没有浏览器 window，Node 环境将 globalThis 作为 window 暴露
+// eslint-disable-next-line no-restricted-globals, svelte/no-top-level-browser-globals
+if (typeof globalThis.window === "undefined") {
+	Object.defineProperty(globalThis, "window", {
+		value: globalThis,
+		configurable: true,
+		writable: true,
+	});
+}
+
 if (typeof globalThis.DisposableStack === "undefined") {
 	class PolyfillDisposableStack {
 		private disposed = false;

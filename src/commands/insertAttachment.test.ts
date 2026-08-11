@@ -8,12 +8,6 @@ import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import type { PlaceholderReplaceVault } from "#src/utils/preprocessPlaceholder";
 
-/* eslint-disable */
-if (typeof (globalThis as any).window === "undefined") {
-	(globalThis as any).window = globalThis;
-}
-/* eslint-enable */
-
 describe("processFileAndInsertLink", () => {
 	const validCIDString =
 		"bafkreiewoknhf25r23eytiq6r3ggtcgjo34smnn2hlfzqwhp5doiw6e4di";

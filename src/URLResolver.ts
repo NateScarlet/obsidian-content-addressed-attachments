@@ -44,7 +44,7 @@ export interface GatewayConfig {
 export interface ResolveURLResult {
 	path?: string;
 	url: string;
-	/** 内容的 CID，path 存在时保证可用 */
+	/** 内容的 CID */
 	cid: CID;
 }
 
@@ -173,26 +173,25 @@ export class URLResolver {
 			return downloaded;
 		}
 
-		// vault-relative / 本地绝对路径 / HTTP(S) URL
+		// vault-relative（无协议头）或 HTTP(S) URL
 		const isNetworkURL =
 			rawURL.startsWith("https://") || rawURL.startsWith("http://");
-		const isLocalPath =
-			rawURL.indexOf(":") < 0 ||
-			/^[a-zA-Z]:[\\/]/.test(rawURL) ||
-			rawURL.startsWith("file://");
+		const isVaultRelative = rawURL.indexOf(":") < 0;
 
-		if (isLocalPath || isNetworkURL) {
+		if (isVaultRelative || isNetworkURL) {
 			const { result } = await this.flight.do(rawURL, () => {
-				if (isLocalPath) {
-					// 如果是 file:// 协议，剥离协议头
-					const cleanPath = rawURL.startsWith("file://")
-						? rawURL.slice(7)
-						: rawURL;
-					return this.resolveVaultRelative(cleanPath);
-				}
-				return this.resolveHTTP(rawURL);
+				return isVaultRelative
+					? this.resolveVaultRelative(rawURL)
+					: this.resolveHTTP(rawURL);
 			});
 			return result;
+		}
+
+		// file:// 与绝对路径不在 spec 支持范围内（adapter.readBinary 不支持），明确报错
+		if (rawURL.startsWith("file://") || /^[a-zA-Z]:[\\/]/.test(rawURL)) {
+			throw new Error(
+				`Unsupported URL: ${rawURL}. Only vault-relative, http(s), ipfs:// and internal.ipfs-locked: URLs are supported.`,
+			);
 		}
 
 		const data = this.prepareTemplateData(rawURL);
@@ -258,7 +257,7 @@ export class URLResolver {
 			return {
 				path: rawURL,
 				url: this.app.vault.adapter.getResourcePath(rawURL),
-				cid: CID.parse(cid),
+				cid,
 			};
 		} catch {
 			return undefined;

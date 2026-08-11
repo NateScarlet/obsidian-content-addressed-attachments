@@ -1,5 +1,7 @@
 # Obsidian Content-Addressed Attachments Plugin
 
+[简体中文](./README.zh.md)
+
 Implements content-addressed storage for attachments, providing IPFS-like functionality with local and external gateway/file-hosting support.
 
 **Note**: This plugin is independent of the official IPFS network and operates entirely within your local Obsidian vault. External gateways are optional and configurable based on your needs.
@@ -52,11 +54,12 @@ Automatically transform attachments (e.g. image format conversion, quality tunin
    - Pass parameters via URL fragment (e.g., `#format=webp&quality=80`)
 
 2. **Non-Blocking Background Execution**:
-   - When inserting an attachment, a temporary comment placeholder (`%% 正在预处理附件... %%`) is instantly inserted into your note so editing is never blocked
+   - When inserting an attachment, a temporary comment placeholder (e.g., `%% Preprocessing attachment: image.png... %%`) is instantly inserted into your note so editing is never blocked
    - Pre-processing runs asynchronously in the background and replaces the placeholder with the final `ipfs://` link upon completion
 
 3. **Developing & Contributing Custom Scripts**:
-   - Learn how to author ESM transformation scripts or JSON manifests in the [Script Development Guide (English)](./docs/preprocess-scripts.en.md) / [预处理脚本开发指南 (中文)](./docs/preprocess-scripts.zh-CN.md).
+   - Learn how to author ESM transformation scripts or JSON manifests in the [Script Development Guide](./docs/preprocess-scripts.en.md).
+   - Chinese guide: [预处理脚本开发指南](./docs/preprocess-scripts.zh-CN.md) (also available in [README.zh.md](./README.zh.md)).
 
 ### Locking Web Images
 

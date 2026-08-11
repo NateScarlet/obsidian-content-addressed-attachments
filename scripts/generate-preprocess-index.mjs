@@ -28,6 +28,9 @@ const registryPath = resolve(root, "preprocess-scripts", "registry.json");
 const RELEASE_ASSET_URL =
 	"https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/";
 
+/** release asset 名称统一加 preprocess- 前缀，避免与主插件资源混在一起 */
+const releaseAssetName = (name) => `preprocess-${name}`;
+
 /** 计算文件的 CID (v1, raw codec, SHA-256) */
 async function computeCID(filePath) {
 	const data = readFileSync(filePath);
@@ -105,8 +108,9 @@ async function main() {
 		const hashIndex = entry.scriptURL.indexOf("#");
 		const fragment = hashIndex >= 0 ? entry.scriptURL.slice(hashIndex) : "";
 
-		// 非 vault-relative 路径（如社区已 Pin 的 internal.ipfs-locked: 脚本），保持原样
-		if (!base.includes("preprocess-scripts") || base.startsWith("internal.ipfs-locked:")) {
+		// 有协议头的（internal.ipfs-locked:、https: 等）不是 vault-relative 路径，保持原样
+		const hasProtocol = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(base);
+		if (hasProtocol) {
 			updatedEntries.push(entry);
 			continue;
 		}
@@ -129,7 +133,7 @@ async function main() {
 
 		// 计算清单文件自身的 CID
 		const manifestCID = await computeCID(manifestPath);
-		const releaseAssetURL = `${releaseAssetBase}${manifestName}`;
+		const releaseAssetURL = `${releaseAssetBase}${releaseAssetName(manifestName)}`;
 		const newScriptURL = `internal.ipfs-locked:${manifestCID},${releaseAssetURL}${fragment}`;
 
 		console.log(`  ${entry.name}: ${entry.scriptURL} -> ${newScriptURL}`);

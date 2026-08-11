@@ -17,10 +17,26 @@ describe("assertScriptOutput", () => {
 		).not.toThrow();
 	});
 
-	it("accepts output without mimeType or filename", () => {
-		expect(() =>
-			assertScriptOutput({ data: new ArrayBuffer(4) }, scriptURL),
-		).not.toThrow();
+	it("throws when mimeType is missing or empty", () => {
+		for (const output of [
+			{ data: new ArrayBuffer(4), filename: "test.avif" },
+			{ data: new ArrayBuffer(4), mimeType: "", filename: "test.avif" },
+		]) {
+			expect(() => assertScriptOutput(output, scriptURL)).toThrow(
+				"'mimeType' must be a non-empty string",
+			);
+		}
+	});
+
+	it("throws when filename is missing or empty", () => {
+		for (const output of [
+			{ data: new ArrayBuffer(4), mimeType: "image/avif" },
+			{ data: new ArrayBuffer(4), mimeType: "image/avif", filename: "" },
+		]) {
+			expect(() => assertScriptOutput(output, scriptURL)).toThrow(
+				"'filename' must be a non-empty string",
+			);
+		}
 	});
 
 	it("throws when result is not an object", () => {
@@ -57,16 +73,20 @@ describe("assertScriptOutput", () => {
 				{ data: new ArrayBuffer(4), mimeType: 42 },
 				scriptURL,
 			),
-		).toThrow("'mimeType' must be a string");
+		).toThrow("'mimeType' must be a non-empty string");
 	});
 
 	it("throws when filename is not a string", () => {
 		expect(() =>
 			assertScriptOutput(
-				{ data: new ArrayBuffer(4), filename: 42 },
+				{
+					data: new ArrayBuffer(4),
+					mimeType: "image/avif",
+					filename: 42,
+				},
 				scriptURL,
 			),
-		).toThrow("'filename' must be a string");
+		).toThrow("'filename' must be a non-empty string");
 	});
 
 	it("includes the script URL in the error message", () => {

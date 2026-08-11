@@ -31,7 +31,7 @@ export interface ScriptLoaderOptions {
 		"getResourcePath" | "read" | "copy" | "exists" | "mkdir"
 	>;
 	/** 获取插件数据目录（用于存放预处理的脚本文件） */
-	getPluginDir: () => string;
+	pluginDir: string;
 	/**
 	 * 解析 URL 并下载到本地存储。
 	 * 直接 resolve 就是下载，在已经本地存在时跳过下载。
@@ -86,15 +86,17 @@ export default class DefaultScriptLoader implements ScriptLoader {
 	): Promise<PreProcessScriptModule | undefined> {
 		if (!scriptURL) return undefined;
 
-		const cached = this.moduleCache.get(scriptURL);
+		// 以去除 fragment 参数的 baseURL 作为缓存键，参数变化时复用已加载的模块
+		const { baseURL } = parseURLSearchParams(scriptURL);
+
+		const cached = this.moduleCache.get(baseURL);
 		if (cached) return cached;
 
-		const { result: module, isShared } = await this.flight.do(
-			scriptURL,
-			() => this.doLoadScript(scriptURL),
+		const { result: module, isShared } = await this.flight.do(baseURL, () =>
+			this.doLoadScript(scriptURL),
 		);
 		if (module && !isShared) {
-			this.moduleCache.set(scriptURL, module);
+			this.moduleCache.set(baseURL, module);
 		}
 		return module;
 	}
@@ -114,15 +116,16 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			const localPath = resolved.path;
 
 			// 读取文件内容，检查是否为多文件清单
-			let content: string | undefined;
-			try {
-				content = await this.options.adapter.read(localPath);
-			} catch {
-				// read 可能因文件不存在抛异常
-			}
-			if (content && content.trimStart().startsWith("{")) {
+			// read 对不存在的文件返回 undefined，不需要 try/catch 处理
+			const content = await this.options.adapter.read(localPath);
+			if (content?.trimStart().startsWith("{")) {
 				const manifest = JSON.parse(content) as ScriptManifest;
-				if (manifest.entry && manifest.files) {
+				// 下载前检查清单合法：entry 必须是 files 中的 key，避免下载完才发现无效
+				if (
+					manifest.entry &&
+					manifest.files &&
+					manifest.files[manifest.entry]
+				) {
 					const baseDir = await this.materializeManifest(
 						manifest,
 						resolved.cid,
@@ -173,10 +176,9 @@ export default class DefaultScriptLoader implements ScriptLoader {
 		manifest: ScriptManifest,
 		manifestCID: CID,
 	): Promise<string | undefined> {
-		const baseDir = `${this.options.getPluginDir()}/preprocess-scripts/${manifestCID.toString()}`;
+		const baseDir = `${this.options.pluginDir}/preprocess-scripts/${manifestCID.toString()}`;
 		await ensureDir(this.options.adapter, baseDir);
 
-		const entry = manifest.entry;
 		const files = manifest.files;
 
 		for (const [filename, fileSource] of Object.entries(files)) {
@@ -223,15 +225,7 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			}
 		}
 
-		// 验证入口文件存在
-		const entryPath = `${baseDir}/${entry}`;
-		const entryExists = await this.options.adapter.exists(entryPath);
-		if (!entryExists) {
-			console.warn(
-				`[preprocess] Manifest entry file not found: ${entryPath}`,
-			);
-			return undefined;
-		}
+		// entry 已在加载清单时校验存在于 files，且随 files 循环一并下载，无需重复检查
 
 		return baseDir;
 	}

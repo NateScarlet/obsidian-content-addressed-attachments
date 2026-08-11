@@ -50,7 +50,7 @@ import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import DefaultScriptLoader from "./preprocess/ScriptLoader";
-import ScriptLoaderAdapter from "./preprocess/ScriptLoaderAdapter";
+import createScriptLoaderOptions from "./preprocess/createScriptLoaderOptions";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -149,18 +149,19 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.lockManager = this.stack.use(new LockManager(this));
 
 		// 初始化预处理管线
-		const adapter = new ScriptLoaderAdapter({
-			app: this.app,
-			cas: this.cas,
-			urlResolver: this.urlResolver,
-			getSettings: () => this.settings,
-			onScriptURLResolved: (_originalURL, lockedURL, cid) => {
-				this.settings.preProcess.scriptURL = lockedURL;
-				this.saveData(this.settings).catch(showError);
-				new Notice(`HTTPS script locked to CID: ${cid}`);
-			},
-		});
-		this.scriptLoader = new DefaultScriptLoader(adapter.createOptions());
+		this.scriptLoader = new DefaultScriptLoader(
+			createScriptLoaderOptions({
+				app: this.app,
+				cas: this.cas,
+				urlResolver: this.urlResolver,
+				getSettings: () => this.settings,
+				onScriptURLResolved: (_originalURL, lockedURL) => {
+					this.settings.preProcess.scriptURL = lockedURL;
+					this.saveData(this.settings).catch(showError);
+					new Notice(`HTTPS script locked to: ${lockedURL}`);
+				},
+			}),
+		);
 		this.pipeline = new TransformPipeline(
 			this.scriptLoader,
 			() => this.settings.preProcess.scriptURL,

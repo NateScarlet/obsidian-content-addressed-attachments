@@ -37,29 +37,18 @@ export default class TransformPipeline {
 		if (!module) {
 			throw new Error(`[preprocess] Failed to load script: ${scriptURL}`);
 		}
-		const rawModule = module as Record<string, unknown>;
-		const rawDefault = rawModule.default as
-			Record<string, unknown> | undefined;
 		const transformFn =
 			typeof module.default === "function"
 				? module.default
-				: typeof rawDefault?.default === "function"
-					? (rawDefault.default as (
+				: typeof module === "function"
+					? (module as (
 							input: PreProcessInput,
 							ctx: PreProcessContext,
 						) =>
 							| Promise<PreProcessOutput | undefined>
 							| PreProcessOutput
 							| undefined)
-					: typeof module === "function"
-						? (module as (
-								input: PreProcessInput,
-								ctx: PreProcessContext,
-							) =>
-								| Promise<PreProcessOutput | undefined>
-								| PreProcessOutput
-								| undefined)
-						: undefined;
+					: undefined;
 
 		if (!transformFn) {
 			throw new Error(
@@ -82,8 +71,8 @@ export default class TransformPipeline {
 
 		return {
 			data: result.data,
-			mimeType: result.mimeType || input.mimeType,
-			filename: result.filename || input.filename,
+			mimeType: result.mimeType,
+			filename: result.filename,
 		};
 	}
 }
