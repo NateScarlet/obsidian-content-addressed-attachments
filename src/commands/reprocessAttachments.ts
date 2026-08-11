@@ -10,7 +10,6 @@ import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
-import showError from "#src/utils/showError";
 import ProgressModal from "#src/ui/ProgressModal";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
 import { trashIfUnreferenced } from "./trashIfUnreferenced";
@@ -295,7 +294,7 @@ export async function reprocessWholeVault(
 							resolve(totalReprocessed);
 						} catch (err) {
 							modal.close();
-							showError(err);
+							// 错误通过 reject 交由调用方统一处理（调用方均 .catch(showError)），避免重复提示
 							reject(
 								err instanceof Error
 									? err

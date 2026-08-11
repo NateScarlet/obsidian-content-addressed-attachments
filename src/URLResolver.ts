@@ -251,17 +251,17 @@ export class URLResolver {
 	private async resolveVaultRelative(
 		rawURL: string,
 	): Promise<ResolveURLResult | undefined> {
-		try {
-			const content = await this.app.vault.adapter.readBinary(rawURL);
-			const cid = await computeCID(content);
-			return {
-				path: rawURL,
-				url: this.app.vault.adapter.getResourcePath(rawURL),
-				cid,
-			};
-		} catch {
+		// 文件不存在是合法结果（脚本未配置/未同步），其他读取错误应让调用方可见
+		if (!(await this.app.vault.adapter.exists(rawURL))) {
 			return undefined;
 		}
+		const content = await this.app.vault.adapter.readBinary(rawURL);
+		const cid = await computeCID(content);
+		return {
+			path: rawURL,
+			url: this.app.vault.adapter.getResourcePath(rawURL),
+			cid,
+		};
 	}
 
 	/**

@@ -12,12 +12,6 @@ export type {
 	PreProcessScriptModule,
 };
 
-/** 预处理配置 */
-export interface PreProcessConfig {
-	/** 脚本 URL，空字符串表示禁用预处理 */
-	scriptURL: string;
-}
-
 /** 脚本索引条目 */
 export interface ScriptIndexEntry {
 	/** 友好名称 */
@@ -28,20 +22,7 @@ export interface ScriptIndexEntry {
 	scriptURL: string;
 }
 
-/** 脚本位置解析结果 */
-export type ScriptLocation =
-	| { type: "vault-relative"; path: string; params: URLSearchParams }
-	| {
-			type: "internal.ipfs-locked";
-			cid: string;
-			sourceURL: string;
-			params: URLSearchParams;
-	  }
-	| { type: "ipfs"; cid: string; params: URLSearchParams }
-	| { type: "http"; url: string; params: URLSearchParams };
-
-/**
- * 多文件预设清单中的单个文件来源描述。
+/** 多文件预设清单中的单个文件来源描述。
  * 由 CID 唯一标识，可选提供多个下载源。
  */
 export interface ManifestFileSource {

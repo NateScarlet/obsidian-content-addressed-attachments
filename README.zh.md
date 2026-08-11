@@ -59,7 +59,7 @@
 
 3. **开发与贡献自定义脚本**：
    - 了解如何编写 ESM 转换脚本或 JSON 清单：[预处理脚本开发指南](./docs/preprocess-scripts.zh-CN.md)。
-   - 英文版：[Script Development Guide](./docs/preprocess-scripts.en.md)（也参见 [README.en.md](./README.md)）。
+   - 英文版：[Script Development Guide](./docs/preprocess-scripts.en.md)（也参见 [English README](./README.md)）。
 
 ### 锁定网络图片
 

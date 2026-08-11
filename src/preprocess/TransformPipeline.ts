@@ -1,11 +1,6 @@
 import { Notice } from "obsidian";
 import { assertScriptOutput } from "./validateScriptOutput";
-import type {
-	PreProcessInput,
-	PreProcessOutput,
-	PreProcessContext,
-	ScriptLoader,
-} from "./types";
+import type { PreProcessInput, PreProcessOutput, ScriptLoader } from "./types";
 
 /**
  * 预处理管线：将文件通过预处理脚本转换后返回。
@@ -37,18 +32,9 @@ export default class TransformPipeline {
 		if (!module) {
 			throw new Error(`[preprocess] Failed to load script: ${scriptURL}`);
 		}
+		// import() 的 ESM 模块命名空间对象不可调用，transform 函数只可能来自 default 导出
 		const transformFn =
-			typeof module.default === "function"
-				? module.default
-				: typeof module === "function"
-					? (module as (
-							input: PreProcessInput,
-							ctx: PreProcessContext,
-						) =>
-							| Promise<PreProcessOutput | undefined>
-							| PreProcessOutput
-							| undefined)
-					: undefined;
+			typeof module.default === "function" ? module.default : undefined;
 
 		if (!transformFn) {
 			throw new Error(

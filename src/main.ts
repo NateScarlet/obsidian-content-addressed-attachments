@@ -152,13 +152,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.scriptLoader = new DefaultScriptLoader(
 			createScriptLoaderOptions({
 				app: this.app,
-				cas: this.cas,
 				urlResolver: this.urlResolver,
-				getSettings: () => this.settings,
 				onScriptURLResolved: (_originalURL, lockedURL) => {
 					this.settings.preProcess.scriptURL = lockedURL;
 					this.saveData(this.settings).catch(showError);
-					new Notice(`HTTPS script locked to: ${lockedURL}`);
+					new Notice(t("httpsScriptLocked")(lockedURL));
 				},
 			}),
 		);
@@ -597,6 +595,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				);
 			} catch (err) {
 				console.warn(`[saveSettings] Failed to preload script:`, err);
+				new Notice(
+					t("scriptLoadFailed")(this.settings.preProcess.scriptURL),
+				);
 			}
 		}
 	}
@@ -630,6 +631,10 @@ const { t } = defineLocales({
 			`Reprocessed ${count} attachment(s)`,
 		noAttachmentsFound: "No attachments found to reprocess",
 		noScriptConfigured: "No pre-processing script configured",
+		scriptLoadFailed: (url: string) =>
+			`Failed to load pre-processing script: ${url}`,
+		httpsScriptLocked: (url: string) =>
+			`HTTPS script locked to content: ${url}`,
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -650,6 +655,8 @@ const { t } = defineLocales({
 		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
 		noAttachmentsFound: "未找到需要重新处理的附件",
 		noScriptConfigured: "未配置预处理脚本",
+		scriptLoadFailed: (url: string) => `预处理脚本加载失败：${url}`,
+		httpsScriptLocked: (url: string) => `HTTPS 脚本已锁定内容：${url}`,
 	},
 });
 //#endregion

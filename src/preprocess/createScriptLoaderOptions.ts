@@ -1,16 +1,12 @@
 import { type App } from "obsidian";
 import type { URLResolver } from "#src/URLResolver";
-import type { CAS } from "#src/types/CAS";
-import type { Settings } from "#src/settings";
 import type { ScriptLoaderOptions } from "./ScriptLoader";
 import type { CID } from "multiformats/cid";
 
 /** createScriptLoaderOptions 工厂函数参数 */
 export interface CreateScriptLoaderOptionsParams {
 	app: App;
-	cas: CAS;
 	urlResolver: URLResolver;
-	getSettings: () => Settings;
 	/**
 	 * 当 resolveURL 将 HTTP(S) URL 解析为 CID 后被调用，
 	 * 调用方可更新设置为 locked URL 格式。

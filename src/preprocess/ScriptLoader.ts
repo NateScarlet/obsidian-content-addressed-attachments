@@ -58,7 +58,10 @@ async function ensureDir(
 	try {
 		await adapter.mkdir(normalized);
 	} catch {
-		// Ignore if created concurrently
+		// 并发创建时 mkdir 可能失败，重新确认目录确实存在，否则让错误传播
+		if (!(await adapter.exists(normalized))) {
+			throw new Error(`Failed to create directory: ${normalized}`);
+		}
 	}
 }
 

@@ -62,7 +62,18 @@ export async function processFileAndInsertLink(
 
 	// 3. 启动后台异步任务进行转码、加密与落盘，完成后替换占位符
 	const backgroundProcess = async () => {
-		let fileToProcess = file;
+		/** 加密并保存文件，返回落盘后的 Markdown 链接 */
+		const saveAndFormatLink = async (fileToProcess: File) => {
+			const fileToSave =
+				(await encryptPathPolicy.ensureEncrypted(
+					fileToProcess,
+					notePath,
+				)) ?? fileToProcess;
+			const { cid } = await cas.save(dir, fileToSave);
+			return formatIPFSLinkMarkdown(fileToProcess, fileToSave, cid);
+		};
+
+		let linkMarkdown: string | undefined;
 
 		try {
 			const input = {
@@ -71,26 +82,27 @@ export async function processFileAndInsertLink(
 				filename: file.name,
 			};
 			const result = await pipeline.run(input);
-			if (result) {
-				fileToProcess = new File([result.data], result.filename, {
-					type: result.mimeType,
-				});
-			}
 
-			// 加密策略决定是否加密
-			const fileToSave =
-				(await encryptPathPolicy.ensureEncrypted(
-					fileToProcess,
-					notePath,
-				)) ?? fileToProcess;
-			const { cid } = await cas.save(dir, fileToSave);
-			const linkMarkdown = formatIPFSLinkMarkdown(
-				fileToProcess,
-				fileToSave,
-				cid,
+			// 管线返回 undefined 或抛错时都回退到原始文件
+			const fileToProcess = result
+				? new File([result.data], result.filename, {
+						type: result.mimeType,
+					})
+				: file;
+			linkMarkdown = await saveAndFormatLink(fileToProcess);
+		} catch (err) {
+			console.warn(
+				"[preprocess] Pipeline failed, falling back to original file:",
+				err,
 			);
+			linkMarkdown = await saveAndFormatLink(file);
+			new Notice(t("processFailed")(file.name));
+		} finally {
+			notice.hide();
+		}
 
-			// 替换编辑器或 Vault 磁盘中的占位符
+		// 替换编辑器或 Vault 磁盘中的占位符
+		if (linkMarkdown) {
 			const replaced = await replacePlaceholderInEditorOrVault(
 				vault,
 				editor,
@@ -101,14 +113,6 @@ export async function processFileAndInsertLink(
 			if (!replaced) {
 				new Notice(t("replaceFailed")(file.name, linkMarkdown));
 			}
-		} catch (err) {
-			console.warn(
-				"[preprocess] Pipeline failed, falling back to original file:",
-				err,
-			);
-			new Notice(t("processFailed")(file.name));
-		} finally {
-			notice.hide();
 		}
 	};
 
