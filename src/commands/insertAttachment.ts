@@ -73,51 +73,53 @@ export async function processFileAndInsertLink(
 			return formatIPFSLinkMarkdown(fileToProcess, fileToSave, cid);
 		};
 
-		let linkMarkdown: string | undefined;
+		const input = {
+			data: await file.arrayBuffer(),
+			mimeType: file.type,
+			filename: file.name,
+		};
 
+		// 只有管线执行失败才回退到原始文件；加密/落盘错误原样向上抛，交由外层处理
+		let result: Awaited<ReturnType<TransformPipeline["run"]>>;
 		try {
-			const input = {
-				data: await file.arrayBuffer(),
-				mimeType: file.type,
-				filename: file.name,
-			};
-			const result = await pipeline.run(input);
-
-			// 管线返回 undefined 或抛错时都回退到原始文件
-			const fileToProcess = result
-				? new File([result.data], result.filename, {
-						type: result.mimeType,
-					})
-				: file;
-			linkMarkdown = await saveAndFormatLink(fileToProcess);
+			result = await pipeline.run(input);
 		} catch (err) {
 			console.warn(
 				"[preprocess] Pipeline failed, falling back to original file:",
 				err,
 			);
-			linkMarkdown = await saveAndFormatLink(file);
+			result = undefined;
 			new Notice(t("processFailed")(file.name));
-		} finally {
-			notice.hide();
 		}
 
+		// 管线返回 undefined（脚本放弃转换）或失败时都用原始文件落盘
+		const fileToProcess = result
+			? new File([result.data], result.filename, {
+					type: result.mimeType,
+				})
+			: file;
+		const linkMarkdown = await saveAndFormatLink(fileToProcess);
+		notice.hide();
+
 		// 替换编辑器或 Vault 磁盘中的占位符
-		if (linkMarkdown) {
-			const replaced = await replacePlaceholderInEditorOrVault(
-				vault,
-				editor,
-				notePath,
-				placeholder,
-				linkMarkdown,
-			);
-			if (!replaced) {
-				new Notice(t("replaceFailed")(file.name, linkMarkdown));
-			}
+		const replaced = await replacePlaceholderInEditorOrVault(
+			vault,
+			editor,
+			notePath,
+			placeholder,
+			linkMarkdown,
+		);
+		if (!replaced) {
+			new Notice(t("replaceFailed")(file.name, linkMarkdown));
 		}
 	};
 
-	// 异步执行，主函数同步/瞬时返回
-	void backgroundProcess();
+	// 异步执行，主函数同步/瞬时返回；加密/落盘失败也要告知用户，避免占位符残留
+	void backgroundProcess().catch((err) => {
+		notice.hide();
+		console.error("[preprocess] Failed to save attachment:", err);
+		new Notice(t("processFailed")(file.name));
+	});
 }
 
 export default async function insertAttachment(
