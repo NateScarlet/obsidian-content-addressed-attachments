@@ -118,7 +118,7 @@ export async function processFileAndInsertLink(
 	void backgroundProcess().catch((err) => {
 		notice.hide();
 		console.error("[preprocess] Failed to save attachment:", err);
-		new Notice(t("processFailed")(file.name));
+		new Notice(t("saveFailed")(file.name));
 	});
 }
 
@@ -162,6 +162,8 @@ const { t } = defineLocales({
 			`[preprocess] Preprocessing attachment: ${name}...`,
 		processFailed: (name: string) =>
 			`[preprocess] Preprocessing ${name} failed, falling back to original file`,
+		saveFailed: (name: string) =>
+			`[preprocess] Failed to save attachment ${name}; insert it manually`,
 		replaceFailed: (name: string, link: string) =>
 			`[preprocess] ${name} processed but its placeholder was not found; insert the link manually: ${link}`,
 	},
@@ -170,6 +172,8 @@ const { t } = defineLocales({
 			`[preprocess] 正在后台处理附件：${name}...`,
 		processFailed: (name: string) =>
 			`[preprocess] 附件 ${name} 预处理失败，使用原图落盘`,
+		saveFailed: (name: string) =>
+			`[preprocess] 附件 ${name} 落盘失败，请手动插入`,
 		replaceFailed: (name: string, link: string) =>
 			`[preprocess] 附件 ${name} 已处理完成，但未找到占位符自动替换，请手动插入：${link}`,
 	},
