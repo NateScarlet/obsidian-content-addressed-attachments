@@ -194,4 +194,68 @@ describe("processFileAndInsertLink", () => {
 		expect(text.startsWith("[doc.pdf](ipfs://")).toBe(true);
 		expect(text.startsWith("!")).toBe(false);
 	});
+
+	it("handles pasted HEIC file with empty mimeType and formats as embed image when no preProcess script", async () => {
+		const editor = createMockEditor();
+		const vault = createMockVault();
+		const file = new File(["test data"], "photo.heic", {
+			type: "",
+		});
+
+		await processFileAndInsertLink(
+			mockCas,
+			"attachments",
+			editor,
+			file,
+			"notes/regular.md",
+			mockEncryptPathPolicy,
+			mockPipelineNoScript,
+			vault,
+		);
+
+		const text = editor.getText();
+		expect(text).toContain("![photo.heic](ipfs://");
+		expect(text).toContain("format=image%2Fheic");
+	});
+
+	it("passes inferred image mimeType to preProcess pipeline for HEIC file with empty mimeType", async () => {
+		const editor = createMockEditor();
+		const vault = createMockVault();
+		const file = new File(["test data"], "photo.heic", {
+			type: "",
+		});
+
+		const customPipeline = {
+			getScriptURL: vi.fn().mockReturnValue("app://local/script.js"),
+			run: vi.fn().mockResolvedValue({
+				data: new Uint8Array(10),
+				filename: "photo.webp",
+				mimeType: "image/webp",
+			}),
+		} as unknown as TransformPipeline;
+
+		await processFileAndInsertLink(
+			mockCas,
+			"attachments",
+			editor,
+			file,
+			"notes/regular.md",
+			mockEncryptPathPolicy,
+			customPipeline,
+			vault,
+		);
+
+		await new Promise((r) => window.setTimeout(r, 50));
+
+		expect(customPipeline.run).toHaveBeenCalledWith(
+			expect.objectContaining({
+				filename: "photo.heic",
+				mimeType: "image/heic",
+			}),
+		);
+
+		const text = editor.getText();
+		expect(text).toContain("![photo.webp](ipfs://");
+		expect(text).toContain("format=image%2Fwebp");
+	});
 });

@@ -17,6 +17,10 @@ export default function mimeTypeByExtension(ext: string): string {
 			return "image/apng";
 		case ".avif":
 			return "image/avif";
+		case ".heic":
+			return "image/heic";
+		case ".heif":
+			return "image/heif";
 		case ".gif":
 			return "image/gif";
 		case ".bmp":

@@ -143,10 +143,39 @@ const transform = async function (
 	input: PreProcessInput,
 	ctx: PreProcessContext,
 ): Promise<PreProcessOutput | undefined> {
+	let mimeType = input.mimeType;
+	if (!mimeType || mimeType === "application/octet-stream") {
+		const dotIndex = input.filename.lastIndexOf(".");
+		if (dotIndex !== -1) {
+			const ext = input.filename.slice(dotIndex).toLowerCase();
+			if (ext === ".heic" || ext === ".heif") {
+				mimeType = "image/heic";
+			} else if (
+				[
+					".png",
+					".jpg",
+					".jpeg",
+					".webp",
+					".gif",
+					".bmp",
+					".avif",
+					".tif",
+					".tiff",
+					".svg",
+				].includes(ext)
+			) {
+				mimeType = `image/${ext.slice(1)}`;
+			}
+		}
+	}
+
 	// 只处理图片
-	if (!input.mimeType.startsWith("image/")) {
+	if (!mimeType.startsWith("image/")) {
 		return undefined;
 	}
+
+	const normalizedInput =
+		mimeType !== input.mimeType ? { ...input, mimeType } : input;
 
 	const format = ctx.params.get("format") || "avif";
 	const quality = parseInt(ctx.params.get("quality") || "80", 10);
@@ -157,7 +186,7 @@ const transform = async function (
 
 	let result: PreProcessOutput | undefined;
 	try {
-		result = await requestConvert(input, format, quality, wasmURL);
+		result = await requestConvert(normalizedInput, format, quality, wasmURL);
 	} catch (err) {
 		ctx.log(
 			`ImageMagick ${format.toUpperCase()} conversion failed for ${input.filename}: ${(err as Error).message}`,

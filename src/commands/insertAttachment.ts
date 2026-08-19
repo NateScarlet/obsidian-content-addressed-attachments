@@ -4,6 +4,7 @@ import type { CAS } from "#src/types/CAS";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import IPFSLink from "#src/utils/IPFSLink";
+import mimeTypeByExtension from "#src/utils/mimeTypeByExtension";
 import defineLocales from "#src/utils/defineLocales";
 import {
 	createPreprocessPlaceholder,
@@ -16,6 +17,29 @@ type InsertAttachmentEditor = Pick<
 	Editor,
 	"replaceSelection" | "getValue" | "offsetToPos" | "replaceRange"
 >;
+
+/** 规范化文件 MIME 类型，若缺失或为通用类型则根据后缀名推断 */
+function ensureFileMimeType(file: File): File {
+	if (file.type && file.type !== "application/octet-stream") {
+		return file;
+	}
+	const dotIndex = file.name.lastIndexOf(".");
+	if (dotIndex === -1) {
+		return file;
+	}
+	const inferredMime = mimeTypeByExtension(file.name.slice(dotIndex));
+	if (
+		inferredMime &&
+		inferredMime !== "application/octet-stream" &&
+		inferredMime !== file.type
+	) {
+		return new File([file], file.name, {
+			type: inferredMime,
+			lastModified: file.lastModified,
+		});
+	}
+	return file;
+}
 
 // #region 插入附件：链接格式化与处理主流程
 function formatIPFSLinkMarkdown(
@@ -41,6 +65,7 @@ export async function processFileAndInsertLink(
 	pipeline: TransformPipeline,
 	vault: PlaceholderReplaceVault,
 ): Promise<void> {
+	file = ensureFileMimeType(file);
 	// 1. 检查是否启用了预处理脚本（若没有脚本 URL 则无需占位符，直接即时落盘）
 	const scriptURL = pipeline.getScriptURL();
 	if (!scriptURL) {
