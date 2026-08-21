@@ -13,6 +13,7 @@
 		"allowSyntheticDefaultImports": true,
 		"strictNullChecks": true,
 		"verbatimModuleSyntax": true,
+		"resolveJsonModule": true,
 		"skipLibCheck": true,
 		"lib": ["DOM", "ESNext"],
 		"paths": {

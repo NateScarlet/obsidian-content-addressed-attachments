@@ -16,6 +16,9 @@ styles.css
 # Exclude sourcemaps
 *.map
 
+# Preprocess scripts build output
+dist/
+
 # obsidian
 data.json
 
@@ -24,3 +27,7 @@ data.json
 
 # Agent scratch files
 .scratch
+
+# Playwright artifacts
+test-results/
+playwright-report/

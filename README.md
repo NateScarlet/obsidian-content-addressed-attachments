@@ -1,3 +1,5 @@
+[简体中文](./README.zh.md)
+
 # Obsidian Content-Addressed Attachments Plugin
 
 Implements content-addressed storage for attachments, providing IPFS-like functionality with local and external gateway/file-hosting support.
@@ -8,6 +10,7 @@ Implements content-addressed storage for attachments, providing IPFS-like functi
 
 - **Content-Addressed Storage**: Store attachments using content-based addressing (CID generation) with automatic deduplication
 - **IPFS-style Links**: Generate and resolve `ipfs://` links with support for filename and format parameters
+- **Attachment Pre-processing**: Automate attachment transformations (e.g., image format conversion to WebP/AVIF, quality compression, metadata stripping via WebAssembly/JS scripts) before saving to CAS
 - **Web File Locking**: Download and cache external web images with checksum verification, creating resilient links that work offline
 - **Multi-Gateway Support**: Configurable external gateways with customizable URL templates and request headers
 - **Encryption Support**: AES-256-GCM encryption for attachments with transparent encrypt-on-save and decrypt-on-read
@@ -40,6 +43,22 @@ Implements content-addressed storage for attachments, providing IPFS-like functi
 - **Drag and Drop**: Drag files into notes for automatic IPFS link conversion
 - **Copy and Paste**: Paste files directly into notes
 - **Automatic Processing**: `ipfs://` links are automatically resolved to accessible URLs
+
+### Pre-processing Attachments
+
+Automatically transform attachments (e.g. image format conversion, quality tuning) before they are saved to CAS storage:
+
+1. **Select Preset or Custom Script**: Go to Settings → Content-Addressed Attachments → Pre-processing script
+   - Choose a preset script (e.g., ImageMagick WebP / AVIF conversion)
+   - Or enter a custom script URL (vault-relative path, HTTPS URL, or `internal.ipfs-locked:` format)
+   - Pass parameters via URL fragment (e.g., `#format=webp&quality=80`)
+
+2. **Non-Blocking Background Execution**:
+   - When inserting an attachment, a temporary comment placeholder (e.g., `%% Preprocessing attachment: image.png... %%`) is instantly inserted into your note so editing is never blocked
+   - Pre-processing runs asynchronously in the background and replaces the placeholder with the final `ipfs://` link upon completion
+
+3. **Developing & Contributing Custom Scripts**:
+   - Learn how to author ESM transformation scripts or JSON manifests in the [Script Development Guide](./docs/preprocess-scripts.en.md).
 
 ### Locking Web Images
 
@@ -124,6 +143,7 @@ These operations are placed in settings to prevent accidental execution, as they
 
 Configure via Settings → Content-Addressed Attachments:
 
+- **Pre-processing Script**: Select preset or custom transformation scripts (e.g. ImageMagick WebP/AVIF format conversion) for processing attachments before CAS storage
 - **Local Storage Directory**: Path for content-addressed attachments storage
 - **Download Directory**: Path for storing locked web images (optional, falls back to primary directory)
 - **External Gateways**: Add and configure multiple gateways for file retrieval

@@ -8,9 +8,15 @@ import clsx from "clsx";
 import TemplateSyntaxHelp from "#src/lib/TemplateSyntaxHelp.svelte";
 import TemplatePreview from "#src/lib/TemplatePreview.svelte";
 import EncryptionSettingsComponent from "#src/lib/EncryptionSettings.svelte";
+import PreProcessScriptInput from "#src/lib/PreProcessScriptInput.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { encryptNote } from "#src/commands/convertAttachment";
+import {
+	createReprocessContext,
+	reprocessWholeVault,
+} from "#src/commands/reprocessAttachments";
+import { findScriptByURL, SCRIPT_INDEX } from "#src/preprocess/scriptIndex";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
@@ -245,7 +251,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								encryptionService:
 									this.plugin.encryptionService,
 								urlResolver: this.plugin.urlResolver,
-								referenceManager: this.plugin.referenceManger,
+								referenceManager: this.plugin.referenceManager,
 								dir: this.plugin.settings.primaryDir,
 								keyManager: this.plugin.keyManager,
 								encryptPathPolicy:
@@ -275,14 +281,41 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		}
 		//#endregion
 
+		//#region 预处理设置
+		new Setting(containerEl).setName(t("preProcessing")).setHeading();
+
+		// 预处理脚本：多行输入框（支持长 URL 换行）+ 预设自动补全下拉
+		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
+		const scriptInputContainer = containerEl.createDiv();
+		this.stack.adopt(
+			mount(PreProcessScriptInput, {
+				target: scriptInputContainer,
+				props: {
+					value: currentScriptURL || "",
+					entries: SCRIPT_INDEX,
+					customScriptLabel: t("customScript"),
+					disabledLabel: t("preProcessDisabled"),
+					findScriptByURL,
+					onChange: async (value: string) => {
+						this.plugin.settings.preProcess.scriptURL = value;
+						await this.plugin.saveSettings();
+					},
+				},
+			}),
+			(i) => void unmount(i),
+		);
+		//#endregion
+
 		// 全库操作区域
 		new Setting(containerEl).setName(t("advancedOperations")).setHeading();
+
+		const btnText = t("execute");
 
 		new Setting(containerEl)
 			.setName(t("migrateAllNotes"))
 			.setDesc(t("migrateAllNotesDesc"))
 			.addButton((button) =>
-				button.setButtonText(t("execute")).onClick(() => {
+				button.setButtonText(btnText).onClick(() => {
 					this.plugin.migrationManager
 						.execute("all")
 						.catch(showError);
@@ -293,10 +326,21 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setName(t("lockAllNotes"))
 			.setDesc(t("lockAllNotesDesc"))
 			.addButton((button) => {
-				button.setButtonText(t("execute")).onClick(() => {
+				button.setButtonText(btnText).onClick(() => {
 					this.plugin.lockManager.execute("all").catch(showError);
 				});
 			});
+
+		new Setting(containerEl)
+			.setName(t("reprocessWholeVault"))
+			.setDesc(t("reprocessWholeVaultDesc"))
+			.addButton((button) =>
+				button.setButtonText(btnText).onClick(() => {
+					reprocessWholeVault(
+						createReprocessContext(this.plugin),
+					).catch(showError);
+				}),
+			);
 	}
 
 	onClose(): void {
@@ -337,6 +381,13 @@ const { t } = defineLocales({
 		encryptMatchingNotesSuccess: (count: number) =>
 			`Encrypted ${count} link(s)`,
 		noMatchingFiles: "No matching notes found for rule",
+		reprocessWholeVault:
+			"Reprocess all attachments (whole vault, advanced)",
+		reprocessWholeVaultDesc:
+			"Reprocess all referenced attachments using the pre-processing pipeline",
+		preProcessing: "Pre-processing",
+		preProcessDisabled: "Disabled",
+		customScript: "Custom script",
 	},
 	zh: {
 		primaryStorageDirectory: "主存储目录",
@@ -367,6 +418,11 @@ const { t } = defineLocales({
 		encryptMatchingNotesSuccess: (count: number) =>
 			`已加密 ${count} 个链接`,
 		noMatchingFiles: "未找到符合路径规则的笔记",
+		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
+		reprocessWholeVaultDesc: "使用预处理管线重新处理所有被引用的附件",
+		preProcessing: "预处理",
+		preProcessDisabled: "禁用",
+		customScript: "自定义脚本",
 	},
 });
 //#endregion

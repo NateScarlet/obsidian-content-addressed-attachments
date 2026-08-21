@@ -1,5 +1,6 @@
 import { Notice, type App, type TFile, type Editor } from "obsidian";
 import { CID } from "multiformats/cid";
+
 import type { CAS } from "#src/types/CAS";
 import type EncryptionService from "#src/lib/encryption/EncryptionService";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
@@ -10,8 +11,9 @@ import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
-
 import type ReferenceManager from "#src/ReferenceManager";
+import trashIfUnreferenced from "./trashIfUnreferenced";
+import loadFileContent from "./loadFileContent";
 
 const { t } = defineLocales({
 	en: {
@@ -40,50 +42,6 @@ export interface EncryptContext {
 	encryptPathPolicy?: EncryptPathPolicy;
 }
 
-async function trashIfUnreferenced(
-	cas: CAS,
-	referenceManager: ReferenceManager,
-	cid: CID,
-	currentNotePath: string | undefined,
-): Promise<void> {
-	const referencingFiles: string[] = [];
-	for await (const path of referenceManager.findFilePath(cid, undefined)) {
-		if (path !== currentNotePath) {
-			referencingFiles.push(path);
-		}
-	}
-
-	if (referencingFiles.length > 0) {
-		return;
-	}
-
-	await cas.trash(cid);
-}
-
-/**
- * 加载二进制内容。
- * 优先调用 cas.load(cid) 加载（当文件位于垃圾箱 .trash 中时，cas.load 会自动自动还原并校验文件），
- * 其次回退调用 urlResolver。
- */
-async function loadFileContent(
-	app: App,
-	cas: CAS,
-	urlResolver: URLResolver,
-	rawURL: string,
-): Promise<ArrayBuffer | undefined> {
-	const parsed = IPFSLink.parse(rawURL);
-	if (parsed) {
-		const match = await cas.load(parsed.cid);
-		if (match?.normalizedPath) {
-			return app.vault.adapter.readBinary(match.normalizedPath);
-		}
-	}
-	const resolved = await urlResolver.resolveURL(rawURL);
-	if (resolved?.path) {
-		return app.vault.adapter.readBinary(resolved.path);
-	}
-}
-
 /**
  * Resolve the encryption key fingerprint for a given note path.
  * Priority: path policy → primary key.
@@ -100,14 +58,15 @@ async function resolveEncryptFingerprint(
 
 /**
  * Core encryption logic for a single IPFS link.
- * Returns the new encrypted URL, or undefined if encryption is not needed/possible.
+ * Returns the new encrypted URL and the old CID (if it should be trashed),
+ * or undefined if encryption is not needed/possible.
  */
 async function encryptSingleLink(
 	ctx: EncryptContext,
 	linkText: string,
 	notePath: string,
 	dir: string,
-): Promise<string | undefined> {
+): Promise<{ newURL: string; oldCID: CID | undefined } | undefined> {
 	const parsed = IPFSLink.parse(linkText);
 	if (!parsed || parsed.format === ENCRYPTED_FORMAT) return undefined;
 
@@ -136,20 +95,15 @@ async function encryptSingleLink(
 	}
 
 	const { cid: newCid } = await ctx.cas.save(dir, encryptedFile);
-	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			parsed.cid,
-			notePath,
-		);
-	}
 
-	return new IPFSLink({
-		cid: newCid,
-		filename: encryptedFile.name,
-		format: ENCRYPTED_FORMAT,
-	}).toURL();
+	return {
+		newURL: new IPFSLink({
+			cid: newCid,
+			filename: encryptedFile.name,
+			format: ENCRYPTED_FORMAT,
+		}).toURL(),
+		oldCID: newCid.equals(parsed.cid) ? undefined : parsed.cid,
+	};
 }
 
 // #endregion
@@ -167,17 +121,22 @@ export async function encryptLink(
 		typeof match.url.toURL === "function" ? match.url.toURL() : undefined;
 	if (!linkText) return;
 
-	const newURL = await encryptSingleLink(ctx, linkText, notePath ?? "", dir);
-	if (!newURL) {
+	const result = await encryptSingleLink(ctx, linkText, notePath ?? "", dir);
+	if (!result) {
 		new Notice(t("noKeyAvailable"));
 		return;
 	}
 
 	editor.replaceRange(
-		newURL,
+		result.newURL,
 		editor.offsetToPos(match.pos[0]),
 		editor.offsetToPos(match.pos[1]),
 	);
+
+	// 替换后再清理旧 CID，避免被当前笔记的引用阻止
+	if (result.oldCID) {
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, result.oldCID);
+	}
 }
 
 export async function decryptLink(
@@ -214,14 +173,7 @@ export async function decryptLink(
 		type: decrypted.mimeType,
 	});
 	const { cid: newCid } = await ctx.cas.save(dir, file);
-	if (!newCid.equals(parsed.cid)) {
-		await trashIfUnreferenced(
-			ctx.cas,
-			ctx.referenceManager,
-			parsed.cid,
-			notePath,
-		);
-	}
+	const oldCID = newCid.equals(parsed.cid) ? undefined : parsed.cid;
 	const newURL = new IPFSLink({
 		cid: newCid,
 		filename: file.name,
@@ -233,6 +185,11 @@ export async function decryptLink(
 		editor.offsetToPos(match.pos[0]),
 		editor.offsetToPos(match.pos[1]),
 	);
+
+	// 替换后再清理旧 CID，避免被当前笔记的引用阻止
+	if (oldCID) {
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, oldCID);
+	}
 }
 
 export function findLinkAtPos(
@@ -259,10 +216,30 @@ export async function encryptNote(
 	const fp = await resolveEncryptFingerprint(ctx, file.path);
 	if (!fp) return 0;
 
+	const cidsToTrash: CID[] = [];
 	const transformer = new VaultLinkTransformer(ctx.app);
-	return transformer.transformFile(file, async (_match, linkText) => {
-		return encryptSingleLink(ctx, linkText, file.path, dir);
-	});
+	const count = await transformer.transformFile(
+		file,
+		async (_match, linkText) => {
+			const result = await encryptSingleLink(
+				ctx,
+				linkText,
+				file.path,
+				dir,
+			);
+			if (result?.oldCID) {
+				cidsToTrash.push(result.oldCID);
+			}
+			return result?.newURL;
+		},
+	);
+
+	// 文件修改后再清理旧 CID，避免被当前笔记的引用阻止
+	for (const cid of cidsToTrash) {
+		await trashIfUnreferenced(ctx.cas, ctx.referenceManager, cid);
+	}
+
+	return count;
 }
 
 // #endregion
