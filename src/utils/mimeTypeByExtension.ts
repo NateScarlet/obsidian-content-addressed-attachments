@@ -169,3 +169,19 @@ export default function mimeTypeByExtension(ext: string): string {
 			return "application/octet-stream";
 	}
 }
+
+/**
+ * 返回最终生效的 MIME 类型：当前值缺失或为通用占位类型时按文件名后缀推断，
+ * 否则原样返回当前值。无法识别后缀时原样返回当前值。
+ */
+export function effectiveMimeType(mimeType: string, filename: string): string {
+	if (mimeType && mimeType !== "application/octet-stream") {
+		return mimeType;
+	}
+	const dotIndex = filename.lastIndexOf(".");
+	if (dotIndex === -1) {
+		return mimeType;
+	}
+	const inferred = mimeTypeByExtension(filename.slice(dotIndex));
+	return inferred === "application/octet-stream" ? mimeType : inferred;
+}

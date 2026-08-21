@@ -11,8 +11,8 @@ import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import ProgressModal from "#src/ui/ProgressModal";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
-import { trashIfUnreferenced } from "./trashIfUnreferenced";
-import { loadFileContent } from "./loadFileContent";
+import trashIfUnreferenced from "./trashIfUnreferenced";
+import loadFileContent from "./loadFileContent";
 
 const { t } = defineLocales({
 	en: {
@@ -56,6 +56,34 @@ export interface ReprocessContext {
 	encryptPathPolicy: EncryptPathPolicy;
 	pipeline: TransformPipeline;
 	dir: string;
+}
+
+/** 构造重新处理上下文所需的最小插件依赖 */
+export interface ReprocessContextSource {
+	app: App;
+	cas: CAS;
+	encryptionService: EncryptionService;
+	urlResolver: URLResolver;
+	referenceManager: ReferenceManager;
+	encryptPathPolicy: EncryptPathPolicy;
+	pipeline: TransformPipeline;
+	settings: { primaryDir: string };
+}
+
+/** 从插件实例组装重新处理命令的上下文，避免各调用点重复罗列字段 */
+export function createReprocessContext(
+	source: ReprocessContextSource,
+): ReprocessContext {
+	return {
+		app: source.app,
+		cas: source.cas,
+		encryptionService: source.encryptionService,
+		urlResolver: source.urlResolver,
+		referenceManager: source.referenceManager,
+		encryptPathPolicy: source.encryptPathPolicy,
+		pipeline: source.pipeline,
+		dir: source.settings.primaryDir,
+	};
 }
 
 //#endregion

@@ -12,8 +12,10 @@ import PreProcessScriptInput from "#src/lib/PreProcessScriptInput.svelte";
 import { mount, unmount } from "svelte";
 import showError from "#src/utils/showError";
 import { encryptNote } from "#src/commands/convertAttachment";
-import { reprocessWholeVault } from "#src/commands/reprocessAttachments";
-import type { ReprocessContext } from "#src/commands/reprocessAttachments";
+import {
+	createReprocessContext,
+	reprocessWholeVault,
+} from "#src/commands/reprocessAttachments";
 import { findScriptByURL, SCRIPT_INDEX } from "#src/preprocess/scriptIndex";
 import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
@@ -334,17 +336,9 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setDesc(t("reprocessWholeVaultDesc"))
 			.addButton((button) =>
 				button.setButtonText(btnText).onClick(() => {
-					const ctx: ReprocessContext = {
-						app: this.plugin.app,
-						cas: this.plugin.cas,
-						encryptionService: this.plugin.encryptionService,
-						urlResolver: this.plugin.urlResolver,
-						referenceManager: this.plugin.referenceManager,
-						encryptPathPolicy: this.plugin.encryptPathPolicy,
-						pipeline: this.plugin.pipeline,
-						dir: this.plugin.settings.primaryDir,
-					};
-					reprocessWholeVault(ctx).catch(showError);
+					reprocessWholeVault(
+						createReprocessContext(this.plugin),
+					).catch(showError);
 				}),
 			);
 	}

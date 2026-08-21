@@ -1,6 +1,6 @@
 import scriptIndexJson from "./script-index.generated.json";
 import type { ScriptIndexEntry } from "./types";
-import { stripFragment } from "./stripFragment";
+import stripFragment from "./stripFragment";
 
 /**
  * 脚本索引，直接从 JSON 文件导入。

@@ -247,6 +247,7 @@ describe("processFileAndInsertLink", () => {
 
 		await new Promise((r) => window.setTimeout(r, 50));
 
+		// eslint-disable-next-line @typescript-eslint/unbound-method
 		expect(customPipeline.run).toHaveBeenCalledWith(
 			expect.objectContaining({
 				filename: "photo.heic",

@@ -37,10 +37,10 @@ import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import {
+	createReprocessContext,
 	reprocessCurrentNote,
 	reprocessSingleLinkCommand,
 	reprocessWholeVault,
-	type ReprocessContext,
 } from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
@@ -426,17 +426,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			},
 		});
 
-		// 重新处理附件命令
-		const reprocessCtx = (): ReprocessContext => ({
-			app: this.app,
-			cas: this.cas,
-			encryptionService: this.encryptionService,
-			urlResolver: this.urlResolver,
-			referenceManager: this.referenceManager,
-			encryptPathPolicy: this.encryptPathPolicy,
-			pipeline: this.pipeline,
-			dir: this.settings.primaryDir,
-		});
+		// 重新处理附件命令：从插件实例组装共享上下文
+		const reprocessCtx = () => createReprocessContext(this);
 
 		this.addCommand({
 			id: "reprocess-current-note",
@@ -602,7 +593,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	onunload() {
-		this.stack.dispose();
+		// 先释放管线持有的挂起日志定时器，再统一回收其余资源；
+		// onload 未完成即被卸载时 pipeline 可能未赋值
+		this.pipeline?.dispose();
+		this.stack?.dispose();
 	}
 }
 

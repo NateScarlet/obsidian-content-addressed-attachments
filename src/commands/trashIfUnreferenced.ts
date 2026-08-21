@@ -6,7 +6,7 @@ import type ReferenceManager from "#src/ReferenceManager";
  * 如果 CID 不再被其他笔记引用，则将其移入回收站。
  * 调用方应在更新引用后再调用此函数，避免误删。
  */
-export async function trashIfUnreferenced(
+export default async function trashIfUnreferenced(
 	cas: CAS,
 	referenceManager: ReferenceManager,
 	cid: CID,

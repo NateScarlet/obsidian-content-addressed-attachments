@@ -6,7 +6,7 @@ import type { PreProcessInput, PreProcessOutput } from "./shared-types";
  * 脚本为第三方动态加载代码，类型声明在运行期不生效，必须在此处做运行期校验。
  * 输入文件名为空时允许输出文件名也为空（脚本原样传递空文件名）。
  */
-export function assertScriptOutput(
+export default function validateScriptOutput(
 	result: unknown,
 	input: Pick<PreProcessInput, "filename">,
 	scriptURL: string,

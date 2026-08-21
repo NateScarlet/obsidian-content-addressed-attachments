@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { assertScriptOutput } from "./validateScriptOutput";
+import validateScriptOutput from "./validateScriptOutput";
 
 const scriptURL = "scripts/transform.js";
 const validInput = { filename: "test.png" };
 const emptyFilenameInput = { filename: "" };
 
-describe("assertScriptOutput", () => {
+describe("validateScriptOutput", () => {
 	it("accepts a valid output", () => {
 		expect(() =>
-			assertScriptOutput(
+			validateScriptOutput(
 				{
 					data: new ArrayBuffer(4),
 					mimeType: "image/avif",
@@ -22,7 +22,7 @@ describe("assertScriptOutput", () => {
 
 	it("accepts an empty output filename when the input filename is empty", () => {
 		expect(() =>
-			assertScriptOutput(
+			validateScriptOutput(
 				{
 					data: new ArrayBuffer(4),
 					mimeType: "image/avif",
@@ -40,7 +40,7 @@ describe("assertScriptOutput", () => {
 			{ data: new ArrayBuffer(4), mimeType: "", filename: "test.avif" },
 		]) {
 			expect(() =>
-				assertScriptOutput(output, validInput, scriptURL),
+				validateScriptOutput(output, validInput, scriptURL),
 			).toThrow("'mimeType' must be a non-empty string");
 		}
 	});
@@ -51,7 +51,7 @@ describe("assertScriptOutput", () => {
 			{ data: new ArrayBuffer(4), mimeType: "image/avif", filename: "" },
 		]) {
 			expect(() =>
-				assertScriptOutput(output, validInput, scriptURL),
+				validateScriptOutput(output, validInput, scriptURL),
 			).toThrow("'filename' must be a non-empty string");
 		}
 	});
@@ -59,14 +59,14 @@ describe("assertScriptOutput", () => {
 	it("throws when result is not an object", () => {
 		for (const invalid of [null, undefined, "data", 42, true, ["data"]]) {
 			expect(() =>
-				assertScriptOutput(invalid, validInput, scriptURL),
+				validateScriptOutput(invalid, validInput, scriptURL),
 			).toThrow("expected an object");
 		}
 	});
 
 	it("throws when data is missing", () => {
 		expect(() =>
-			assertScriptOutput(
+			validateScriptOutput(
 				{ mimeType: "image/avif", filename: "test.avif" },
 				validInput,
 				scriptURL,
@@ -77,7 +77,7 @@ describe("assertScriptOutput", () => {
 	it("throws when data is not an ArrayBuffer", () => {
 		for (const invalid of ["data", new Blob([]), new Uint8Array(4)]) {
 			expect(() =>
-				assertScriptOutput(
+				validateScriptOutput(
 					{ data: invalid, mimeType: "image/avif" },
 					validInput,
 					scriptURL,
@@ -88,7 +88,7 @@ describe("assertScriptOutput", () => {
 
 	it("throws when mimeType is not a string", () => {
 		expect(() =>
-			assertScriptOutput(
+			validateScriptOutput(
 				{ data: new ArrayBuffer(4), mimeType: 42 },
 				validInput,
 				scriptURL,
@@ -98,7 +98,7 @@ describe("assertScriptOutput", () => {
 
 	it("throws when filename is not a string", () => {
 		expect(() =>
-			assertScriptOutput(
+			validateScriptOutput(
 				{
 					data: new ArrayBuffer(4),
 					mimeType: "image/avif",
@@ -112,7 +112,7 @@ describe("assertScriptOutput", () => {
 
 	it("includes the script URL in the error message", () => {
 		expect(() =>
-			assertScriptOutput(
+			validateScriptOutput(
 				{ mimeType: "image/avif" },
 				validInput,
 				"custom/script.js",

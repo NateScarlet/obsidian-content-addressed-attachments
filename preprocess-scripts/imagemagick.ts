@@ -9,7 +9,10 @@
  *   - format: 输出格式（avif | webp | jpeg | png），默认 avif
  *   - quality: 编码质量（1-100），默认 80
  *   - minSavings: 最小节省百分比（0-100），默认 10。
- *     当转换后体积相比原始文件节省低于该百分比时保留原始文件。
+ *     仅当原格式是 Obsidian 各端都能直接显示的图片格式时，
+ *     转换后体积相比原始文件节省低于该百分比才保留原始文件；
+ *     原格式存在无法直接显示的平台（如 heic/tiff/avif）时总是采用转换结果，
+ *     因为转换为广泛兼容的格式本身就是收益。
  *
  * 构建后的脚本、worker 脚本与 magick.wasm 位于同一目录，
  * 通过相对 import.meta.url 解析。worker 由 Blob URL 创建（app:// 不支持
@@ -22,6 +25,7 @@ import type {
 	PreProcessContext,
 	PreProcessScriptModule,
 } from "../src/preprocess/shared-types";
+import { effectiveMimeType } from "../src/utils/mimeTypeByExtension";
 
 // #region Worker 通信
 /** convert 请求（与 worker 共享的消息形状） */
@@ -132,83 +136,98 @@ function requestConvert(
 // #endregion
 
 /**
- * 默认导出：使用 ImageMagick WASM（在 Web Worker 中）转换图片格式。
+ * Obsidian 各端（Electron / iOS WKWebView / Android WebView）都能直接显示的
+ * 图片 MIME 类型。仅这些格式作为原格式时受 minSavings 阈值约束。
+ *
+ * avif 虽然桌面端 Chromium 可解码，但移动端取决于系统 WebView/OS 版本，
+ * 不在保证集合内；heic/heif/tiff 桌面端完全无法显示。
+ * 集合宁缺毋滥：误排除只会导致总是转换（输出兼容性更好），
+ * 误包含会在部分平台保留无法显示的原始文件。
+ */
+const OBSIDIAN_DISPLAYABLE_IMAGE_MIMES: ReadonlySet<string> = new Set([
+	"image/png",
+	"image/apng",
+	"image/jpeg",
+	"image/gif",
+	"image/webp",
+	"image/bmp",
+	"image/svg+xml",
+	"image/x-icon",
+]);
+
+/** 转换依赖：执行一次格式转换，返回 undefined 表示已是目标格式无需转换 */
+export type ConvertFn = (
+	input: PreProcessInput,
+	format: string,
+	quality: number,
+	wasmURL: string,
+) => Promise<PreProcessOutput | undefined>;
+
+/**
+ * 创建图片转换脚本入口，convert 依赖显式注入以便测试替换。
  *
  * - auto-orient：自动校正朝向
  * - strip：移除元数据
  * - quality：编码质量（默认 80）
- * - minSavings：转换后节省低于该百分比时保留原始文件（默认 10）
+ * - minSavings：仅当原格式是 Obsidian 各端都能直接显示的图片时，
+ *   转换后节省低于该百分比才保留原始文件（默认 10）
  */
-const transform = async function (
-	input: PreProcessInput,
-	ctx: PreProcessContext,
-): Promise<PreProcessOutput | undefined> {
-	let mimeType = input.mimeType;
-	if (!mimeType || mimeType === "application/octet-stream") {
-		const dotIndex = input.filename.lastIndexOf(".");
-		if (dotIndex !== -1) {
-			const ext = input.filename.slice(dotIndex).toLowerCase();
-			if (ext === ".heic" || ext === ".heif") {
-				mimeType = "image/heic";
-			} else if (
-				[
-					".png",
-					".jpg",
-					".jpeg",
-					".webp",
-					".gif",
-					".bmp",
-					".avif",
-					".tif",
-					".tiff",
-					".svg",
-				].includes(ext)
-			) {
-				mimeType = `image/${ext.slice(1)}`;
-			}
+export function createTransform(convert: ConvertFn) {
+	return async function (
+		input: PreProcessInput,
+		ctx: PreProcessContext,
+	): Promise<PreProcessOutput | undefined> {
+		// 上游未提供可信 mime 时按扩展名推断（复用项目共享映射）
+		const mimeType = effectiveMimeType(input.mimeType, input.filename);
+
+		// 只处理图片
+		if (!mimeType.startsWith("image/")) {
+			return undefined;
 		}
-	}
 
-	// 只处理图片
-	if (!mimeType.startsWith("image/")) {
-		return undefined;
-	}
+		const normalizedInput =
+			mimeType !== input.mimeType ? { ...input, mimeType } : input;
 
-	const normalizedInput =
-		mimeType !== input.mimeType ? { ...input, mimeType } : input;
+		const format = ctx.params.get("format") || "avif";
+		const quality = parseInt(ctx.params.get("quality") || "80", 10);
+		const minSavings = parseInt(ctx.params.get("minSavings") || "10", 10);
+		const wasmURL = new URL("magick.wasm", import.meta.url).href;
 
-	const format = ctx.params.get("format") || "avif";
-	const quality = parseInt(ctx.params.get("quality") || "80", 10);
-	const minSavings = parseInt(ctx.params.get("minSavings") || "10", 10);
-	const wasmURL = new URL("magick.wasm", import.meta.url).href;
+		const originalSize = input.data.byteLength;
 
-	const originalSize = input.data.byteLength;
+		let result: PreProcessOutput | undefined;
+		try {
+			result = await convert(normalizedInput, format, quality, wasmURL);
+		} catch (err) {
+			ctx.log(
+				`ImageMagick ${format.toUpperCase()} conversion failed for ${input.filename}: ${(err as Error).message}`,
+			);
+			return undefined;
+		}
 
-	let result: PreProcessOutput | undefined;
-	try {
-		result = await requestConvert(normalizedInput, format, quality, wasmURL);
-	} catch (err) {
-		ctx.log(
-			`ImageMagick ${format.toUpperCase()} conversion failed for ${input.filename}: ${(err as Error).message}`,
-		);
-		return undefined;
-	}
+		// worker 返回 undefined 表示已目标格式，跳过
+		if (!result) {
+			return undefined;
+		}
 
-	// worker 返回 undefined 表示已目标格式，跳过
-	if (!result) {
-		return undefined;
-	}
+		// 原格式各端都可直接显示时，转换收益仅为体积：
+		// 节省低于 minSavings% 则保留原始文件。
+		// 原格式存在无法直接显示的平台时，转为广泛兼容格式本身就是收益，
+		// 不受该阈值约束（否则会因最低节省要求而留下无法显示的原始文件）。
+		if (
+			OBSIDIAN_DISPLAYABLE_IMAGE_MIMES.has(mimeType) &&
+			result.data.byteLength > ((100 - minSavings) / 100) * originalSize
+		) {
+			ctx.log(
+				`${format.toUpperCase()} output saves less than ${minSavings}%, keeping original: ${input.filename}`,
+			);
+			return undefined;
+		}
 
-	// 转换后节省低于 minSavings% 时保留原始文件
-	// （与 pre-commit.py 一致：无论同格式/跨格式转码都应用该阈值）
-	if (result.data.byteLength > ((100 - minSavings) / 100) * originalSize) {
-		ctx.log(
-			`${format.toUpperCase()} output saves less than ${minSavings}%, keeping original: ${input.filename}`,
-		);
-		return undefined;
-	}
+		return result;
+	} satisfies PreProcessScriptModule["default"];
+}
 
-	return result;
-} satisfies PreProcessScriptModule["default"];
+const transform = createTransform(requestConvert);
 
 export default transform;

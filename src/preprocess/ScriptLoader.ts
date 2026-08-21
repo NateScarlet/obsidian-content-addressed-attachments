@@ -6,7 +6,7 @@ import type {
 import type { DataAdapter } from "obsidian";
 import { CID } from "multiformats/cid";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
-import { stripFragment } from "./stripFragment";
+import stripFragment from "./stripFragment";
 
 /** 使用 URL 构造函数解析获取 params */
 function parseURLSearchParams(url: string): {

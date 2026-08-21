@@ -8,7 +8,7 @@ import IPFSLink from "#src/utils/IPFSLink";
  * 优先调用 cas.load(cid) 加载（当文件位于垃圾箱 .trash 中时，cas.load 会自动还原并校验文件），
  * 其次回退调用 urlResolver。
  */
-export async function loadFileContent(
+export default async function loadFileContent(
 	app: App,
 	cas: CAS,
 	urlResolver: URLResolver,

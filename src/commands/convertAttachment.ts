@@ -12,8 +12,8 @@ import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
 import type ReferenceManager from "#src/ReferenceManager";
-import { trashIfUnreferenced } from "./trashIfUnreferenced";
-import { loadFileContent } from "./loadFileContent";
+import trashIfUnreferenced from "./trashIfUnreferenced";
+import loadFileContent from "./loadFileContent";
 
 const { t } = defineLocales({
 	en: {
