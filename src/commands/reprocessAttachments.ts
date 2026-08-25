@@ -14,34 +14,44 @@ import SingleFlightGroup from "#src/utils/SingleFlightGroup";
 import trashIfUnreferenced from "./trashIfUnreferenced";
 import loadFileContent from "./loadFileContent";
 
+/** 与 main.ts 命令面板共享的重新处理文案，单一出处避免两处定义漂移 */
+export const reprocessSharedMessages = {
+	en: {
+		reprocessCurrentNote: "Reprocess attachments (current note)",
+		reprocessWholeVault:
+			"Reprocess all attachments (whole vault, advanced)",
+		reprocessComplete: (count: number) =>
+			`Reprocessed ${count} attachment(s)`,
+		noAttachmentsFound: "No attachments found to reprocess",
+	},
+	zh: {
+		reprocessCurrentNote: "重新处理附件（当前笔记）",
+		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
+		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
+		noAttachmentsFound: "未找到需要重新处理的附件",
+	},
+} as const;
+
 const { t } = defineLocales({
 	en: {
 		confirm: "Continue",
 		cancel: "Cancel",
-		reprocessCurrentNote: "Reprocess attachments (current note)",
-		reprocessWholeVault:
-			"Reprocess all attachments (whole vault, advanced)",
+		...reprocessSharedMessages.en,
 		reprocessConfirm:
 			"This will reprocess all referenced attachments in the vault. This operation is hard to revert. Continue?",
 		reprocessCancelled: "Reprocess cancelled",
-		reprocessComplete: (count: number) =>
-			`Reprocessed ${count} attachment(s)`,
 		reprocessProgress: (current: number, total: number) =>
 			`Reprocessing attachment ${current}/${total}`,
-		noAttachmentsFound: "No attachments found to reprocess",
 	},
 	zh: {
 		confirm: "继续",
 		cancel: "取消",
-		reprocessCurrentNote: "重新处理附件（当前笔记）",
-		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
+		...reprocessSharedMessages.zh,
 		reprocessConfirm:
 			"将重新处理仓库中所有被引用的附件。此操作难以撤销。是否继续？",
 		reprocessCancelled: "已取消重新处理",
-		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
 		reprocessProgress: (current: number, total: number) =>
 			`正在重新处理附件 ${current}/${total}`,
-		noAttachmentsFound: "未找到需要重新处理的附件",
 	},
 });
 

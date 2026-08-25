@@ -10,7 +10,9 @@ describe("scriptIndex", () => {
 		expect(SCRIPT_INDEX.length).toBeGreaterThan(0);
 		for (const entry of SCRIPT_INDEX) {
 			expect(entry.name).toBeTruthy();
-			expect(entry.description).toBeTruthy();
+			// 描述必须同时提供中英文案，按用户界面语言显示
+			expect(entry.description.en).toBeTruthy();
+			expect(entry.description.zh).toBeTruthy();
 			expect(entry.scriptURL).toBeTruthy();
 		}
 	});

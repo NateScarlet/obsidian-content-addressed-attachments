@@ -275,7 +275,12 @@ export class URLResolver {
 			url: rawURL,
 			throw: false,
 		});
-		if (resp.status !== 200) return undefined;
+		// 404 与 vault-relative 语义一致，视为合法的“资源不存在”；
+		// 其他状态码抛错让调用方可见，避免服务器故障被当成文件缺失静默吞掉
+		if (resp.status === 404) return undefined;
+		if (resp.status !== 200) {
+			throw new Error(`HTTP ${resp.status} while resolving ${rawURL}`);
+		}
 		const dir = this.settings().downloadDir || this.settings().primaryDir;
 		const file = new File(
 			[resp.arrayBuffer],

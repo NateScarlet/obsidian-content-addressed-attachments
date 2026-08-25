@@ -14,12 +14,20 @@
  * 该索引由 scripts/generate-preprocess-index.mjs 负责。
  */
 
-import { copyFileSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
+import {
+	copyFileSync,
+	mkdirSync,
+	existsSync,
+	writeFileSync,
+} from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { CID } from "multiformats/cid";
-import { sha256 } from "multiformats/hashes/sha2";
 import * as esbuild from "esbuild";
+import {
+	RELEASE_ASSET_BASE_URL,
+	computeCID,
+	releaseAssetName,
+} from "./preprocess-common.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -38,12 +46,8 @@ const wasmSrc = resolve(
 const VAULT_RELATIVE_PREFIX =
 	".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts";
 
-/** release asset 下载 URL 模板 */
-const RELEASE_ASSET_URL =
-	"https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/<TAG>/";
-
-/** release asset 名称统一加 preprocess- 前缀，避免与主插件资源混在一起 */
-const releaseAssetName = (name) => `preprocess-${name}`;
+/** release asset HTTPS URL 模板（<TAG> 占位符由 generate-preprocess-index.mjs 替换） */
+const RELEASE_ASSET_URL = `${RELEASE_ASSET_BASE_URL}<TAG>/`;
 
 const scripts = ["imagemagick.ts"];
 
@@ -52,13 +56,6 @@ const workerScripts = ["imagemagick.worker.ts"];
 
 if (!existsSync(scriptDistDir)) {
 	mkdirSync(scriptDistDir, { recursive: true });
-}
-
-/** 计算文件的 CID (v1, raw codec, SHA-256) */
-async function computeCID(filePath) {
-	const data = readFileSync(filePath);
-	const digest = await sha256.digest(data);
-	return CID.create(1, 0x55, digest).toString();
 }
 
 // 构建脚本

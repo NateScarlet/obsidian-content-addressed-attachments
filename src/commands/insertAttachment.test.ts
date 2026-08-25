@@ -131,7 +131,7 @@ describe("processFileAndInsertLink", () => {
 		// 检查立即插入的占位符
 		const initialText = editor.getText();
 		expect(initialText).toMatch(
-			/^%% 正在预处理附件：photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
+			/^%% Preprocessing attachment: photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
 		);
 
 		// 等待后台异步微任务完成
@@ -140,7 +140,7 @@ describe("processFileAndInsertLink", () => {
 		// 检查占位符是否被替换为最终的 IPFS 链接
 		const finalText = editor.getText();
 		expect(finalText).toContain("![photo.png](ipfs://");
-		expect(finalText).not.toContain("%% 正在预处理");
+		expect(finalText).not.toContain("%% Preprocessing attachment");
 	});
 
 	it("auto-encrypts pasted/inserted image async when note matches path rule", async () => {

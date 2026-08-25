@@ -39,6 +39,7 @@ import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import {
 	createReprocessContext,
 	reprocessCurrentNote,
+	reprocessSharedMessages,
 	reprocessSingleLinkCommand,
 	reprocessWholeVault,
 } from "./commands/reprocessAttachments";
@@ -616,13 +617,8 @@ const { t } = defineLocales({
 		restoreReferencedFiles: "Restore referenced files from recycle bin",
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
-		reprocessCurrentNote: "Reprocess attachments (current note)",
-		reprocessWholeVault:
-			"Reprocess all attachments (whole vault, advanced)",
+		...reprocessSharedMessages.en,
 		reprocessLink: "Reprocess this attachment",
-		reprocessComplete: (count: number) =>
-			`Reprocessed ${count} attachment(s)`,
-		noAttachmentsFound: "No attachments found to reprocess",
 		noScriptConfigured: "No pre-processing script configured",
 		scriptLoadFailed: (url: string) =>
 			`Failed to load pre-processing script: ${url}`,
@@ -642,11 +638,8 @@ const { t } = defineLocales({
 		openCASExplorer: "打开 CAS 文件管理器",
 		restoreReferencedFiles: "从回收站恢复被引用的文件",
 		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
-		reprocessCurrentNote: "重新处理附件（当前笔记）",
-		reprocessWholeVault: "重新处理所有附件（全库，高级操作）",
+		...reprocessSharedMessages.zh,
 		reprocessLink: "重新处理此附件",
-		reprocessComplete: (count: number) => `已重新处理 ${count} 个附件`,
-		noAttachmentsFound: "未找到需要重新处理的附件",
 		noScriptConfigured: "未配置预处理脚本",
 		scriptLoadFailed: (url: string) => `预处理脚本加载失败：${url}`,
 		httpsScriptLocked: (url: string) => `HTTPS 脚本已锁定内容：${url}`,

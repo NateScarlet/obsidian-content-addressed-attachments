@@ -59,10 +59,10 @@ describe("preprocessPlaceholder", () => {
 		const res2 = createPreprocessPlaceholder("photo.png");
 
 		expect(res1.placeholder).toMatch(
-			/^%% 正在预处理附件：photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
+			/^%% Preprocessing attachment: photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
 		);
 		expect(res2.placeholder).toMatch(
-			/^%% 正在预处理附件：photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
+			/^%% Preprocessing attachment: photo\.png\.\.\. \^prep-[0-9a-z]+-[0-9a-z]+ %%$/,
 		);
 		expect(res1.placeholder).not.toEqual(res2.placeholder);
 	});
@@ -91,7 +91,7 @@ describe("preprocessPlaceholder", () => {
 
 	it("replaces placeholder by block ID even if message was slightly modified", () => {
 		const { placeholder, id } = createPreprocessPlaceholder("test.png");
-		const modifiedPlaceholder = `%% 正在预处理附件：user-modified-title... ^${id} %%`;
+		const modifiedPlaceholder = `%% Preprocessing attachment: user-modified-title... ^${id} %%`;
 		const content = `# Note\n\n${modifiedPlaceholder}\nDone`;
 		const replacement = "![test.png](ipfs://bafkreidummy)";
 

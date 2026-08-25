@@ -1,7 +1,10 @@
 [
 	{
 		"name": "ImageMagick",
-		"description": "使用 ImageMagick WASM 转换图片格式。支持参数：#format=avif|webp|jpeg|png（默认 avif），#quality=1-100（默认 80），#minSavings=0-100（默认 10，原格式为 Obsidian 各端都能直接显示的图片且转换后节省低于该百分比时保留原文件；原格式存在无法直接显示的平台时总是转换）",
+		"description": {
+			"en": "Convert image formats with ImageMagick WASM. Parameters: #format=avif|webp|jpeg|png (default avif), #quality=1-100 (default 80), #minSavings=0-100 (default 10). minSavings applies only when converting brings no compatibility gain — the source format renders in Obsidian on every platform, or the output format equals the source format; cross-format conversions are always kept.",
+			"zh": "使用 ImageMagick WASM 转换图片格式。支持参数：#format=avif|webp|jpeg|png（默认 avif），#quality=1-100（默认 80），#minSavings=0-100（默认 10）。仅当转换没有兼容性收益时生效——原格式是 Obsidian 各端都能直接显示的图片，或输出格式与源格式相同；跨格式转换的结果总是采用。"
+		},
 		"scriptURL": ".obsidian/plugins/content-addressed-attachments/dist/preprocess-scripts/imagemagick.json#format=avif&quality=80"
 	}
 ]

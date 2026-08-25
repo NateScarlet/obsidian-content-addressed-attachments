@@ -15,34 +15,18 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { CID } from "multiformats/cid";
-import { sha256 } from "multiformats/hashes/sha2";
+import {
+	RELEASE_ASSET_BASE_URL,
+	baseURL,
+	computeCID,
+	releaseAssetName,
+} from "./preprocess-common.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const scriptDistDir = resolve(root, "dist", "preprocess-scripts");
 const scriptIndexPath = resolve(root, "src", "preprocess", "script-index.generated.json");
 const registryPath = resolve(root, "preprocess-scripts", "registry.json");
-
-/** release asset 下载 URL 模板 */
-const RELEASE_ASSET_URL =
-	"https://github.com/NateScarlet/obsidian-content-addressed-attachments/releases/download/";
-
-/** release asset 名称统一加 preprocess- 前缀，避免与主插件资源混在一起 */
-const releaseAssetName = (name) => `preprocess-${name}`;
-
-/** 计算文件的 CID (v1, raw codec, SHA-256) */
-async function computeCID(filePath) {
-	const data = readFileSync(filePath);
-	const digest = await sha256.digest(data);
-	return CID.create(1, 0x55, digest).toString();
-}
-
-/** 去除 fragment 参数，得到基础 URL */
-function baseURL(scriptURL) {
-	const hashIndex = scriptURL.indexOf("#");
-	return hashIndex >= 0 ? scriptURL.slice(0, hashIndex) : scriptURL;
-}
 
 async function main() {
 	// pnpm run -- <tag> 会传递 "--" 作为第一个参数，需要跳过
@@ -91,13 +75,22 @@ async function main() {
 	}
 
 	if (!releaseTag) {
-		console.log("\nNo release tag specified. Skipping release index update.");
-		console.log("Run 'pnpm run preprocess:generate-index <tag>' to update the release index.");
+		// 开发模式：注册表条目原样写入生成索引（保留 vault-relative URL），保证本地构建可用
+		const devEntries = existsSync(registryPath)
+			? JSON.parse(readFileSync(registryPath, "utf-8"))
+			: [];
+		writeFileSync(
+			scriptIndexPath,
+			JSON.stringify(devEntries, null, "\t") + "\n",
+			"utf-8",
+		);
+		console.log(`\nUpdated ${scriptIndexPath} from registry (dev mode, vault-relative URLs).`);
+		console.log("Run 'pnpm run preprocess:generate-index <tag>' to generate the release index.");
 		return;
 	}
 
 	// 从 registry.json 读取所有预设条目，将 Vault 相对路径重写为 internal.ipfs-locked: 发布格式
-	const releaseAssetBase = `${RELEASE_ASSET_URL}${releaseTag}/`;
+	const releaseAssetBase = `${RELEASE_ASSET_BASE_URL}${releaseTag}/`;
 	const entries = existsSync(registryPath)
 		? JSON.parse(readFileSync(registryPath, "utf-8"))
 		: [];
@@ -151,4 +144,7 @@ async function main() {
 	console.log("Run 'pnpm run build:esbuild production' to rebuild the plugin with the updated index.");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+	console.error(err);
+	process.exit(1);
+});

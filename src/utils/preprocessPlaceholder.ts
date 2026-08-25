@@ -1,5 +1,17 @@
 import type { Editor, Vault } from "obsidian";
 import { TFile } from "obsidian";
+import defineLocales from "./defineLocales";
+
+// 占位符可见文案按界面语言输出；匹配侧有 Block ID 兜底，不受语言影响
+const { t } = defineLocales({
+	en: {
+		inProgress: (filename: string) =>
+			`Preprocessing attachment: ${filename}...`,
+	},
+	zh: {
+		inProgress: (filename: string) => `正在预处理附件：${filename}...`,
+	},
+});
 
 /** Vault 占位符替换所需的最小接口 */
 export type PlaceholderReplaceVault = Pick<
@@ -26,7 +38,7 @@ export interface PreprocessPlaceholderInfo {
 /**
  * 创建基于 36 进制时间戳加递增序列号的短小的 Obsidian 注释占位符。
  *
- * 格式：`%% 正在预处理附件：${filename}... ^prep-${timestamp}-${seq} %%`
+ * 格式：`%% ${t("inProgress")(filename)} ^prep-${timestamp}-${seq} %%`
  */
 export function createPreprocessPlaceholder(
 	filename: string,
@@ -34,7 +46,7 @@ export function createPreprocessPlaceholder(
 	const timestamp = Date.now().toString(36);
 	const seq = (sequence++).toString(36);
 	const id = `prep-${timestamp}-${seq}`;
-	const placeholder = `%% 正在预处理附件：${filename}... ^${id} %%`;
+	const placeholder = `%% ${t("inProgress")(filename)} ^${id} %%`;
 
 	return { placeholder, id };
 }

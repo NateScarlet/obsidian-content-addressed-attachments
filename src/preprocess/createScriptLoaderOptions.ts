@@ -15,7 +15,7 @@ export interface CreateScriptLoaderOptionsParams {
 }
 
 /**
- * 装配 DefaultScriptLoader 所需的选项，桥接插件基础设施与 ScriptLoader。
+ * 装配 ScriptLoader 所需的选项，桥接插件基础设施与 ScriptLoader。
  *
  * 职责：
  * - 提供 ScriptLoaderOptions 所需的所有回调

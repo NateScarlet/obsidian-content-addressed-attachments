@@ -1,3 +1,4 @@
+import type { LocalizedText } from "../utils/localizedText";
 import type {
 	PreProcessInput,
 	PreProcessContext,
@@ -16,8 +17,8 @@ export type {
 export interface ScriptIndexEntry {
 	/** 友好名称 */
 	name: string;
-	/** 描述 */
-	description: string;
+	/** 描述（中英双语，按用户界面语言显示） */
+	description: LocalizedText;
 	/** internal.ipfs-locked URL */
 	scriptURL: string;
 }

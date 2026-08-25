@@ -9,9 +9,10 @@
  *   - format: 输出格式（avif | webp | jpeg | png），默认 avif
  *   - quality: 编码质量（1-100），默认 80
  *   - minSavings: 最小节省百分比（0-100），默认 10。
- *     仅当原格式是 Obsidian 各端都能直接显示的图片格式时，
- *     转换后体积相比原始文件节省低于该百分比才保留原始文件；
- *     原格式存在无法直接显示的平台（如 heic/tiff/avif）时总是采用转换结果，
+ *     转换后体积相比原始文件节省低于该百分比时保留原始文件。
+ *     该阈值仅在转换没有兼容性收益时生效：
+ *     原格式是 Obsidian 各端都能直接显示的图片，或输出格式与源格式相同时；
+ *     跨格式转换（原格式存在无法直接显示的平台，如 heic/tiff/avif）总是采用结果，
  *     因为转换为广泛兼容的格式本身就是收益。
  *
  * 构建后的脚本、worker 脚本与 magick.wasm 位于同一目录，
@@ -26,26 +27,9 @@ import type {
 	PreProcessScriptModule,
 } from "../src/preprocess/shared-types";
 import { effectiveMimeType } from "../src/utils/mimeTypeByExtension";
+import type { ConvertRequest, ConvertResponse } from "./workerProtocol";
 
 // #region Worker 通信
-/** convert 请求（与 worker 共享的消息形状） */
-interface ConvertRequest {
-	type: "convert";
-	id: number;
-	input: PreProcessInput;
-	format: string;
-	quality: number;
-	wasmURL: string;
-}
-
-/** convert 响应 */
-interface ConvertResponse {
-	type: "result";
-	id: number;
-	output?: PreProcessOutput;
-	error?: string;
-}
-
 let workerPromise: Promise<Worker> | null = null;
 let nextRequestId = 0;
 const pendingRequests = new Map<
@@ -169,8 +153,8 @@ export type ConvertFn = (
  * - auto-orient：自动校正朝向
  * - strip：移除元数据
  * - quality：编码质量（默认 80）
- * - minSavings：仅当原格式是 Obsidian 各端都能直接显示的图片时，
- *   转换后节省低于该百分比才保留原始文件（默认 10）
+ * - minSavings：转换没有兼容性收益时（原格式各端都能直接显示，
+ *   或输出格式与源格式相同），转换后节省低于该百分比才保留原始文件（默认 10）
  */
 export function createTransform(convert: ConvertFn) {
 	return async function (
@@ -212,10 +196,14 @@ export function createTransform(convert: ConvertFn) {
 
 		// 原格式各端都可直接显示时，转换收益仅为体积：
 		// 节省低于 minSavings% 则保留原始文件。
-		// 原格式存在无法直接显示的平台时，转为广泛兼容格式本身就是收益，
+		// 原格式存在无法直接显示的平台且输出格式不同时，转为广泛兼容格式本身就是收益，
 		// 不受该阈值约束（否则会因最低节省要求而留下无法显示的原始文件）。
+		// 输出格式与源格式相同时没有兼容性收益，仍受该阈值约束。
+		// 正常情况下 worker 对同格式输入会直接返回 undefined（跳过转换），
+		// 此门是 convert 未跳过时的兜底，保证策略在本层独立成立。
+		const isSameFormat = result.mimeType === mimeType;
 		if (
-			OBSIDIAN_DISPLAYABLE_IMAGE_MIMES.has(mimeType) &&
+			(OBSIDIAN_DISPLAYABLE_IMAGE_MIMES.has(mimeType) || isSameFormat) &&
 			result.data.byteLength > ((100 - minSavings) / 100) * originalSize
 		) {
 			ctx.log(
@@ -228,6 +216,6 @@ export function createTransform(convert: ConvertFn) {
 	} satisfies PreProcessScriptModule["default"];
 }
 
-const transform = createTransform(requestConvert);
+const imagemagick = createTransform(requestConvert);
 
-export default transform;
+export default imagemagick;

@@ -186,7 +186,10 @@ scripts/my-script.js#prefix=draft
    [
      {
        "name": "脚本名称",
-       "description": "简短描述该脚本的功能与作用（如转换格式、压缩参数等）",
+       "description": {
+         "en": "Short description of functionality and options",
+         "zh": "简短描述该脚本的功能与作用（如转换格式、压缩参数等）"
+       },
        "scriptURL": "https://example.com/path/to/script.json#format=webp&quality=80"
      }
    ]
@@ -195,7 +198,7 @@ scripts/my-script.js#prefix=draft
 ### 3. 字段说明与 PR 接受时的 CID 锁定机制 (Pinning)
 
 - `name` *(string)*: 脚本名称，将直接展示在插件设置页面的预设下拉菜单中。
-- `description` *(string)*: 脚本的功能说明描述。
+- `description` *(object)*: 脚本的功能说明描述，需提供中英双语：`{ "en": "...", "zh": "..." }`，插件按用户界面语言显示对应文案。
 - `scriptURL` *(string)*: 脚本或清单的公开 HTTPS URL，可以包含 Hash fragment 作为默认参数（或直接填入 `internal.ipfs-locked:` 格式）。
 
 > ⚠️ **PR 接受时的 CID 锁定机制（防篡改与越权）**：

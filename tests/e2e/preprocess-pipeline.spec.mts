@@ -107,9 +107,7 @@ async function insertFixture(
 			const deadline = Date.now() + 15000;
 			const readEditor = () => {
 				const editor = leaf?.view?.editor;
-				const val = editor?.getValue?.() ?? "";
-				console.log("readEditor val:", val);
-				return val;
+				return editor?.getValue?.() ?? "";
 			};
 			while (Date.now() < deadline) {
 				const value = readEditor();

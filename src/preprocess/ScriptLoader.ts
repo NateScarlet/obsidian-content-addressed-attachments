@@ -1,5 +1,5 @@
 import type {
-	ScriptLoader,
+	ScriptLoader as ScriptLoaderContract,
 	PreProcessScriptModule,
 	ScriptManifest,
 } from "./types";
@@ -69,9 +69,10 @@ async function ensureDir(
 }
 
 /**
- * DefaultScriptLoader：解析脚本位置、动态 import、缓存模块实例。
+ * ScriptLoader：解析脚本位置、动态 import、缓存模块实例。
+ * 实现types.ts中的 ScriptLoader 接口（导入时别名为 ScriptLoaderContract 避免重名）。
  */
-export default class DefaultScriptLoader implements ScriptLoader {
+export default class ScriptLoader implements ScriptLoaderContract {
 	/** 模块实例缓存 */
 	private moduleCache = new Map<string, PreProcessScriptModule>();
 	/** 加载去重 */
@@ -156,21 +157,13 @@ export default class DefaultScriptLoader implements ScriptLoader {
 					manifest,
 					resolved.cid,
 				);
-				if (!baseDir) {
-					throw new Error(
-						`[preprocess] Failed to materialize manifest: ${scriptURL}`,
-					);
-				}
 				return this.loadModuleFromPath(`${baseDir}/${manifest.entry}`);
 			}
 
 			// 普通单文件脚本
 			return this.loadModuleFromPath(localPath);
 		} catch (err) {
-			console.warn(
-				`[preprocess] Failed to load script: ${scriptURL}`,
-				err,
-			);
+			// 不在此处记录日志：外层调用方已统一处理并反馈，这里仅规范化错误类型
 			throw err instanceof Error
 				? err
 				: new Error(
@@ -191,7 +184,7 @@ export default class DefaultScriptLoader implements ScriptLoader {
 	private async materializeManifest(
 		manifest: ScriptManifest,
 		manifestCID: CID,
-	): Promise<string | undefined> {
+	): Promise<string> {
 		const baseDir = `${this.options.pluginDir}/preprocess-scripts/${manifestCID.toString()}`;
 		await ensureDir(this.options.adapter, baseDir);
 
@@ -234,10 +227,11 @@ export default class DefaultScriptLoader implements ScriptLoader {
 			}
 
 			if (!downloaded) {
-				console.warn(
-					`[preprocess] Failed to download manifest file: ${filename}`,
+				// 直接抛出带文件名的错误向上传播，由调用方统一反馈，
+				// 不在此处 warn 后静默返回 undefined（丢失失败原因）
+				throw new Error(
+					`[preprocess] Failed to download manifest file "${filename}" from all sources`,
 				);
-				return undefined;
 			}
 		}
 

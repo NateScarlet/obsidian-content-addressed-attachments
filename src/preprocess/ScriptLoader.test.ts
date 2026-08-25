@@ -14,10 +14,10 @@ function paramsToObject(params: URLSearchParams): Record<string, string> {
 	return obj;
 }
 
-describe("DefaultScriptLoader.getParams", () => {
+describe("ScriptLoader.getParams", () => {
 	it("parses fragment params from URL", async () => {
-		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
-		const loader = new DefaultScriptLoader({
+		const { default: ScriptLoader } = await import("./ScriptLoader");
+		const loader = new ScriptLoader({
 			adapter: {
 				getResourcePath: (path: string) => path,
 				read: () => Promise.reject(new Error("not used")),
@@ -38,8 +38,8 @@ describe("DefaultScriptLoader.getParams", () => {
 	});
 
 	it("returns empty URLSearchParams for URL without fragment", async () => {
-		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
-		const loader = new DefaultScriptLoader({
+		const { default: ScriptLoader } = await import("./ScriptLoader");
+		const loader = new ScriptLoader({
 			adapter: {
 				getResourcePath: (path: string) => path,
 				read: () => Promise.reject(new Error("not used")),
@@ -55,8 +55,8 @@ describe("DefaultScriptLoader.getParams", () => {
 	});
 
 	it("returns empty URLSearchParams for empty scriptURL", async () => {
-		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
-		const loader = new DefaultScriptLoader({
+		const { default: ScriptLoader } = await import("./ScriptLoader");
+		const loader = new ScriptLoader({
 			adapter: {
 				getResourcePath: (path: string) => path,
 				read: () => Promise.reject(new Error("not used")),
@@ -71,7 +71,7 @@ describe("DefaultScriptLoader.getParams", () => {
 	});
 });
 
-describe("DefaultScriptLoader.loadScript with manifest", () => {
+describe("ScriptLoader.loadScript with manifest", () => {
 	const __dirname = dirname(fileURLToPath(import.meta.url));
 	const fixturesDir = resolve(__dirname, "__tests__", "fixtures");
 	const fixtureScriptPath = resolve(fixturesDir, "manifest-fixture.js");
@@ -90,7 +90,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 	});
 
 	it("loads a multi-file script via manifest", async () => {
-		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
+		const { default: ScriptLoader } = await import("./ScriptLoader");
 
 		// 读取 fixture 文件并计算 CID
 		const fixtureData = readFileSync(fixtureScriptPath);
@@ -165,7 +165,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 			},
 		};
 
-		const loader = new DefaultScriptLoader({
+		const loader = new ScriptLoader({
 			adapter,
 			pluginDir: tempDir,
 			resolveURL: async (rawURL: string) => {
@@ -199,7 +199,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 	});
 
 	it("falls back to single-file loading for non-manifest content", async () => {
-		const { default: DefaultScriptLoader } = await import("./ScriptLoader");
+		const { default: ScriptLoader } = await import("./ScriptLoader");
 
 		const adapter = {
 			getResourcePath: (path: string) => {
@@ -219,7 +219,7 @@ describe("DefaultScriptLoader.loadScript with manifest", () => {
 			mkdir: () => Promise.resolve(),
 		};
 
-		const loader = new DefaultScriptLoader({
+		const loader = new ScriptLoader({
 			adapter,
 			pluginDir: tempDir,
 			resolveURL: async (rawURL: string) => {

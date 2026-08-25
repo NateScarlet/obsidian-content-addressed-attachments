@@ -187,7 +187,10 @@ If you have developed a useful pre-processing script and want to share it with o
    [
      {
        "name": "Script Name",
-       "description": "Short description of functionality and options",
+       "description": {
+         "en": "Short description of functionality and options",
+         "zh": "简短描述该脚本的功能与作用（如转换格式、压缩参数等）"
+       },
        "scriptURL": "https://example.com/path/to/script.json#format=webp&quality=80"
      }
    ]
@@ -196,7 +199,7 @@ If you have developed a useful pre-processing script and want to share it with o
 ### 3. Field Descriptions & PR Pinning Mechanism
 
 - `name` *(string)*: Script display name shown in the settings preset dropdown menu.
-- `description` *(string)*: Short description of script features.
+- `description` *(object)*: Short description of script features in both languages: `{ "en": "...", "zh": "..." }`. The plugin shows the text matching the user's UI language.
 - `scriptURL` *(string)*: Public HTTPS URL to the script/manifest (optionally with fragment parameters), or directly formatted as `internal.ipfs-locked:`.
 
 > ⚠️ **PR Pinning & Security Locking Mechanism**:

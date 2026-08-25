@@ -25,6 +25,7 @@
 
 <script lang="ts">
 	import type { ScriptIndexEntry } from "#src/preprocess/types";
+	import localizedText from "#src/utils/localizedText";
 	import textAreaAutoHeight from "./attachments/textareaAutoHeight.svelte";
 
 	const {
@@ -62,7 +63,7 @@
 
 	/** 根据当前输入值推导设置项描述 */
 	const description = $derived.by(() => {
-		if (matchedEntry) return matchedEntry.description;
+		if (matchedEntry) return localizedText(matchedEntry.description);
 		if (currentText.trim()) return customScriptLabel;
 		return disabledLabel;
 	});

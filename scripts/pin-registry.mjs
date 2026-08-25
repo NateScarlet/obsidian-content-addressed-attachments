@@ -12,8 +12,10 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import { CID } from "multiformats/cid";
-import { sha256 } from "multiformats/hashes/sha2";
+import {
+	baseURL,
+	computeDataCID,
+} from "./preprocess-common.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -22,11 +24,6 @@ const registryPath = resolve(
 	"preprocess-scripts",
 	"registry.json",
 );
-
-function baseURL(scriptURL) {
-	const hashIndex = scriptURL.indexOf("#");
-	return hashIndex >= 0 ? scriptURL.slice(0, hashIndex) : scriptURL;
-}
 
 async function pinRegistry() {
 	if (!existsSync(registryPath)) {
@@ -55,8 +52,7 @@ async function pinRegistry() {
 			}
 
 			const buffer = await resp.arrayBuffer();
-			const digest = await sha256.digest(new Uint8Array(buffer));
-			const cid = CID.create(1, 0x55, digest).toString();
+			const cid = await computeDataCID(new Uint8Array(buffer));
 			const pinnedURL = `internal.ipfs-locked:${cid},${base}${fragment}`;
 
 			console.log(

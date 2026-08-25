@@ -103,4 +103,34 @@ describe("URLResolver", () => {
 			);
 		}
 	});
+
+	it("returns undefined for HTTP 404 as legitimately absent", async () => {
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 404,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			json: {},
+			text: "",
+		});
+
+		const result = await resolver.resolveURL(
+			"https://example.com/missing.js",
+		);
+
+		expect(result).toBeUndefined();
+	});
+
+	it("throws on unexpected HTTP status so callers see the failure", async () => {
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 500,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			json: {},
+			text: "",
+		});
+
+		await expect(
+			resolver.resolveURL("https://example.com/broken.js"),
+		).rejects.toThrow("HTTP 500");
+	});
 });

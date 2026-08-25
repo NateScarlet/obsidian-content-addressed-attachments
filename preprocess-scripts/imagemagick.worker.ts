@@ -16,37 +16,11 @@ import {
 	MagickFormat,
 	type IMagickImage,
 } from "@imagemagick/magick-wasm";
+import type { ConvertRequest, ConvertResponse } from "./workerProtocol";
 
 // 本文件运行于 Web Worker 环境，self 使用 DOM lib 的 Worker 接口
 // （其 postMessage 支持 transfer list 重载）。
 declare const self: Worker;
-
-/** convert 请求 */
-interface ConvertRequest {
-	type: "convert";
-	id: number;
-	input: {
-		data: ArrayBuffer;
-		mimeType: string;
-		filename: string;
-	};
-	format: string;
-	quality: number;
-	/** magick.wasm 的绝对 URL（由主脚本解析，worker 内 import.meta.url 是 blob 无相对路径） */
-	wasmURL: string;
-}
-
-/** convert 响应 */
-interface ConvertResponse {
-	type: "result";
-	id: number;
-	output?: {
-		data: ArrayBuffer;
-		mimeType: string;
-		filename: string;
-	};
-	error?: string;
-}
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
