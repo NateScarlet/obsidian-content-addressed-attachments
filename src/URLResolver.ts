@@ -7,7 +7,9 @@ import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
 import showError from "./utils/showError";
 import computeCID from "./utils/computeCID";
-import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
+import parseIPFSLockedURL, {
+	type IPFSLockedURL,
+} from "./utils/parseIPFSLockedURL";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type EncryptionService from "./lib/encryption/EncryptionService";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
@@ -110,6 +112,31 @@ class DecryptedCacheManager {
 
 // #endregion
 
+/**
+ * 构造一个参与并行竞争的远程下载请求。
+ * 请求成功时由 body 显式 resolve 结果；否则在全部请求结束后由 countDown
+ * 递减至 0 时统一 resolve(undefined)。stack 用于在竞争结束时兜底 settle
+ * 尚未完成的 Promise，避免悬挂。
+ */
+function makeRemoteRequest(
+	stack: DisposableStack,
+	countDown: () => number,
+	body: (resolve: (v: ResolveURLResult | undefined) => void) => Promise<void>,
+): Promise<ResolveURLResult | undefined> {
+	return new Promise<ResolveURLResult | undefined>((resolve) => {
+		(async () => {
+			stack.defer(() => resolve(undefined)); // 确保退出后所有Promise一定处于完成状态
+			try {
+				await body(resolve);
+			} finally {
+				if (countDown() === 0) {
+					resolve(undefined);
+				}
+			}
+		})().catch(showError);
+	});
+}
+
 export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
 	private cacheManager: DecryptedCacheManager;
@@ -152,25 +179,12 @@ export class URLResolver {
 					cid: lockedURL.cid,
 				};
 			}
-			const resp = await requestUrl({
-				url: lockedURL.sourceURL.toString(),
-				throw: false,
-			});
-			const downloaded = await this.readResponse(
-				this.settings().downloadDir || this.settings().primaryDir,
-				resp,
-				{
-					cid: lockedURL.cid,
-					format,
-				},
-			);
-			if (downloaded && format === ENCRYPTED_FORMAT) {
-				return this.resolveEncryptedFile(
-					downloaded.path,
-					lockedURL.cid,
-				);
-			}
-			return downloaded;
+			// 本地没有：与标准 IPFS 解析一致，并行请求源站与所有配置的网关，
+			// 避免源站失效但其他网关仍可获取内容时解析失败
+			const data = this.prepareLockedTemplateData(lockedURL);
+			return this.resolveFromRemote(data, [
+				lockedURL.sourceURL.toString(),
+			]);
 		}
 
 		// vault-relative（无协议头）或 HTTP(S) URL
@@ -298,7 +312,6 @@ export class URLResolver {
 	private async doResolveURL(
 		data: TemplateData,
 	): Promise<ResolveURLResult | undefined> {
-		using stack = new DisposableStack();
 		const match = await this.cas.load(data.cid);
 		if (match) {
 			if (data.format() === ENCRYPTED_FORMAT) {
@@ -315,105 +328,117 @@ export class URLResolver {
 				cid: data.cid,
 			};
 		}
-		const { gateways: gatewayURLs } = this.settings();
-		let remaining = gatewayURLs.length;
-		try {
-			return await Promise.race(
-				gatewayURLs.map((config) => {
-					return new Promise<ResolveURLResult | undefined>(
-						(resolve) => {
-							(async () => {
-								stack.defer(() => resolve(undefined)); // 确保退出后所有Promise一定处于完成状态
-								try {
-									if (!config.enabled) {
-										return;
-									}
-									const url = this.renderGatewayURL(
-										data.rawURL,
-										config,
-									);
-									if (!url) {
-										return;
-									}
-									const headers = new Headers(config.headers);
-									if (!headers.has("Accept")) {
-										headers.set(
-											"Accept",
-											data.format() || "*/*",
-										);
-									}
-									const headersRecord: Record<
-										string,
-										string
-									> = {};
-									headers.forEach((v, k) => {
-										headersRecord[k] = v;
-									});
+		return this.resolveFromRemote(data);
+	}
 
-									// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
-									const resp = await requestUrl({
-										url,
-										method: "HEAD",
-										headers: headersRecord,
-										throw: false,
-									});
-									if (resp.status == 200) {
-										console.debug("GET", url);
-										const resp = await requestUrl({
-											url,
-											headers: headersRecord,
-											throw: false,
-										});
-										if (resp.status === 200) {
-											console.debug("GOT", resp.headers);
-											const dir =
-												config.downloadDir ||
-												this.settings().downloadDir ||
-												this.settings().primaryDir;
-											const downloaded =
-												await this.readResponse(
-													dir,
-													resp,
-													{
-														cid: data.cid,
-														filename:
-															data.filename(),
-														format: data.format(),
-													},
-												);
-											if (
-												downloaded &&
-												data.format() ===
-													ENCRYPTED_FORMAT
-											) {
-												resolve(
-													await this.resolveEncryptedFile(
-														downloaded.path,
-														data.cid,
-													),
-												);
-											} else {
-												resolve(downloaded);
-											}
-										}
-										return;
-									}
-								} finally {
-									remaining -= 1;
-									if (remaining === 0) {
-										resolve(undefined);
-									}
-								}
-							})().catch(showError);
-						},
-					);
-				}),
-			);
+	/**
+	 * 并行请求配置的 IPFS 网关与额外来源（如 lockedURL 的源站），
+	 * 返回第一个成功下载且 CID 匹配的结果；全部失败时返回 undefined。
+	 * 只有成功的结果才会结束竞争，单次失败不会中断其他仍在进行的请求。
+	 */
+	private async resolveFromRemote(
+		data: TemplateData,
+		extraURLs: string[] = [],
+	): Promise<ResolveURLResult | undefined> {
+		using stack = new DisposableStack();
+		const { gateways: gatewayURLs } = this.settings();
+		let remaining = gatewayURLs.length + extraURLs.length;
+		const countDown = () => --remaining;
+
+		try {
+			return await Promise.race([
+				...gatewayURLs.map((config) =>
+					makeRemoteRequest(stack, countDown, async (resolve) => {
+						if (!config.enabled) {
+							return;
+						}
+						const url = this.renderGatewayURL(data.rawURL, config);
+						if (!url) {
+							return;
+						}
+						const headers = new Headers(config.headers);
+						if (!headers.has("Accept")) {
+							headers.set("Accept", data.format() || "*/*");
+						}
+						const headersRecord: Record<string, string> = {};
+						headers.forEach((v, k) => {
+							headersRecord[k] = v;
+						});
+
+						// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
+						const resp = await requestUrl({
+							url,
+							method: "HEAD",
+							headers: headersRecord,
+							throw: false,
+						});
+						if (resp.status !== 200) {
+							return;
+						}
+						console.debug("GET", url);
+						const getResp = await requestUrl({
+							url,
+							headers: headersRecord,
+							throw: false,
+						});
+						if (getResp.status !== 200) {
+							return;
+						}
+						console.debug("GOT", getResp.headers);
+						const dir =
+							config.downloadDir ||
+							this.settings().downloadDir ||
+							this.settings().primaryDir;
+						const result = await this.fetchRemote(dir, getResp, {
+							cid: data.cid,
+							filename: data.filename(),
+							format: data.format(),
+						});
+						if (result) {
+							resolve(result);
+						}
+					}),
+				),
+				...extraURLs.map((url) =>
+					makeRemoteRequest(stack, countDown, async (resolve) => {
+						const resp = await requestUrl({
+							url,
+							throw: false,
+						});
+						const dir =
+							this.settings().downloadDir ||
+							this.settings().primaryDir;
+						const result = await this.fetchRemote(dir, resp, {
+							cid: data.cid,
+							format: data.format(),
+						});
+						if (result) {
+							resolve(result);
+						}
+					}),
+				),
+			]);
 		} catch (err) {
 			if (!isAbortError(err)) {
 				console.error("解析 IPFS 网址失败", data.rawURL, err);
 			}
 		}
+	}
+
+	/**
+	 * 将远程响应保存到 CAS 并校验 CID，若是加密格式则再解密后返回。
+	 * 下载失败或 CID 不匹配时返回 undefined。
+	 */
+	private async fetchRemote(
+		dir: string,
+		resp: RequestUrlResponse,
+		expected: { cid: CID; format?: string; filename?: string },
+	): Promise<ResolveURLResult | undefined> {
+		const downloaded = await this.readResponse(dir, resp, expected);
+		if (downloaded && expected.format === ENCRYPTED_FORMAT) {
+			return this.resolveEncryptedFile(downloaded.path, expected.cid);
+		}
+		return downloaded;
 	}
 
 	// 生成模板数据
@@ -436,6 +461,23 @@ export class URLResolver {
 			casPath: () => casPath,
 			encodeURI: () => (text, render) => encodeURIComponent(render(text)),
 		};
+	}
+
+	/**
+	 * 将 lockedURL 的源站 URL 查询参数（format/filename）并入 ipfs:// 模板，
+	 * 使网关模板可按 CID 渲染并沿用加密/文件名等语义。
+	 */
+	private prepareLockedTemplateData(lockedURL: IPFSLockedURL): TemplateData {
+		const url = new URL(`ipfs://${lockedURL.cid.toString()}`);
+		const format = lockedURL.sourceURL.searchParams.get("format");
+		if (format) {
+			url.searchParams.set("format", format);
+		}
+		const filename = lockedURL.filename;
+		if (filename) {
+			url.searchParams.set("filename", filename);
+		}
+		return this.prepareTemplateData(url.toString());
 	}
 
 	renderGatewayURL(rawURL: string, config: GatewayConfig): string {
