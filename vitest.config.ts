@@ -10,7 +10,7 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["src/**/*.test.ts"],
+		include: ["src/**/*.test.ts", "preprocess-scripts/**/*.test.ts"],
 		setupFiles: ["./test/setupTests.ts"],
 	},
 });

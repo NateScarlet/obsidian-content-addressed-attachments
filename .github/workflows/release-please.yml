@@ -38,6 +38,27 @@ jobs:
                   pnpm install
                   pnpm run build
                   pnpm run test
+            - name: Build preprocess scripts
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run preprocess:build
+            - name: Update script index for release
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run preprocess:generate-index ${{ needs.release-please.outputs.tag_name }}
+            - name: Rebuild plugin with updated index
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  pnpm run build:esbuild production
+            - name: Stage preprocess release assets with prefix
+              if: ${{needs.release-please.outputs.release_created}}
+              run: |
+                  mkdir -p dist/preprocess-scripts/release
+                  for f in dist/preprocess-scripts/*; do
+                      [ -f "$f" ] || continue
+                      base=$(basename "$f")
+                      cp "$f" "dist/preprocess-scripts/release/preprocess-$base"
+                  done
             - name: Release
               if: ${{needs.release-please.outputs.release_created}}
               uses: softprops/action-gh-release@v2
@@ -48,3 +69,4 @@ jobs:
                       main.js
                       manifest.json
                       styles.css
+                      dist/preprocess-scripts/release/*

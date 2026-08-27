@@ -6,6 +6,7 @@ import type { Settings } from "./settings";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
 import showError from "./utils/showError";
+import computeCID from "./utils/computeCID";
 import parseIPFSLockedURL from "./utils/parseIPFSLockedURL";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type EncryptionService from "./lib/encryption/EncryptionService";
@@ -43,6 +44,8 @@ export interface GatewayConfig {
 export interface ResolveURLResult {
 	path?: string;
 	url: string;
+	/** 内容的 CID */
+	cid: CID;
 }
 
 // #region DecryptedCacheManager
@@ -146,6 +149,7 @@ export class URLResolver {
 				return {
 					path: match.path,
 					url: this.app.vault.adapter.getResourcePath(match.path),
+					cid: lockedURL.cid,
 				};
 			}
 			const resp = await requestUrl({
@@ -168,6 +172,28 @@ export class URLResolver {
 			}
 			return downloaded;
 		}
+
+		// vault-relative（无协议头）或 HTTP(S) URL
+		const isNetworkURL =
+			rawURL.startsWith("https://") || rawURL.startsWith("http://");
+		const isVaultRelative = rawURL.indexOf(":") < 0;
+
+		if (isVaultRelative || isNetworkURL) {
+			const { result } = await this.flight.do(rawURL, () => {
+				return isVaultRelative
+					? this.resolveVaultRelativePath(rawURL)
+					: this.resolveHTTP(rawURL);
+			});
+			return result;
+		}
+
+		// 白名单检查：至此仅接受 ipfs://，其余协议明确报错
+		if (!rawURL.startsWith("ipfs://")) {
+			throw new Error(
+				`Unsupported URL: ${rawURL}. Only vault-relative, http(s), ipfs:// and internal.ipfs-locked: URLs are supported.`,
+			);
+		}
+
 		const data = this.prepareTemplateData(rawURL);
 		const { result } = await this.flight.do(data.cid.toString(), () => {
 			return this.doResolveURL(data);
@@ -213,7 +239,60 @@ export class URLResolver {
 		return {
 			url: this.app.vault.adapter.getResourcePath(path),
 			path,
+			cid: expected.cid,
 		} satisfies ResolveURLResult;
+	}
+
+	/**
+	 * 读取 vault-relative 路径的文件，计算 CID 并返回 ResolveURLResult。
+	 * 本方法仅接收 vault-relative 路径（无 scheme，如 "path/to/file.js"），
+	 * 文件已在 vault 中，无需保存到 CAS。
+	 */
+	private async resolveVaultRelativePath(
+		relPath: string,
+	): Promise<ResolveURLResult | undefined> {
+		// 文件不存在是合法结果（脚本未配置/未同步），其他读取错误应让调用方可见
+		if (!(await this.app.vault.adapter.exists(relPath))) {
+			return undefined;
+		}
+		const content = await this.app.vault.adapter.readBinary(relPath);
+		const cid = await computeCID(content);
+		return {
+			path: relPath,
+			url: this.app.vault.adapter.getResourcePath(relPath),
+			cid,
+		};
+	}
+
+	/**
+	 * 下载 HTTP(S) URL 的内容，保存到 CAS 并返回 ResolveURLResult。
+	 * 网络/存储错误原样向上抛，由调用方决定如何处理。
+	 */
+	private async resolveHTTP(
+		rawURL: string,
+	): Promise<ResolveURLResult | undefined> {
+		const resp = await requestUrl({
+			url: rawURL,
+			throw: false,
+		});
+		// 404 与 vault-relative 语义一致，视为合法的“资源不存在”；
+		// 其他状态码抛错让调用方可见，避免服务器故障被当成文件缺失静默吞掉
+		if (resp.status === 404) return undefined;
+		if (resp.status !== 200) {
+			throw new Error(`HTTP ${resp.status} while resolving ${rawURL}`);
+		}
+		const dir = this.settings().downloadDir || this.settings().primaryDir;
+		const file = new File(
+			[resp.arrayBuffer],
+			rawURL.split("/").pop() || "download",
+		);
+		const { cid } = await this.cas.save(dir, file);
+		const path = this.cas.formatNormalizePath(dir, cid);
+		return {
+			path,
+			url: this.app.vault.adapter.getResourcePath(path),
+			cid,
+		};
 	}
 
 	private async doResolveURL(
@@ -233,6 +312,7 @@ export class URLResolver {
 				url: this.app.vault.adapter.getResourcePath(
 					match.normalizedPath,
 				),
+				cid: data.cid,
 			};
 		}
 		const { gateways: gatewayURLs } = this.settings();
@@ -372,7 +452,7 @@ export class URLResolver {
 	): Promise<ResolveURLResult | undefined> {
 		// 优先检查内存中已有的 blob URL 缓存
 		const cachedBlob = this.cacheManager.getBlobUrl(encryptedPath);
-		if (cachedBlob) return { url: cachedBlob, path: encryptedPath };
+		if (cachedBlob) return { url: cachedBlob, path: encryptedPath, cid };
 
 		// 优先检查磁盘缓存
 		const cacheFilename = `${cid.toString()}.decrypted`;
@@ -382,6 +462,7 @@ export class URLResolver {
 			return {
 				path: cachePath,
 				url: this.app.vault.adapter.getResourcePath(cachePath),
+				cid,
 			};
 		}
 
@@ -401,7 +482,7 @@ export class URLResolver {
 					encryptedPath,
 					decrypted.toBlob(),
 				);
-				return { url, path: encryptedPath };
+				return { url, path: encryptedPath, cid };
 			}
 
 			// 大文件：解密到缓存目录
@@ -423,6 +504,7 @@ export class URLResolver {
 					);
 					return {
 						url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+						cid,
 					};
 				}
 
@@ -434,6 +516,7 @@ export class URLResolver {
 			return {
 				path: cachePath!,
 				url: this.app.vault.adapter.getResourcePath(cachePath!),
+				cid,
 			};
 		} catch (err) {
 			console.error("Failed to decrypt file:", encryptedPath, err);

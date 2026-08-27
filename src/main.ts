@@ -36,19 +36,30 @@ import {
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import {
+	createReprocessContext,
+	reprocessCurrentNote,
+	reprocessSharedMessages,
+	reprocessSingleLinkCommand,
+	reprocessWholeVault,
+} from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
+import TransformPipeline from "./preprocess/TransformPipeline";
+import DefaultScriptLoader from "./preprocess/ScriptLoader";
+import type { ScriptLoader } from "./preprocess/types";
+import createScriptLoaderOptions from "./preprocess/createScriptLoaderOptions";
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
 	public cas!: CAS;
 	public casMetadata!: CASMetadata;
 	public urlResolver!: URLResolver;
-	public referenceManger = new ReferenceManager(this);
+	public referenceManager = new ReferenceManager(this);
 	public keyManager!: KeyManager;
 	public encryptionService!: EncryptionService;
 	public encryptPathPolicy!: EncryptPathPolicy;
@@ -62,6 +73,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	private stack = new DisposableStack();
 	public migrationManager!: MigrationManager;
 	public lockManager!: LockManager;
+	public pipeline!: TransformPipeline;
+	public scriptLoader!: ScriptLoader;
 
 	private placeholderImageURL!: string;
 	private notFoundImageURL!: string;
@@ -89,7 +102,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		);
 
 		this.casMetadata = new CASMetadataImpl(
-			new CASMetadataObjectFilterBuilder(this.referenceManger),
+			new CASMetadataObjectFilterBuilder(this.referenceManager),
 		);
 		this.cas = new CASImpl(this.app, this.casMetadata, () => {
 			return uniq([
@@ -137,6 +150,23 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.migrationManager = this.stack.use(new MigrationManager(this));
 		this.lockManager = this.stack.use(new LockManager(this));
 
+		// 初始化预处理管线
+		this.scriptLoader = new DefaultScriptLoader(
+			createScriptLoaderOptions({
+				app: this.app,
+				urlResolver: this.urlResolver,
+				onScriptURLResolved: (_originalURL, lockedURL) => {
+					this.settings.preProcess.scriptURL = lockedURL;
+					this.saveData(this.settings).catch(showError);
+					new Notice(t("httpsScriptLocked")(lockedURL));
+				},
+			}),
+		);
+		this.pipeline = new TransformPipeline(
+			this.scriptLoader,
+			() => this.settings.preProcess.scriptURL,
+		);
+
 		this.setupMutationObserver();
 
 		this.registerEditorExtension(
@@ -164,6 +194,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							file,
 							notePath,
 							this.encryptPathPolicy,
+							this.pipeline,
+							this.app.vault,
 						);
 					}
 				}
@@ -188,6 +220,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							file,
 							notePath,
 							this.encryptPathPolicy,
+							this.pipeline,
+							this.app.vault,
 						);
 					}
 				}
@@ -198,7 +232,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.app.vault.on("modify", (file) => {
 				if (file instanceof TFile && file.extension === "md") {
 					markdownChange.dispatch({ detail: file });
-					void this.referenceManger.loadFile(file.path);
+					void this.referenceManager.loadFile(file.path);
 				}
 			}),
 		);
@@ -206,7 +240,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			this.app.workspace.on("editor-change", (editor, view) => {
 				if (view.file && view.file.extension === "md") {
 					markdownChange.dispatch({ detail: view.file });
-					void this.referenceManger.loadFileContent(
+					void this.referenceManager.loadFileContent(
 						view.file.path,
 						editor.getValue(),
 					);
@@ -237,7 +271,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 						cas: this.cas,
 						encryptionService: this.encryptionService,
 						urlResolver: this.urlResolver,
-						referenceManager: this.referenceManger,
+						referenceManager: this.referenceManager,
 						keyManager: this.keyManager,
 						encryptPathPolicy: this.encryptPathPolicy,
 					};
@@ -304,6 +338,28 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 						});
 					}
 				}
+
+				// 重新处理单个链接（上下文菜单）
+				const ipfsLinkForReprocess =
+					findLinkAtPos(content, fromOffset) ??
+					findLinkAtPos(content, toOffset);
+				if (
+					ipfsLinkForReprocess &&
+					this.settings.preProcess.scriptURL
+				) {
+					menu.addItem((item) => {
+						item.setTitle(t("reprocessLink"))
+							.setIcon("refresh")
+							.onClick(() => {
+								reprocessSingleLinkCommand(
+									reprocessCtx(),
+									editor,
+									ipfsLinkForReprocess,
+									view.file?.path,
+								).catch(showError);
+							});
+					});
+				}
 			}),
 		);
 		//#endregion
@@ -340,6 +396,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.cas,
 					this.settings.primaryDir,
 					this.encryptPathPolicy,
+					this.pipeline,
 				).catch(showError);
 			},
 		});
@@ -367,6 +424,41 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 						}
 					})
 					.catch(showError);
+			},
+		});
+
+		// 重新处理附件命令：从插件实例组装共享上下文
+		const reprocessCtx = () => createReprocessContext(this);
+
+		this.addCommand({
+			id: "reprocess-current-note",
+			name: t("reprocessCurrentNote"),
+			callback: () => {
+				if (!this.settings.preProcess.scriptURL) {
+					new Notice(t("noScriptConfigured"));
+					return;
+				}
+				reprocessCurrentNote(reprocessCtx())
+					.then((count) => {
+						if (count > 0) {
+							new Notice(t("reprocessComplete")(count));
+						} else {
+							new Notice(t("noAttachmentsFound"));
+						}
+					})
+					.catch(showError);
+			},
+		});
+
+		this.addCommand({
+			id: "reprocess-whole-vault",
+			name: t("reprocessWholeVault"),
+			callback: () => {
+				if (!this.settings.preProcess.scriptURL) {
+					new Notice(t("noScriptConfigured"));
+					return;
+				}
+				reprocessWholeVault(reprocessCtx()).catch(showError);
 			},
 		});
 
@@ -484,10 +576,28 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		this.scriptLoader?.clearCache();
+
+		// 保存时加载脚本以触发锁定（resolveURL 在加载路径中处理 HTTPS→CID 锁定）
+		if (this.settings.preProcess.scriptURL) {
+			try {
+				await this.scriptLoader.loadScript(
+					this.settings.preProcess.scriptURL,
+				);
+			} catch (err) {
+				console.warn(`[saveSettings] Failed to preload script:`, err);
+				new Notice(
+					t("scriptLoadFailed")(this.settings.preProcess.scriptURL),
+				);
+			}
+		}
 	}
 
 	onunload() {
-		this.stack.dispose();
+		// 先释放管线持有的挂起日志定时器，再统一回收其余资源；
+		// onload 未完成即被卸载时 pipeline 可能未赋值
+		this.pipeline?.dispose();
+		this.stack?.dispose();
 	}
 }
 
@@ -507,6 +617,13 @@ const { t } = defineLocales({
 		restoreReferencedFiles: "Restore referenced files from recycle bin",
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
+		...reprocessSharedMessages.en,
+		reprocessLink: "Reprocess this attachment",
+		noScriptConfigured: "No pre-processing script configured",
+		scriptLoadFailed: (url: string) =>
+			`Failed to load pre-processing script: ${url}`,
+		httpsScriptLocked: (url: string) =>
+			`HTTPS script locked to content: ${url}`,
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -521,6 +638,11 @@ const { t } = defineLocales({
 		openCASExplorer: "打开 CAS 文件管理器",
 		restoreReferencedFiles: "从回收站恢复被引用的文件",
 		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
+		...reprocessSharedMessages.zh,
+		reprocessLink: "重新处理此附件",
+		noScriptConfigured: "未配置预处理脚本",
+		scriptLoadFailed: (url: string) => `预处理脚本加载失败：${url}`,
+		httpsScriptLocked: (url: string) => `HTTPS 脚本已锁定内容：${url}`,
 	},
 });
 //#endregion

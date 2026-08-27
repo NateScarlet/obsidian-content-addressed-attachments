@@ -90,4 +90,47 @@ describe("URLResolver", () => {
 		// Result URL should be a blob URL, NOT the raw ciphertext app:// URL
 		expect(result?.url).toMatch(/^blob:/);
 	});
+
+	it("rejects unsupported URL protocols with a clear error", async () => {
+		for (const rawURL of [
+			"file:///C:/tmp/script.js",
+			"ftp://example.com/script.js",
+			"anyprotocol:abc",
+			"C:\\tmp\\script.js",
+		]) {
+			await expect(resolver.resolveURL(rawURL)).rejects.toThrow(
+				"Unsupported URL",
+			);
+		}
+	});
+
+	it("returns undefined for HTTP 404 as legitimately absent", async () => {
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 404,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			json: {},
+			text: "",
+		});
+
+		const result = await resolver.resolveURL(
+			"https://example.com/missing.js",
+		);
+
+		expect(result).toBeUndefined();
+	});
+
+	it("throws on unexpected HTTP status so callers see the failure", async () => {
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 500,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			json: {},
+			text: "",
+		});
+
+		await expect(
+			resolver.resolveURL("https://example.com/broken.js"),
+		).rejects.toThrow("HTTP 500");
+	});
 });
