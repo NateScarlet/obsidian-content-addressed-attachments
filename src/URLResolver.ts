@@ -5,7 +5,7 @@ import isAbortError from "./utils/isAbortError";
 import type { Settings } from "./settings";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
-import showError from "./utils/showError";
+import castError from "./utils/castError";
 import computeCID from "./utils/computeCID";
 import parseIPFSLockedURL, {
 	type IPFSLockedURL,
@@ -117,23 +117,42 @@ class DecryptedCacheManager {
  * 请求成功时由 body 显式 resolve 结果；否则在全部请求结束后由 countDown
  * 递减至 0 时统一 resolve(undefined)。stack 用于在竞争结束时兜底 settle
  * 尚未完成的 Promise，避免悬挂。
+ *
+ * 多源并行是冗余回退设计，单个源失败属于预期事件：这里只把错误收集到
+ * errors 中并输出 debug 日志，不打扰用户；是否提示由 resolveFromRemote
+ * 在全部源都失败时统一决定。
  */
 function makeRemoteRequest(
 	stack: DisposableStack,
 	countDown: () => number,
+	errors: unknown[],
+	label: string,
 	body: (resolve: (v: ResolveURLResult | undefined) => void) => Promise<void>,
 ): Promise<ResolveURLResult | undefined> {
 	return new Promise<ResolveURLResult | undefined>((resolve) => {
 		(async () => {
 			stack.defer(() => resolve(undefined)); // 确保退出后所有Promise一定处于完成状态
+			let caught: unknown;
 			try {
 				await body(resolve);
+			} catch (error) {
+				caught = error;
 			} finally {
+				// 先记录错误再递减计数，保证 resolve(undefined) 时 errors 已完整
+				if (caught !== undefined && !isAbortError(caught)) {
+					errors.push(caught);
+					console.debug(`解析源 ${label} 失败`, caught);
+				}
 				if (countDown() === 0) {
 					resolve(undefined);
 				}
 			}
-		})().catch(showError);
+		})().catch((error) => {
+			// 防御性兜底：try/catch 已覆盖 body 抛错，正常不可达
+			if (!isAbortError(error)) {
+				errors.push(error);
+			}
+		});
 	});
 }
 
@@ -335,6 +354,8 @@ export class URLResolver {
 	 * 并行请求配置的 IPFS 网关与额外来源（如 lockedURL 的源站），
 	 * 返回第一个成功下载且 CID 匹配的结果；全部失败时返回 undefined。
 	 * 只有成功的结果才会结束竞争，单次失败不会中断其他仍在进行的请求。
+	 * 单个源失败（如互斥的内外网网关中不可达的那个）不打扰用户，
+	 * 仅当所有源都失败且确有异常时才提示一次。
 	 */
 	private async resolveFromRemote(
 		data: TemplateData,
@@ -344,80 +365,116 @@ export class URLResolver {
 		const { gateways: gatewayURLs } = this.settings();
 		let remaining = gatewayURLs.length + extraURLs.length;
 		const countDown = () => --remaining;
+		const errors: unknown[] = [];
 
 		try {
-			return await Promise.race([
+			const result = await Promise.race([
 				...gatewayURLs.map((config) =>
-					makeRemoteRequest(stack, countDown, async (resolve) => {
-						if (!config.enabled) {
-							return;
-						}
-						const url = this.renderGatewayURL(data.rawURL, config);
-						if (!url) {
-							return;
-						}
-						const headers = new Headers(config.headers);
-						if (!headers.has("Accept")) {
-							headers.set("Accept", data.format() || "*/*");
-						}
-						const headersRecord: Record<string, string> = {};
-						headers.forEach((v, k) => {
-							headersRecord[k] = v;
-						});
+					makeRemoteRequest(
+						stack,
+						countDown,
+						errors,
+						config.name,
+						async (resolve) => {
+							if (!config.enabled) {
+								return;
+							}
+							const url = this.renderGatewayURL(
+								data.rawURL,
+								config,
+							);
+							if (!url) {
+								return;
+							}
+							const headers = new Headers(config.headers);
+							if (!headers.has("Accept")) {
+								headers.set(
+									"Accept",
+									data.format() || "*/*",
+								);
+							}
+							const headersRecord: Record<string, string> = {};
+							headers.forEach((v, k) => {
+								headersRecord[k] = v;
+							});
 
-						// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
-						const resp = await requestUrl({
-							url,
-							method: "HEAD",
-							headers: headersRecord,
-							throw: false,
-						});
-						if (resp.status !== 200) {
-							return;
-						}
-						console.debug("GET", url);
-						const getResp = await requestUrl({
-							url,
-							headers: headersRecord,
-							throw: false,
-						});
-						if (getResp.status !== 200) {
-							return;
-						}
-						console.debug("GOT", getResp.headers);
-						const dir =
-							config.downloadDir ||
-							this.settings().downloadDir ||
-							this.settings().primaryDir;
-						const result = await this.fetchRemote(dir, getResp, {
-							cid: data.cid,
-							filename: data.filename(),
-							format: data.format(),
-						});
-						if (result) {
-							resolve(result);
-						}
-					}),
+							// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
+							const resp = await requestUrl({
+								url,
+								method: "HEAD",
+								headers: headersRecord,
+								throw: false,
+							});
+							if (resp.status !== 200) {
+								return;
+							}
+							console.debug("GET", url);
+							const getResp = await requestUrl({
+								url,
+								headers: headersRecord,
+								throw: false,
+							});
+							if (getResp.status !== 200) {
+								return;
+							}
+							console.debug("GOT", getResp.headers);
+							const dir =
+								config.downloadDir ||
+								this.settings().downloadDir ||
+								this.settings().primaryDir;
+							const result = await this.fetchRemote(
+								dir,
+								getResp,
+								{
+									cid: data.cid,
+									filename: data.filename(),
+									format: data.format(),
+								},
+							);
+							if (result) {
+								resolve(result);
+							}
+						},
+					),
 				),
 				...extraURLs.map((url) =>
-					makeRemoteRequest(stack, countDown, async (resolve) => {
-						const resp = await requestUrl({
-							url,
-							throw: false,
-						});
-						const dir =
-							this.settings().downloadDir ||
-							this.settings().primaryDir;
-						const result = await this.fetchRemote(dir, resp, {
-							cid: data.cid,
-							format: data.format(),
-						});
-						if (result) {
-							resolve(result);
-						}
-					}),
+					makeRemoteRequest(
+						stack,
+						countDown,
+						errors,
+						url,
+						async (resolve) => {
+							const resp = await requestUrl({
+								url,
+								throw: false,
+							});
+							const dir =
+								this.settings().downloadDir ||
+								this.settings().primaryDir;
+							const result = await this.fetchRemote(
+								dir,
+								resp,
+								{
+									cid: data.cid,
+									format: data.format(),
+								},
+							);
+							if (result) {
+								resolve(result);
+							}
+						},
+					),
 				),
 			]);
+			if (result) {
+				return result;
+			}
+			// 全部源都失败：仅当确有异常时才提示一次（404/CID 不匹配属于合法缺失，保持静默）
+			if (errors.length > 0) {
+				console.error("解析 IPFS 网址失败", data.rawURL, errors);
+				new Notice(t("allSourcesFailed")(castError(errors[0]).message));
+			}
+			return undefined;
 		} catch (err) {
 			if (!isAbortError(err)) {
 				console.error("解析 IPFS 网址失败", data.rawURL, err);
@@ -657,6 +714,8 @@ const { t } = defineLocales({
 			"Decryption cache directory not set",
 		decryptedCacheDirNotSetSimple:
 			"Decrypted cache directory not configured. Please set Decrypted Cache Dir or increase Max Blob Size.",
+		allSourcesFailed: (firstError: string) =>
+			`Failed to resolve: all sources failed. ${firstError}`,
 	},
 	zh: {
 		keyNotFound: (fp: string, path: string) =>
@@ -666,5 +725,7 @@ const { t } = defineLocales({
 		decryptedCacheDirNotSetPlaceholder: "未设置解密缓存目录",
 		decryptedCacheDirNotSetSimple:
 			"未设置解密缓存目录。请在设置中配置文件解密缓存目录或提高内存解密上限。",
+		allSourcesFailed: (firstError: string) =>
+			`解析失败：所有源均不可用。${firstError}`,
 	},
 });

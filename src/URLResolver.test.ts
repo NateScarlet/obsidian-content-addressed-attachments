@@ -3,6 +3,7 @@ import { URLResolver } from "./URLResolver";
 import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import {
+	Notice,
 	requestUrl,
 	type App,
 	type RequestUrlResponse,
@@ -24,6 +25,13 @@ describe("URLResolver", () => {
 			json: Promise.resolve(resp.json),
 			text: Promise.resolve(resp.text),
 		});
+	}
+
+	/** 访问 vitest 别名注入的 Notice mock 的实例记录（真实 obsidian 类型上没有该静态成员）。 */
+	function noticeInstances() {
+		return (
+			Notice as unknown as { instances: { message: string }[] }
+		).instances;
 	}
 
 	let mockApp: App;
@@ -221,6 +229,68 @@ describe("URLResolver", () => {
 		expect(requestedURLs).toContain(sourceURL);
 		expect(requestedURLs).toContain(
 			"https://gateway.com/ipfs/" + dummyCIDStr,
+		);
+	});
+
+	/** 配置一个可达网关与一个不可达（网络级错误）网关，模拟互斥网关场景。 */
+	function setupMutuallyExclusiveGateways() {
+		noticeInstances().length = 0;
+		settings.gateways = [
+			{
+				name: "internal-gw",
+				urlTemplate: "https://internal.local/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+			{
+				name: "external-gw",
+				urlTemplate: "https://external.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+		];
+	}
+
+	it("does not notify user when one source fails but another succeeds", async () => {
+		setupMutuallyExclusiveGateways();
+
+		// 内网网关不可达（网络级错误会 reject），外网网关正常返回
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			if (url.startsWith("https://internal.local")) {
+				throw new Error("net::ERR_CONNECTION_REFUSED");
+			}
+			return mockResponse({
+				status: 200,
+				headers: { "content-type": "image/png" },
+				arrayBuffer: new ArrayBuffer(8),
+				json: {},
+				text: "",
+			});
+		});
+
+		const result = await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+
+		expect(result).toBeDefined();
+		// 单源失败是预期内的冗余回退，不应打扰用户
+		expect(noticeInstances()).toHaveLength(0);
+	});
+
+	it("shows a single notice when all sources fail", async () => {
+		setupMutuallyExclusiveGateways();
+
+		// 两个网关都不可达
+		vi.mocked(requestUrl).mockRejectedValue(
+			new Error("net::ERR_CONNECTION_REFUSED"),
+		);
+
+		const result = await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+
+		expect(result).toBeUndefined();
+		// 全部失败只提示一次，且带上首个错误原因
+		expect(noticeInstances()).toHaveLength(1);
+		expect(noticeInstances()[0].message).toContain(
+			"net::ERR_CONNECTION_REFUSED",
 		);
 	});
 });
