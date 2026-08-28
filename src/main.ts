@@ -45,6 +45,10 @@ import {
 } from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
+import {
+	extractWrappedBackgroundURL,
+	formatBackgroundImage,
+} from "./utils/wrappedBackgroundImage";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
@@ -554,14 +558,44 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * 改写 Obsidian Base 卡片封面：Base 只接受 http(s) 封面值，因此 IPFS 链接
+	 * 以 http:/// 前缀包装保留在 DOM 的 background-image 中，这里剥掉前缀走
+	 * 统一解析后写回可访问的资源 URL（桌面与移动端同一套机制）。
+	 */
+	private async processElementBackgroundImage(el: HTMLElement) {
+		if (this.inProgressElements.has(el)) {
+			return;
+		}
+		using stack = new DisposableStack();
+		this.inProgressElements.add(el);
+		stack.defer(() => this.inProgressElements.delete(el));
+
+		const canonical = extractWrappedBackgroundURL(el.style.backgroundImage);
+		if (!canonical) {
+			return;
+		}
+		const resolvedURL = await this.urlResolver.resolveURL(canonical);
+		if (resolvedURL) {
+			el.style.backgroundImage = formatBackgroundImage(resolvedURL.url);
+		}
+	}
+
 	private async process(parent: ParentNode = activeDocument): Promise<void> {
 		const match = parent.querySelectorAll<HTMLElement>(
 			'[src^="ipfs://"], [href^="ipfs://"], [src^="internal.ipfs-locked:"], [href^="internal.ipfs-locked:"]',
+		);
+		// Base 封面：background-image 中被 http:/// 前缀伪装的 IPFS 链接
+		const backgroundMatch = parent.querySelectorAll<HTMLElement>(
+			'[style*="http:///ipfs://"], [style*="http:///internal.ipfs-locked:"]',
 		);
 
 		const jobs: Promise<void>[] = [];
 		match.forEach((element) => {
 			jobs.push(this.processElementURL(element));
+		});
+		backgroundMatch.forEach((element) => {
+			jobs.push(this.processElementBackgroundImage(element));
 		});
 		await Promise.allSettled(jobs);
 	}

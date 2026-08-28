@@ -44,6 +44,19 @@ Implements content-addressed storage for attachments, providing IPFS-like functi
 - **Copy and Paste**: Paste files directly into notes
 - **Automatic Processing**: `ipfs://` links are automatically resolved to accessible URLs
 
+### Obsidian Base Card Covers
+
+Obsidian Base's card view cover property only accepts `http(s)` URLs or local attachment links, so `ipfs://` / `internal.ipfs-locked:` values are dropped. To display IPFS content as a cover, wrap the IPFS link with the `http:///` prefix so it passes Obsidian's prefix check and stays in the DOM; the plugin automatically rewrites it to an accessible local resource URL:
+
+```markdown
+---
+cover: http:///ipfs://bafybei...
+---
+```
+
+- The `http:///` prefix is only a disguise to pass Obsidian's check; the plugin strips it and resolves the real content (works on both desktop and mobile)
+- The embedded `ipfs://` link in the cover value is still recognized and tracked by the plugin's reference management
+
 ### Pre-processing Attachments
 
 Automatically transform attachments (e.g. image format conversion, quality tuning) before they are saved to CAS storage:
