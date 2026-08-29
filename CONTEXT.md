@@ -58,3 +58,13 @@ preprocess-scripts/         # 官方维护的预处理脚本源码（构建入�
 - **生成索引（generated index）**：`src/preprocess/script-index.generated.json`，由 `scripts/generate-preprocess-index.mjs` 在发布流程中生成（把条目改写为 release CID 的 `internal.ipfs-locked:` 格式），用于构建发布版插件；生成结果不提交回仓库，仓库中维护的是开发用版本（vault 相对路径）。由插件运行时 import 供设置下拉使用。`.generated` 后缀明确表示这是构建产物而非手改源文件。
 
 `scriptURL` 支持多种 scheme：vault 相对路径、`https:`、`ipfs:`、`internal.ipfs-locked:`；参数经 URL fragment 传入。首个正式脚本发布前 index 条目使用 vault 相对路径，发布后切换为 `internal.ipfs-locked:<cid>,<release-url>`。
+
+## 回收站与多目录副本状态
+
+附件元数据（`CASMetadataObject`）用 `copies: [{dir, trashedAt?}]` 记录每个附件目录的副本状态，不使用单一 `trashedAt` 字段：
+
+- 同一 CID 可同时存在多个目录的副本（正常或 `.trash` 回收站），状态按目录独立记录；正常副本也记录，用于识别多副本（可能来自外部写入）。
+- 回收站判定：任一目录副本 `trashedAt` 非空（`src/utils/casCopies.ts` 的 `isCASObjectTrashed`）。
+- 写入元数据时**不**扫描磁盘来判定回收站状态：`index`/`save` 保留已有副本状态；`trash`/`load`/`restoreIfTrashed`/`deleteIfTrashed` 基于磁盘操作重建副本状态。
+- 清空回收站（`src/commands/emptyTrash.ts`）仍基于元数据增量执行，不做全量磁盘扫描。
+- IndexedDB schema 为 v2（`DB_VERSION=2`）：v1 的 `trashedAt` 在升级时迁移为 `copies`（用空字符串占位“未知目录”）。
