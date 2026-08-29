@@ -1,6 +1,7 @@
 import type { CID } from "multiformats";
 import type { CAS } from "#src/types/CAS";
 import type { CASMetadata } from "#src/types/CASMetadata";
+import { isCASObjectTrashed } from "#src/utils/casCopies";
 import { Notice } from "obsidian";
 import defineLocales from "../utils/defineLocales";
 
@@ -58,7 +59,7 @@ export default async function restoreReferencedFiles(
 		for (const cid of cids) {
 			const meta = await casMetadata.get(cid);
 			// 只有该文件之前在元数据中标记为被删时才执行物理恢复
-			if (meta && meta.trashedAt != null) {
+			if (meta && isCASObjectTrashed(meta)) {
 				const didRestore = await cas.restoreIfTrashed(cid);
 				if (didRestore) {
 					count++;

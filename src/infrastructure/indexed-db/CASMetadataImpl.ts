@@ -11,7 +11,7 @@ import { casMetadataDelete, casMetadataSave } from "#src/events";
 import { isEqual, uniqBy } from "es-toolkit";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const OBJECTS_STORE_NAME = "objects";
 const STATS_STORE_NAME = "stats";
 const STATS_KEY = "summary";
@@ -24,6 +24,9 @@ export class CASMetadataImpl implements CASMetadata {
 			const request = indexedDB.open(DB_NAME, DB_VERSION);
 			request.onupgradeneeded = (event) => {
 				const db = (event.target as IDBOpenDBRequest).result;
+				const transaction = (event.target as IDBOpenDBRequest)
+					.transaction!;
+				const oldVersion = event.oldVersion;
 
 				// 创建主对象存储
 				if (!db.objectStoreNames.contains(OBJECTS_STORE_NAME)) {
@@ -33,9 +36,6 @@ export class CASMetadataImpl implements CASMetadata {
 					store.createIndex("indexedAt", ["indexedAt", "cid"], {
 						unique: true,
 					});
-					store.createIndex("trashedAt", ["trashedAt", "cid"], {
-						unique: true,
-					});
 				}
 
 				// 创建统计信息存储
@@ -43,6 +43,21 @@ export class CASMetadataImpl implements CASMetadata {
 					db.createObjectStore(STATS_STORE_NAME, {
 						keyPath: "id",
 					});
+				}
+
+				// v1 → v2：移除 trashedAt 索引。
+				// 数据迁移不在此处做：在 versionchange 事务里做游标遍历，
+				// 事务在请求排空后立即 inactive，链式遍历会导致 open 永久 pending（卡住）。
+				// 改为运行时延迟迁移：decode 时把 v1 遗留 trashedAt 转成占位 copies，
+				// merge 保存时再逐步收敛为精确副本状态。
+				if (
+					oldVersion < 2 &&
+					db.objectStoreNames.contains(OBJECTS_STORE_NAME)
+				) {
+					const store = transaction.objectStore(OBJECTS_STORE_NAME);
+					if (store.indexNames.contains("trashedAt")) {
+						store.deleteIndex("trashedAt");
+					}
 				}
 			};
 			return executeIDBRequest(request, undefined);
@@ -125,7 +140,7 @@ export class CASMetadataImpl implements CASMetadata {
 			// 处理旧值的移除
 			if (oldValue) {
 				const size = oldValue.size || 0;
-				if (oldValue.trashedAt != null) {
+				if (isTrashedPO(oldValue)) {
 					trashBytesDelta -= size;
 				} else {
 					normalBytesDelta -= size;
@@ -135,7 +150,7 @@ export class CASMetadataImpl implements CASMetadata {
 			// 处理新值的添加
 			if (newValue) {
 				const size = newValue.size || 0;
-				if (newValue.trashedAt != null) {
+				if (isTrashedPO(newValue)) {
 					trashBytesDelta += size;
 				} else {
 					normalBytesDelta += size;
@@ -187,28 +202,30 @@ export class CASMetadataImpl implements CASMetadata {
 					store.get(cidStr) as IDBRequest<PO | undefined>,
 					signal,
 				);
-				const po: PO = this.encode(obj);
-
-				if (existing) {
-					po.indexedAt = existing.indexedAt;
-					po.format = po.format || existing.format || undefined;
-					if (po.trashedAt != null && existing.trashedAt != null) {
-						po.trashedAt = Math.max(
-							po.trashedAt,
-							existing.trashedAt,
-						);
-					}
-					if (isEqual(existing, po)) {
+				// 兼容 v1 遗留：无 copies 但有 trashedAt 时按占位副本处理，
+				// 保证回收站状态可读出；正常读取（decode）亦做同样归一化
+				const existingPO = existing
+					? normalizePOForStaleV1(existing)
+					: undefined;
+				const po = buildMergedPO(this.encode(obj), existingPO);
+				if (existingPO && po.copies !== undefined) {
+					// 归一化后旧对象可能含 trashedAt，需与 po 对齐才能正确判定无变更且收敛旧数据
+					const existingNorm = { ...existingPO, copies: po.copies };
+					if (isEqual(existingNorm, po)) {
 						return {
 							didCreate: false,
 							didChange: false,
-							after: existing,
+							after: existingPO,
 						};
 					}
 				}
-				recordChange(po, existing);
+				recordChange(po, existingPO);
 				await executeIDBRequest(store.put(po), signal);
-				return { didCreate: !existing, didChange: true, after: po };
+				return {
+					didCreate: !existingPO,
+					didChange: true,
+					after: po,
+				};
 			},
 			signal,
 		);
@@ -342,18 +359,100 @@ export class CASMetadataImpl implements CASMetadata {
 			...obj,
 			cid: obj.cid.toString(),
 			indexedAt: obj.indexedAt.getTime(),
-			trashedAt: obj.trashedAt?.getTime(),
+			lastVisitedAt: obj.lastVisitedAt?.getTime(),
+			copies: obj.copies?.map((c) => ({
+				dir: c.dir,
+				trashedAt: c.trashedAt?.getTime(),
+			})),
 		};
 	}
 
 	private decode(po: PO): CASMetadataObject {
+		const norm = normalizePOForStaleV1(po);
 		return {
-			...po,
-			cid: CID.parse(po.cid),
-			indexedAt: new Date(po.indexedAt),
-			trashedAt: po.trashedAt ? new Date(po.trashedAt) : undefined,
+			...norm,
+			cid: CID.parse(norm.cid),
+			indexedAt: new Date(norm.indexedAt),
+			lastVisitedAt: norm.lastVisitedAt
+				? new Date(norm.lastVisitedAt)
+				: undefined,
+			copies: norm.copies?.map((c) => ({
+				dir: c.dir,
+				trashedAt: c.trashedAt ? new Date(c.trashedAt) : undefined,
+			})),
 		};
 	}
+}
+
+/**
+ * 归一化 v1 遗留数据：无 copies 但有 trashedAt 的记录按占位副本处理，
+ * 并移除 trashedAt 字段。为纯函数（不写回），供 decode 与 merge 统一使用。
+ */
+export function normalizePOForStaleV1(po: PO): PO {
+	if (po.copies !== undefined) {
+		return po;
+	}
+	if (po.trashedAt == null) {
+		return po;
+	}
+	return {
+		...po,
+		copies: [{ dir: PLACEHOLDER_DIR, trashedAt: po.trashedAt }],
+		trashedAt: undefined,
+	};
+}
+
+/** 持久化对象是否处于回收站（任一目录副本被回收） */
+function isTrashedPO(po: PO): boolean {
+	// 兼容 v1 遗留：仅有 trashedAt（未归一化）时同样视为回收
+	const norm = normalizePOForStaleV1(po);
+	return norm.copies?.some((c) => c.trashedAt != null) ?? false;
+}
+
+/**
+ * 迁移占位副本的目录标识：v1→v2 升级时旧 `trashedAt` 无法定位原始目录，
+ * 用空字符串目录占位，保守表示该 CID 可能存在于未知目录的回收站副本。
+ */
+const PLACEHOLDER_DIR = "";
+
+/**
+ * 清理迁移占位副本：一旦出现真实目录副本（dir 非空），即移除占位。
+ * 占位仅在没有任何真实目录信息时保留，避免无限期驻留不精确的回收站状态。
+ * 由 merge 在所有写入必经路径调用，调用方无需（也不应）感知此迁移细节。
+ */
+export function removePlaceholderCopies(
+	copies: { dir: string; trashedAt?: number }[],
+): { dir: string; trashedAt?: number }[] {
+	const hasRealCopy = copies.some((c) => c.dir !== PLACEHOLDER_DIR);
+	if (!hasRealCopy) {
+		return copies;
+	}
+	const filtered = copies.filter((c) => c.dir !== PLACEHOLDER_DIR);
+	return filtered.length === copies.length ? copies : filtered;
+}
+
+/**
+ * 合并持久化对象（merge 的必经写入路径，所有更新都经由此处）。
+ * - partial 更新（index/save/重建索引）可能缺失字段：index 进不来 size，
+ *   重建索引进不来 filename/format，缺失时保留既有值，避免覆盖丢失。
+ * - copies 未显式提供时保留已有副本状态，并提供时统一清理迁移占位副本。
+ */
+export function buildMergedPO(incoming: PO, existingPO: PO | undefined): PO {
+	if (!existingPO) {
+		return incoming;
+	}
+	const po: PO = { ...incoming };
+	po.indexedAt = existingPO.indexedAt;
+	po.format = po.format ?? existingPO.format;
+	po.filename = po.filename ?? existingPO.filename;
+	po.size = po.size ?? existingPO.size;
+	if (po.copies === undefined) {
+		po.copies = existingPO.copies;
+	}
+	if (po.copies !== undefined) {
+		po.copies = removePlaceholderCopies(po.copies);
+	}
+	return po;
 }
 
 interface PO {
@@ -362,6 +461,9 @@ interface PO {
 	filename?: string;
 	format?: string;
 	size?: number;
+	lastVisitedAt?: number;
+	copies?: { dir: string; trashedAt?: number }[];
+	// v1 遗留字段：升级时不主动改写数据（避免卡住），读取时兼容为占位副本
 	trashedAt?: number;
 }
 

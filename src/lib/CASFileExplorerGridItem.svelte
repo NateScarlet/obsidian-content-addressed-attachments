@@ -68,6 +68,10 @@
 	} from "@mdi/js";
 	import { referenceChange } from "#src/events";
 	import staleWithRevalidate from "#src/lib/stores/staleWhileRevalidate.svelte";
+	import {
+		firstTrashedAt,
+		isCASObjectTrashed,
+	} from "#src/utils/casCopies";
 	import type { Attachment } from "svelte/attachments";
 
 	const { cas, app, referenceManager, encryptionService } = getContext();
@@ -182,7 +186,8 @@
 
 	const format = $derived($detail?.format || file.format || "*/*");
 	const isEncrypted = $derived(file.format === ENCRYPTED_FORMAT);
-	const isDeleted = $derived(!!file.trashedAt || $detail?.ok === false);
+	const isDeleted = $derived(isCASObjectTrashed(file) || $detail?.ok === false);
+	const trashedAt = $derived(firstTrashedAt(file));
 
 	let limit = $state(20);
 
@@ -306,10 +311,10 @@
 		class={[
 			"font-semibold truncate text-center flex items-center justify-center gap-1",
 			{
-				"text-muted": file.trashedAt && $detail?.ok,
+				"text-muted": trashedAt && $detail?.ok,
 				"text-error": $detail?.ok === false,
 				"text-normal": !isDeleted,
-				"line-through": file.trashedAt,
+				"line-through": trashedAt,
 			},
 		]}
 		title={file.filename}
@@ -402,11 +407,11 @@
 		<span class="select-all truncate flex-1 font-mono">{file.cid}</span>
 		<!-- 时间戳 -->
 		<div class="flex-none text-right">
-			{#if file.trashedAt}
+			{#if trashedAt}
 				<span class="flex-none">
 					<span>{t("trashedAt")}</span>
-					<time datetime={file.trashedAt.toISOString()}
-						>{formatDate(file.trashedAt)}</time
+					<time datetime={trashedAt.toISOString()}
+						>{formatDate(trashedAt)}</time
 					>
 				</span>
 			{:else}

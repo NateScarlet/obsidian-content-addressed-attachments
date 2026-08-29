@@ -24,3 +24,6 @@ export const requestUrl = vi.fn();
 export function getLanguage() {
 	return "en";
 }
+export async function getBlobArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
+	return await blob.arrayBuffer();
+}

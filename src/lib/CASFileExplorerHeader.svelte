@@ -22,6 +22,7 @@
 <script lang="ts">
 	import showProgress from "#src/utils/showProgress";
 	import emptyTrashCmd from "#src/commands/emptyTrash";
+	import rebuildIndexCmd from "#src/commands/rebuildIndex";
 
 	const { cas, casMetadata, referenceManager, query, mode } = getContext();
 
@@ -54,13 +55,9 @@
 		loading = true;
 		const notice = showProgress(t("rebuildIndex"));
 		try {
-			let i = 0;
-			for await (const obj of cas.objects()) {
-				await casMetadata.merge(obj);
-				i++;
-				notice.update(i, obj.cid.toString());
-			}
-			await referenceManager.clearCache();
+			await rebuildIndexCmd(cas, casMetadata, referenceManager, (i, cidStr) => {
+				notice.update(i, cidStr);
+			});
 		} finally {
 			loading = false;
 			notice.hide();

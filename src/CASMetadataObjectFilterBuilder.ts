@@ -3,6 +3,7 @@ import type {
 	CASMetadataObject,
 	CASMetadataObjectFilters,
 } from "./types/CASMetadata";
+import { isCASObjectTrashed } from "./utils/casCopies";
 import ExactSearchMatcher from "./utils/ExactSearchMatcher";
 import FilterBuilder from "./utils/FilterBuilder";
 
@@ -22,7 +23,7 @@ export default class CASMetadataObjectFilterBuilder {
 		}
 		if (filterBy.isTrashed != null) {
 			const m = filterBy.isTrashed;
-			b.add((i) => (i.trashedAt != null) === m);
+			b.add((i) => isCASObjectTrashed(i) === m);
 		}
 		if (filterBy.hasReference != null) {
 			const m = filterBy.hasReference;
