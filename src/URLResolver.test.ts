@@ -184,6 +184,98 @@ describe("URLResolver", () => {
 		).rejects.toThrow("HTTP 500");
 	});
 
+	it("saves a locked URL download into the global download dir when gateways have empty downloadDir", async () => {
+		const sourceURL = "https://source.example.com/image.png";
+		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
+		settings.downloadDir = "downloads";
+		settings.gateways = [
+			{
+				name: "test-gw",
+				urlTemplate: "https://gateway.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+				downloadDir: "",
+			},
+		];
+
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			if (url.startsWith("https://gateway.com")) {
+				return mockResponse({
+					status: 200,
+					headers: { "content-type": "image/png" },
+					arrayBuffer: new ArrayBuffer(8),
+					json: {},
+					text: "",
+				});
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const result = await resolver.resolveURL(lockedURL);
+
+		expect(result).toBeDefined();
+		// 网关 downloadDir 为空时应回退到全局 downloadDir，而不是 primaryDir
+		expect(vi.mocked(mockCas.save)).toHaveBeenCalledWith(
+			"downloads",
+			expect.any(File),
+		);
+	});
+
+	it("reproduces user config: locked URL download lands in global download dir not primaryDir", async () => {
+		// 用户实际配置：全局 downloadDir 非空，网关 urlTemplate 为空字符串（enabled 但不可下载）
+		const sourceURL =
+			"https://raw.githubusercontent.com/NateScarlet/obsidian-vault-attachments/main/cas/xx.png";
+		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
+		settings.primaryDir = ".attachments/cas";
+		settings.downloadDir = ".attachments/download";
+		settings.gateways = [
+			{
+				name: "web harvest",
+				urlTemplate: "",
+				headers: [],
+				enabled: true,
+				downloadDir: ".wharvest/download",
+			},
+		];
+
+		// 仅源站可达
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			if (url === sourceURL) {
+				return mockResponse({
+					status: 200,
+					headers: { "content-type": "image/png" },
+					arrayBuffer: new ArrayBuffer(8),
+					json: {},
+					text: "",
+				});
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const result = await resolver.resolveURL(lockedURL);
+
+		expect(result).toBeDefined();
+		// 源站下载应落到全局 downloadDir，而不是 primaryDir 或网关 downloadDir
+		expect(vi.mocked(mockCas.save)).toHaveBeenCalledWith(
+			".attachments/download",
+			expect.any(File),
+		);
+	});
+
 	it("resolves a locked URL from the source directly", async () => {
 		const sourceURL = "https://source.example.com/image.png";
 		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
