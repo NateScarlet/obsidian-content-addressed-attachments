@@ -31,3 +31,6 @@ data.json
 # Playwright artifacts
 test-results/
 playwright-report/
+
+# pnpm local store (created when pnpm falls back to a project-local store)
+.pnpm-store
