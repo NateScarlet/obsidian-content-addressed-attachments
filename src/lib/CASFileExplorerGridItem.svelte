@@ -211,6 +211,7 @@
 					yield {
 						file,
 						name: title || url.filename,
+						pos,
 						anchorAttrs: {
 							onclick: async () => {
 								try {
@@ -335,7 +336,7 @@
 
 	<!-- 引用文件列表 -->
 	<ul class="space-y-1 max-h-64 overflow-y-auto list-none m-1 p-0">
-		{#each $references ?? [] as i (i.file.path)}
+		{#each $references ?? [] as i (i.file.path + ":" + i.pos[0])}
 			<li class="break-all">
 				<a {...i.anchorAttrs}>
 					{i.file.path}
