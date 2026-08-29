@@ -45,10 +45,9 @@ import {
 } from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
-import {
-	extractWrappedBackgroundURL,
-	formatBackgroundImage,
-} from "./utils/wrappedBackgroundImage";
+import patchElementURL, {
+	patchElementBackgroundImage,
+} from "./utils/patchElementURLs";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
@@ -531,6 +530,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.inProgressElements.add(el);
 		stack.defer(() => this.inProgressElements.delete(el));
 
+		const options = {
+			placeholderImageURL: this.placeholderImageURL,
+			notFoundImageURL: this.notFoundImageURL,
+		};
 		for (const attr of ["src", "href"]) {
 			const value = el.getAttribute(attr);
 			if (
@@ -538,22 +541,16 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				value?.startsWith("internal.ipfs-locked:")
 			) {
 				console.debug("🖼️ 处理 URL:", value);
-				if (el.instanceOf(HTMLImageElement) && attr === "src") {
-					el.src = this.placeholderImageURL;
-				}
-				const resolvedURL = await this.urlResolver.resolveURL(value);
-				if (resolvedURL) {
-					console.debug("使用源:", resolvedURL);
-					el.setAttr(`data-original-${attr}`, value);
-					el.setAttr(attr, resolvedURL.url);
-				} else {
-					if (el.instanceOf(HTMLImageElement) && attr === "src") {
-						el.src = this.notFoundImageURL;
-					} else {
-						el.setAttr(attr, value);
-					}
-					console.warn("无可用源:", value);
-				}
+				await patchElementURL(
+					el,
+					attr as "src" | "href",
+					(rawURL) => this.urlResolver.resolveURL(rawURL),
+					{
+						imageFallback:
+							el.instanceOf(HTMLImageElement) && attr === "src",
+						...options,
+					},
+				);
 			}
 		}
 	}
@@ -562,6 +559,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	 * 改写 Obsidian Base 卡片封面：Base 只接受 http(s) 封面值，因此 IPFS 链接
 	 * 以 http:/// 前缀包装保留在 DOM 的 background-image 中，这里剥掉前缀走
 	 * 统一解析后写回可访问的资源 URL（桌面与移动端同一套机制）。
+	 * 异步解析返回后仅当背景图未被组件改掉时才写回，避免覆盖组件自己的修改。
 	 */
 	private async processElementBackgroundImage(el: HTMLElement) {
 		if (this.inProgressElements.has(el)) {
@@ -571,14 +569,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.inProgressElements.add(el);
 		stack.defer(() => this.inProgressElements.delete(el));
 
-		const canonical = extractWrappedBackgroundURL(el.style.backgroundImage);
-		if (!canonical) {
-			return;
-		}
-		const resolvedURL = await this.urlResolver.resolveURL(canonical);
-		if (resolvedURL) {
-			el.style.backgroundImage = formatBackgroundImage(resolvedURL.url);
-		}
+		await patchElementBackgroundImage(el, (rawURL) =>
+			this.urlResolver.resolveURL(rawURL),
+		);
 	}
 
 	private async process(parent: ParentNode = activeDocument): Promise<void> {
