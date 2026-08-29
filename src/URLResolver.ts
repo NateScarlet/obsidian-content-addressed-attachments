@@ -14,6 +14,7 @@ import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type EncryptionService from "./lib/encryption/EncryptionService";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import defineLocales from "./utils/defineLocales";
+import { applyHeaderRules, headersToRecord } from "./utils/applyHeaderRules";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -41,6 +42,13 @@ export interface GatewayConfig {
 	headers: [key: string, value: string][];
 	enabled: boolean;
 	downloadDir?: string;
+}
+
+/** 按 URL 前缀匹配的全局请求头规则，命中任意远程请求时附加 headers */
+export interface HeaderRule {
+	/** URL 前缀，仅当请求 URL 以此开头时应用；空值视为未配置，不匹配任何请求 */
+	baseUrl: string;
+	headers: [key: string, value: string][];
 }
 
 export interface ResolveURLResult {
@@ -304,8 +312,11 @@ export class URLResolver {
 	private async resolveHTTP(
 		rawURL: string,
 	): Promise<ResolveURLResult | undefined> {
+		const headers = new Headers();
+		applyHeaderRules(rawURL, headers, this.settings().headerRules);
 		const resp = await requestUrl({
 			url: rawURL,
+			headers: headersToRecord(headers),
 			throw: false,
 		});
 		// 404 与 vault-relative 语义一致，视为合法的“资源不存在”；
@@ -386,17 +397,20 @@ export class URLResolver {
 							if (!url) {
 								return;
 							}
-							const headers = new Headers(config.headers);
-							if (!headers.has("Accept")) {
-								headers.set(
-									"Accept",
-									data.format() || "*/*",
-								);
+							const headers = new Headers();
+							// 全局规则作为附加，网关自身配置的同名 header 覆盖全局规则
+							applyHeaderRules(
+								url,
+								headers,
+								this.settings().headerRules,
+							);
+							for (const [key, value] of config.headers) {
+								headers.set(key, value);
 							}
-							const headersRecord: Record<string, string> = {};
-							headers.forEach((v, k) => {
-								headersRecord[k] = v;
-							});
+							if (!headers.has("Accept")) {
+								headers.set("Accept", data.format() || "*/*");
+							}
+							const headersRecord = headersToRecord(headers);
 
 							// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
 							const resp = await requestUrl({
@@ -444,21 +458,24 @@ export class URLResolver {
 						errors,
 						url,
 						async (resolve) => {
+							const headers = new Headers();
+							applyHeaderRules(
+								url,
+								headers,
+								this.settings().headerRules,
+							);
 							const resp = await requestUrl({
 								url,
+								headers: headersToRecord(headers),
 								throw: false,
 							});
 							const dir =
 								this.settings().downloadDir ||
 								this.settings().primaryDir;
-							const result = await this.fetchRemote(
-								dir,
-								resp,
-								{
-									cid: data.cid,
-									format: data.format(),
-								},
-							);
+							const result = await this.fetchRemote(dir, resp, {
+								cid: data.cid,
+								format: data.format(),
+							});
 							if (result) {
 								resolve(result);
 							}

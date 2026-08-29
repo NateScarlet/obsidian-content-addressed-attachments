@@ -66,4 +66,43 @@ describe("settingsFromInput", () => {
 		expect(result.primaryDir).toBe("custom/cas");
 		expect(result.gateways).toEqual(defaults.gateways);
 	});
+
+	it("includes empty headerRules in defaults", () => {
+		const defaults = getDefaultSettings();
+		expect(defaults.headerRules).toEqual([]);
+	});
+
+	it("preserves configured headerRules when version === 1", () => {
+		const customRules = [
+			{
+				baseUrl: "https://source.example.com",
+				headers: [["Authorization", "Bearer token"]] as [
+					string,
+					string,
+				][],
+			},
+		];
+		const result = settingsFromInput({
+			version: 1,
+			headerRules: customRules,
+		});
+		expect(result.headerRules).toEqual(customRules);
+	});
+
+	it("falls back to empty headerRules when headerRules field is missing", () => {
+		const result = settingsFromInput({
+			version: 1,
+			primaryDir: ".attachments/cas",
+			downloadDir: "",
+		});
+		expect(result.headerRules).toEqual([]);
+	});
+
+	it("migrates v0 settings with empty headerRules", () => {
+		const result = settingsFromInput({
+			version: undefined,
+			casDir: "custom/cas",
+		});
+		expect(result.headerRules).toEqual([]);
+	});
 });

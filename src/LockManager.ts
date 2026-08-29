@@ -1,10 +1,11 @@
 import { App, TFile } from "obsidian";
 // TODO: Refactor batch link traversal using VaultLinkTransformer
-import ContentAddressedAttachmentPlugin from "./main";
+import type ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
 import { LockProgressModal } from "./ui/LockProgressModal";
 import { requestUrl } from "obsidian";
 import { basename } from "path-browserify";
+import { applyHeaderRules, headersToRecord } from "./utils/applyHeaderRules";
 
 export interface LockProgress {
 	status: "processing" | "completed" | "cancelled";
@@ -378,8 +379,11 @@ export class LockManager {
 				return { success: false, error: t("unsupportedProtocol") };
 			}
 
+			const headers = new Headers();
+			applyHeaderRules(url, headers, this.plugin.settings.headerRules);
 			const response = await requestUrl({
 				url,
+				headers: headersToRecord(headers),
 				throw: false,
 			});
 

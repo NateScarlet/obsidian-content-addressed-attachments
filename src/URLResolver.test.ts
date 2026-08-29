@@ -27,11 +27,39 @@ describe("URLResolver", () => {
 		});
 	}
 
+	/** 从 requestUrl 的调用记录中查找对指定 URL 的最近一次调用及其请求头。 */
+	function requestCallFor(
+		predicate: (url: string) => boolean,
+	): { url: string; headers: Record<string, string> } | undefined {
+		const calls = vi.mocked(requestUrl).mock.calls;
+		for (let i = calls.length - 1; i >= 0; i--) {
+			const [options] = calls[i];
+			const url = typeof options === "string" ? options : options.url;
+			if (predicate(url)) {
+				const headers =
+					typeof options === "string" ? {} : (options.headers ?? {});
+				return { url, headers };
+			}
+		}
+		return undefined;
+	}
+
+	/** Headers 会把 header 名规范化为小写，这里做大小写不敏感查找。 */
+	function getHeader(
+		headers: Record<string, string>,
+		name: string,
+	): string | undefined {
+		const lower = name.toLowerCase();
+		for (const [key, value] of Object.entries(headers)) {
+			if (key.toLowerCase() === lower) return value;
+		}
+		return undefined;
+	}
+
 	/** 访问 vitest 别名注入的 Notice mock 的实例记录（真实 obsidian 类型上没有该静态成员）。 */
 	function noticeInstances() {
-		return (
-			Notice as unknown as { instances: { message: string }[] }
-		).instances;
+		return (Notice as unknown as { instances: { message: string }[] })
+			.instances;
 	}
 
 	let mockApp: App;
@@ -292,5 +320,158 @@ describe("URLResolver", () => {
 		expect(noticeInstances()[0].message).toContain(
 			"net::ERR_CONNECTION_REFUSED",
 		);
+	});
+
+	it("applies matching header rules to the locked URL source request", async () => {
+		const sourceURL = "https://source.example.com/image.png";
+		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
+		settings.headerRules = [
+			{
+				baseUrl: "https://source.example.com",
+				headers: [["Authorization", "Bearer token"]],
+			},
+		];
+
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			if (url === sourceURL) {
+				return mockResponse({
+					status: 200,
+					headers: { "content-type": "image/png" },
+					arrayBuffer: new ArrayBuffer(8),
+					json: {},
+					text: "",
+				});
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const result = await resolver.resolveURL(lockedURL);
+
+		expect(result).toBeDefined();
+		const call = requestCallFor((url) => url === sourceURL);
+		expect(call).toBeDefined();
+		expect(getHeader(call?.headers ?? {}, "Authorization")).toBe(
+			"Bearer token",
+		);
+	});
+
+	it("applies global header rules to gateway requests and lets gateway headers win", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "https://gateway.com",
+				headers: [
+					["Authorization", "Bearer global"],
+					["X-Global", "yes"],
+				],
+			},
+		];
+		settings.gateways = [
+			{
+				name: "test-gw",
+				urlTemplate: "https://gateway.com/ipfs/{{cid}}",
+				headers: [["Authorization", "Bearer gateway"]],
+				enabled: true,
+			},
+		];
+
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "image/png" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+
+		const call = requestCallFor((url) =>
+			url.startsWith("https://gateway.com/ipfs/"),
+		);
+		expect(call).toBeDefined();
+		// 网关自身配置的同名 header 覆盖全局规则
+		expect(getHeader(call?.headers ?? {}, "Authorization")).toBe(
+			"Bearer gateway",
+		);
+		// 全局规则中未冲突的 header 附加生效
+		expect(getHeader(call?.headers ?? {}, "X-Global")).toBe("yes");
+	});
+
+	it("applies matching header rules to plain HTTP resolution", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "https://example.com",
+				headers: [["X-Token", "abc"]],
+			},
+		];
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "text/plain" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		await resolver.resolveURL("https://example.com/data.txt");
+
+		const call = requestCallFor(
+			(url) => url === "https://example.com/data.txt",
+		);
+		expect(call).toBeDefined();
+		expect(getHeader(call?.headers ?? {}, "X-Token")).toBe("abc");
+	});
+
+	it("does not apply header rules to non-matching URLs", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "https://example.com",
+				headers: [["X-Token", "abc"]],
+			},
+		];
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "text/plain" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		await resolver.resolveURL("https://other.com/data.txt");
+
+		const call = requestCallFor(
+			(url) => url === "https://other.com/data.txt",
+		);
+		expect(call).toBeDefined();
+		expect(getHeader(call?.headers ?? {}, "X-Token")).toBeUndefined();
+	});
+
+	it("ignores header rules with an empty baseUrl", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "",
+				headers: [["X-Token", "abc"]],
+			},
+		];
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "text/plain" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		await resolver.resolveURL("https://example.com/data.txt");
+
+		const call = requestCallFor(
+			(url) => url === "https://example.com/data.txt",
+		);
+		expect(call).toBeDefined();
+		expect(getHeader(call?.headers ?? {}, "X-Token")).toBeUndefined();
 	});
 });

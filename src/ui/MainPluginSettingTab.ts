@@ -2,6 +2,7 @@ import { PluginSettingTab, Setting, Notice } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 import GatewayOptionsModal from "./GatewayOptionsModal";
+import HeaderRuleOptionsModal from "./HeaderRuleOptionsModal";
 import ExportKeysModal from "./modals/ExportKeysModal";
 import ImportKeysModal from "./modals/ImportKeysModal";
 import clsx from "clsx";
@@ -199,6 +200,107 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			}
 		});
 
+		//#region 请求头规则：按 baseUrl 前缀匹配任意远程请求并附加请求头
+		new Setting(containerEl)
+			.setName(t("headerRules"))
+			.setDesc(t("headerRulesDesc"))
+			.addButton((button) =>
+				button
+					.setIcon("plus")
+					.setTooltip(t("addHeaderRule"))
+					.onClick(async () => {
+						this.plugin.settings.headerRules.push({
+							baseUrl: "",
+							headers: [],
+						});
+						await this.plugin.saveSettings();
+						// eslint-disable-next-line @typescript-eslint/no-deprecated
+						this.display();
+					}),
+			);
+
+		this.plugin.settings.headerRules.forEach((rule, index) => {
+			const setting = new Setting(containerEl)
+				.setName("")
+				.setDesc("")
+				.addText((text) => {
+					text.setPlaceholder(t("headerRuleBaseUrlPlaceholder"))
+						.setValue(rule.baseUrl)
+						.onChange(async (value) => {
+							rule.baseUrl = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.className = clsx`min-w-32 max-w-full flex-1 grow`;
+				})
+				.addExtraButton((button) => {
+					button
+						.setIcon("settings")
+						.setTooltip(t("headerRuleOptions"))
+						.onClick(() => {
+							const modal = new HeaderRuleOptionsModal(
+								this.app,
+								rule,
+								(updated) => {
+									this.plugin.settings.headerRules[index] =
+										updated;
+									this.plugin.saveSettings().catch(showError);
+									// eslint-disable-next-line @typescript-eslint/no-deprecated
+									this.display();
+								},
+								() => {
+									modal.close();
+									const delayMs = 5e3;
+									let cancelled = false;
+									const close = showButton({
+										message: t("willDeleteHeaderRule")(
+											rule.baseUrl || t("unnamedRule"),
+										),
+										icon: {
+											pathData: mdiUndo,
+										},
+										label: t("undo"),
+										onclick: () => {
+											cancelled = true;
+										},
+									});
+									window.setTimeout(() => {
+										close();
+										if (cancelled) {
+											return;
+										}
+										this.plugin.settings.headerRules.splice(
+											index,
+											1,
+										);
+										this.plugin
+											.saveSettings()
+											.catch(showError);
+										// eslint-disable-next-line @typescript-eslint/no-deprecated
+										this.display();
+									}, delayMs);
+								},
+							);
+							modal.open();
+						});
+					button.extraSettingsEl.className = clsx({
+						"text-accent": rule.headers.length > 0,
+					});
+					return button;
+				});
+
+			const control = setting.settingEl.querySelector(
+				".setting-item-control",
+			);
+			if (control instanceof HTMLElement) {
+				control.className = clsx(control.className, "flex-wrap");
+			}
+			const info = setting.settingEl.querySelector(".setting-item-info");
+			if (info instanceof HTMLElement) {
+				info.className = clsx`hidden`;
+			}
+		});
+		//#endregion
+
 		// 创建模板语法帮助组件
 		const helpContainer = containerEl.createDiv();
 		this.stack.adopt(
@@ -365,6 +467,15 @@ const { t } = defineLocales({
 		undo: "Undo",
 		configurationName: "Configuration name",
 		urlTemplate: "URL template (Mustache syntax)",
+		headerRules: "Request header rules",
+		headerRulesDesc:
+			"Headers applied to every remote request whose URL starts with the given base URL. Useful for authenticated source/gateway endpoints.",
+		addHeaderRule: "Add rule",
+		headerRuleBaseUrlPlaceholder: "e.g. https://source.example.com",
+		headerRuleOptions: "Header rule options",
+		willDeleteHeaderRule: (baseUrl: string) =>
+			`Will delete header rule '${baseUrl}'`,
+		unnamedRule: "Unnamed rule",
 		examplePlaceholder: "e.g. .attachments/cas",
 		advancedOperations: "Advanced operations",
 		migrateAllNotes: "Migrate local files (all notes)",
@@ -404,6 +515,15 @@ const { t } = defineLocales({
 		newGateway: "新网关",
 		configurationName: "配置名称",
 		urlTemplate: "URL模板（Mustache语法）",
+		headerRules: "请求头规则",
+		headerRulesDesc:
+			"为 URL 以指定 Base URL 开头的所有远程请求附加请求头，适用于需要认证的源站或网关",
+		addHeaderRule: "添加规则",
+		headerRuleBaseUrlPlaceholder: "例如: https://source.example.com",
+		headerRuleOptions: "请求头规则选项",
+		willDeleteHeaderRule: (baseUrl: string) =>
+			`将删除请求头规则 '${baseUrl}'`,
+		unnamedRule: "未命名规则",
 		examplePlaceholder: "例如: .attachments/cas",
 		advancedOperations: "高级操作",
 		migrateAllNotes: "迁移本地文件（所有笔记）",

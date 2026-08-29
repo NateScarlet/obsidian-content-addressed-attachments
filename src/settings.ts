@@ -1,4 +1,4 @@
-import type { GatewayConfig } from "./URLResolver";
+import type { GatewayConfig, HeaderRule } from "./URLResolver";
 import defineLocales from "./utils/defineLocales";
 
 export const CURRENT_SETTINGS_VERSION = 1;
@@ -21,6 +21,8 @@ export interface Settings {
 	primaryDir: string;
 	downloadDir: string;
 	gateways: GatewayConfig[];
+	/** 按 URL 前缀匹配的全局请求头规则 */
+	headerRules: HeaderRule[];
 	encryptPathRules: EncryptPathRule[];
 	maxBlobSize: number;
 	decryptedCacheDir: string;
@@ -47,6 +49,7 @@ interface SettingsV1Input {
 	primaryDir?: string;
 	downloadDir?: string;
 	gateways?: GatewayConfig[];
+	headerRules?: HeaderRule[];
 	encryptPathRules?: EncryptPathRule[];
 	maxBlobSize?: number;
 	decryptedCacheDir?: string;
@@ -87,6 +90,7 @@ export function settingsFromInput(
 			gateways: Array.isArray(v1.gateways)
 				? v1.gateways
 				: defaults.gateways,
+			headerRules: v1.headerRules ?? [],
 			encryptPathRules: v1.encryptPathRules ?? [],
 			maxBlobSize: v1.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
 			decryptedCacheDir:
@@ -112,6 +116,7 @@ export function settingsFromInput(
 		primaryDir: v0.casDir || defaults.primaryDir,
 		downloadDir: "",
 		gateways: v0Gateways,
+		headerRules: [],
 		encryptPathRules: [],
 		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
 		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
@@ -163,6 +168,7 @@ export function getDefaultSettings(): Settings {
 				enabled: false,
 			},
 		],
+		headerRules: [],
 		encryptPathRules: [],
 		maxBlobSize: DEFAULT_MAX_BLOB_SIZE,
 		decryptedCacheDir: DEFAULT_DECRYPTED_CACHE_DIR,
