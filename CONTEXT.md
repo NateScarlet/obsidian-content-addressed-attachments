@@ -61,10 +61,11 @@ preprocess-scripts/         # 官方维护的预处理脚本源码（构建入�
 
 ## 回收站与多目录副本状态
 
-附件元数据（`CASMetadataObject`）用 `copies: [{dir, trashedAt?}]` 记录每个附件目录的副本状态，不使用单一 `trashedAt` 字段：
+附件元数据（`CASMetadataObject`）用 `copies: [{dir, trashedAt?}]` 记录附件副本**实例**，不使用单一 `trashedAt` 字段：
 
-- 同一 CID 可同时存在多个目录的副本（正常或 `.trash` 回收站），状态按目录独立记录；正常副本也记录，用于识别多副本（可能来自外部写入）。
-- 回收站判定：任一目录副本 `trashedAt` 非空（`src/utils/casCopies.ts` 的 `isCASObjectTrashed`）。
+- 每个物理副本一条实例，允许同一目录同时存在正常与回收两个实例（per-instance 模型，`src/utils/casCopies.ts` 的 `mergeCopies` 按"目录+是否回收"合并）。
+- 回收站判定：任一副本实例 `trashedAt` 非空（`isCASObjectTrashed`）。
 - 写入元数据时**不**扫描磁盘来判定回收站状态：`index`/`save` 保留已有副本状态；`trash`/`load`/`restoreIfTrashed`/`deleteIfTrashed` 基于磁盘操作重建副本状态。
 - 清空回收站（`src/commands/emptyTrash.ts`）仍基于元数据增量执行，不做全量磁盘扫描。
-- IndexedDB schema 为 v2（`DB_VERSION=2`）：v1 的 `trashedAt` 在升级时迁移为 `copies`（用空字符串占位“未知目录”）。
+- **重建索引对账**（`src/commands/rebuildIndex.ts`）：以磁盘为权威，分两阶段流式清理残留（不把全部对象加载进内存）——① 扫描磁盘副本，merge 时把该 CID 记为 `lastVisitedAt = scannedAt` 并以磁盘副本实例覆盖 copies；② 遍历元数据，凡 `lastVisitedAt` 早于 `scannedAt`（磁盘已无该 CID 任何副本）的记录：仍被引用则保留记录与 filename/format 并清空副本状态退出回收站，否则整体删除。这样 `.trash` 文件被外部删除后回收站不再残留。
+- IndexedDB schema 为 v2（`DB_VERSION=2`）：v1 的 `trashedAt` 在升级时迁移为 `copies`（用空字符串占位“未知目录”），**迁移惰性化**——不在 `onupgradeneeded` 里遍历数据（会卡住），改为运行时 decode/merge 兼容。
