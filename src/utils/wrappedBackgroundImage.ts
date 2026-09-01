@@ -9,6 +9,25 @@
  */
 
 /**
+ * 剥离 `http:///` 伪装前缀，还原规范 IPFS/锁定链接。
+ * 若输入不以 `http:///` 开头，返回原字符串；剥离后内容必须是以
+ * `ipfs://` 或 `internal.ipfs-locked:` 开头的规范链接，否则返回 undefined。
+ */
+export function stripWrappedPrefix(value: string): string | undefined {
+	if (!value.startsWith("http:///")) {
+		return undefined;
+	}
+	const canonical = value.slice("http:///".length);
+	if (
+		canonical.startsWith("ipfs://") ||
+		canonical.startsWith("internal.ipfs-locked:")
+	) {
+		return canonical;
+	}
+	return undefined;
+}
+
+/**
  * 从 background-image 的 CSS 值中提取伪装前缀后的规范 IPFS 链接。
  * 非 Base 封面（普通 http(s) 背景图）或无法识别时返回 undefined。
  */
@@ -17,17 +36,10 @@ export function extractWrappedBackgroundURL(
 ): string | undefined {
 	const urlMatch = backgroundImage.match(/url\(\s*["']?([^"')]+)["']?\s*\)/i);
 	const wrapped = urlMatch?.[1]?.trim();
-	if (!wrapped?.startsWith("http:///")) {
+	if (!wrapped) {
 		return undefined;
 	}
-	const canonical = wrapped.slice("http:///".length);
-	if (
-		canonical.startsWith("ipfs://") ||
-		canonical.startsWith("internal.ipfs-locked:")
-	) {
-		return canonical;
-	}
-	return undefined;
+	return stripWrappedPrefix(wrapped);
 }
 
 /** 把解析后的资源 URL 格式化为 background-image 值。 */

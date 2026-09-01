@@ -121,47 +121,14 @@ class DecryptedCacheManager {
 // #endregion
 
 /**
- * 构造一个参与并行竞争的远程下载请求。
- * 请求成功时由 body 显式 resolve 结果；否则在全部请求结束后由 countDown
- * 递减至 0 时统一 resolve(undefined)。stack 用于在竞争结束时兜底 settle
- * 尚未完成的 Promise，避免悬挂。
- *
- * 多源并行是冗余回退设计，单个源失败属于预期事件：这里只把错误收集到
- * errors 中并输出 debug 日志，不打扰用户；是否提示由 resolveFromRemote
- * 在全部源都失败时统一决定。
+ * 一个可参与远程竞争的来源：URL、请求头与下载目录均延迟到实际请求时求值，
+ * 保证 HEAD 预检与 GET 完整下载使用同一份来源配置。
  */
-function makeRemoteRequest(
-	stack: DisposableStack,
-	countDown: () => number,
-	errors: unknown[],
-	label: string,
-	body: (resolve: (v: ResolveURLResult | undefined) => void) => Promise<void>,
-): Promise<ResolveURLResult | undefined> {
-	return new Promise<ResolveURLResult | undefined>((resolve) => {
-		(async () => {
-			stack.defer(() => resolve(undefined)); // 确保退出后所有Promise一定处于完成状态
-			let caught: unknown;
-			try {
-				await body(resolve);
-			} catch (error) {
-				caught = error;
-			} finally {
-				// 先记录错误再递减计数，保证 resolve(undefined) 时 errors 已完整
-				if (caught !== undefined && !isAbortError(caught)) {
-					errors.push(caught);
-					console.debug(`解析源 ${label} 失败`, caught);
-				}
-				if (countDown() === 0) {
-					resolve(undefined);
-				}
-			}
-		})().catch((error) => {
-			// 防御性兜底：try/catch 已覆盖 body 抛错，正常不可达
-			if (!isAbortError(error)) {
-				errors.push(error);
-			}
-		});
-	});
+interface RemoteSource {
+	label: string;
+	getURL: () => string;
+	buildHeaders: () => Headers;
+	getDir: () => string;
 }
 
 export class URLResolver {
@@ -362,141 +329,182 @@ export class URLResolver {
 	}
 
 	/**
-	 * 并行请求配置的 IPFS 网关与额外来源（如 lockedURL 的源站），
-	 * 返回第一个成功下载且 CID 匹配的结果；全部失败时返回 undefined。
-	 * 只有成功的结果才会结束竞争，单次失败不会中断其他仍在进行的请求。
-	 * 单个源失败（如互斥的内外网网关中不可达的那个）不打扰用户，
-	 * 仅当所有源都失败且确有异常时才提示一次。
+	 * 并发对全部来源发起 HEAD 预检并按完成顺序排队，串行消费队列发完整下载。
+	 * 同一时刻至多一个 GET 在飞：前一名失败（HEAD 非 200 或 GET 失败）后
+	 * 下一名才开始，第一名成功即结束。多源冗余仍是回退设计——不可达的源
+	 * 止步于 HEAD 预检；单个源失败不打扰用户，仅当所有源都失败且确有异常时
+	 * 提示一次。
 	 */
 	private async resolveFromRemote(
 		data: TemplateData,
 		extraURLs: string[] = [],
 	): Promise<ResolveURLResult | undefined> {
-		using stack = new DisposableStack();
-		const { gateways: gatewayURLs } = this.settings();
-		let remaining = gatewayURLs.length + extraURLs.length;
-		const countDown = () => --remaining;
+		const sources = this.buildRemoteSources(data, extraURLs);
+		if (sources.length === 0) {
+			return undefined;
+		}
 		const errors: unknown[] = [];
 
-		try {
-			const result = await Promise.race([
-				...gatewayURLs.map((config) =>
-					makeRemoteRequest(
-						stack,
-						countDown,
-						errors,
-						config.name,
-						async (resolve) => {
-							if (!config.enabled) {
-								return;
-							}
-							const url = this.renderGatewayURL(
-								data.rawURL,
-								config,
-							);
-							if (!url) {
-								return;
-							}
-							const headers = new Headers();
-							// 全局规则作为附加，网关自身配置的同名 header 覆盖全局规则
-							applyHeaderRules(
-								url,
-								headers,
-								this.settings().headerRules,
-							);
-							for (const [key, value] of config.headers) {
-								headers.set(key, value);
-							}
-							if (!headers.has("Accept")) {
-								headers.set("Accept", data.format() || "*/*");
-							}
-							const headersRecord = headersToRecord(headers);
+		// #region HEAD 预检排队：并发发出，按完成顺序交付给消费者
+		const headQueue: RemoteSource[] = [];
+		const headWaiters: ((source: RemoteSource | undefined) => void)[] = [];
+		let headPending = sources.length;
+		let headAllSettled = false;
 
-							// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
-							const resp = await requestUrl({
-								url,
-								method: "HEAD",
-								headers: headersRecord,
-								throw: false,
-							});
-							if (resp.status !== 200) {
-								return;
-							}
-							console.debug("GET", url);
-							const getResp = await requestUrl({
-								url,
-								headers: headersRecord,
-								throw: false,
-							});
-							if (getResp.status !== 200) {
-								return;
-							}
-							console.debug("GOT", getResp.headers);
-							const dir =
-								config.downloadDir ||
-								this.settings().downloadDir ||
-								this.settings().primaryDir;
-							const result = await this.fetchRemote(
-								dir,
-								getResp,
-								{
-									cid: data.cid,
-									filename: data.filename(),
-									format: data.format(),
-								},
-							);
-							if (result) {
-								resolve(result);
-							}
-						},
-					),
-				),
-				...extraURLs.map((url) =>
-					makeRemoteRequest(
-						stack,
-						countDown,
-						errors,
+		/** 记录一个通过 HEAD 预检的来源：有消费者等待时直接交付，否则入队。 */
+		const enqueueHead = (source: RemoteSource) => {
+			const waiter = headWaiters.shift();
+			if (waiter) {
+				waiter(source);
+			} else {
+				headQueue.push(source);
+			}
+		};
+
+		/** 取出下一个通过预检的来源；全部 HEAD 结束且无候补时返回 undefined。 */
+		const nextSource = (): Promise<RemoteSource | undefined> => {
+			const head = headQueue.shift();
+			if (head) return Promise.resolve(head);
+			if (headAllSettled) return Promise.resolve(undefined);
+			return new Promise((resolve) => headWaiters.push(resolve));
+		};
+
+		// HEAD 预检不阻塞消费循环：网络错误只收集到 errors，不打扰用户
+		void Promise.all(
+			sources.map(async (source) => {
+				try {
+					const url = source.getURL();
+					// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
+					const resp = await requestUrl({
 						url,
-						async (resolve) => {
-							const headers = new Headers();
-							applyHeaderRules(
-								url,
-								headers,
-								this.settings().headerRules,
-							);
-							const resp = await requestUrl({
-								url,
-								headers: headersToRecord(headers),
-								throw: false,
-							});
-							const dir =
-								this.settings().downloadDir ||
-								this.settings().primaryDir;
-							const result = await this.fetchRemote(dir, resp, {
-								cid: data.cid,
-								format: data.format(),
-							});
-							if (result) {
-								resolve(result);
-							}
-						},
-					),
-				),
-			]);
-			if (result) {
-				return result;
-			}
-			// 全部源都失败：仅当确有异常时才提示一次（404/CID 不匹配属于合法缺失，保持静默）
-			if (errors.length > 0) {
-				console.error("解析 IPFS 网址失败", data.rawURL, errors);
-				new Notice(t("allSourcesFailed")(castError(errors[0]).message));
-			}
-			return undefined;
-		} catch (err) {
-			if (!isAbortError(err)) {
-				console.error("解析 IPFS 网址失败", data.rawURL, err);
+						method: "HEAD",
+						headers: headersToRecord(source.buildHeaders()),
+						throw: false,
+					});
+					if (resp.status === 200) {
+						console.debug("HEAD", url);
+						enqueueHead(source);
+					}
+					// HEAD 非 200：该来源失去完整下载资格（静默，视为不可达）
+				} catch (error) {
+					if (!isAbortError(error)) {
+						errors.push(error);
+						console.debug(`解析源 ${source.label} 失败`, error);
+					}
+				} finally {
+					headPending -= 1;
+					if (headPending === 0) {
+						headAllSettled = true;
+						// 唤醒仍在等待的消费者，交付「没有更多候补」
+						for (const waiter of headWaiters.splice(0)) {
+							waiter(undefined);
+						}
+					}
+				}
+			}),
+		);
+		// #endregion
+
+		// 串行消费：同一时刻至多一个完整下载在飞
+		while (true) {
+			const source = await nextSource();
+			if (!source) break;
+			try {
+				const result = await this.downloadFromSource(source, data);
+				if (result) {
+					return result;
+				}
+			} catch (error) {
+				if (!isAbortError(error)) {
+					errors.push(error);
+					console.debug(`解析源 ${source.label} 失败`, error);
+				}
 			}
 		}
+
+		// 全部源都失败：仅当确有异常时才提示一次（404/CID 不匹配属于合法缺失，保持静默）
+		if (errors.length > 0) {
+			console.error("解析 IPFS 网址失败", data.rawURL, errors);
+			new Notice(t("allSourcesFailed")(castError(errors[0]).message));
+		}
+		return undefined;
+	}
+
+	/**
+	 * 对一个通过 HEAD 预检的来源发起完整下载并保存到 CAS。
+	 * GET 非 200 视为该来源失败（静默返回 undefined）；网络/存储错误
+	 * 向上抛出，由调用方收集错误后决定换下一个来源或结束。
+	 */
+	private async downloadFromSource(
+		source: RemoteSource,
+		data: TemplateData,
+	): Promise<ResolveURLResult | undefined> {
+		const url = source.getURL();
+		console.debug("GET", url);
+		const resp = await requestUrl({
+			url,
+			headers: headersToRecord(source.buildHeaders()),
+			throw: false,
+		});
+		if (resp.status !== 200) {
+			return undefined;
+		}
+		console.debug("GOT", resp.headers);
+		return this.fetchRemote(source.getDir(), resp, {
+			cid: data.cid,
+			filename: data.filename(),
+			format: data.format(),
+		});
+	}
+
+	/**
+	 * 构建完整的远程来源列表：启用的网关（模板渲染非空者）+ 额外来源
+	 * （如 lockedURL 的源站）。网关请求头 = 全局规则 + 网关自身配置
+	 * （同名覆盖），未设置时补 Accept；额外来源请求头 = 全局规则。
+	 */
+	private buildRemoteSources(
+		data: TemplateData,
+		extraURLs: string[],
+	): RemoteSource[] {
+		const sources: RemoteSource[] = [];
+		for (const config of this.settings().gateways) {
+			if (!config.enabled) continue;
+			const url = this.renderGatewayURL(data.rawURL, config);
+			if (!url) continue;
+			sources.push({
+				label: config.name,
+				getURL: () => url,
+				getDir: () =>
+					config.downloadDir ||
+					this.settings().downloadDir ||
+					this.settings().primaryDir,
+				buildHeaders: () => {
+					const headers = new Headers();
+					applyHeaderRules(url, headers, this.settings().headerRules);
+					for (const [key, value] of config.headers) {
+						headers.set(key, value);
+					}
+					if (!headers.has("Accept")) {
+						headers.set("Accept", data.format() || "*/*");
+					}
+					return headers;
+				},
+			});
+		}
+		for (const url of extraURLs) {
+			sources.push({
+				label: url,
+				getURL: () => url,
+				getDir: () =>
+					this.settings().downloadDir || this.settings().primaryDir,
+				buildHeaders: () => {
+					const headers = new Headers();
+					applyHeaderRules(url, headers, this.settings().headerRules);
+					return headers;
+				},
+			});
+		}
+		return sources;
 	}
 
 	/**

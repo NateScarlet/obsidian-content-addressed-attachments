@@ -140,6 +140,111 @@ describe("patchElementURL", () => {
 
 		expect(el.getAttribute("href")).toBe(userHref);
 	});
+
+	// 新增测试：http:/// 伪装前缀支持
+	it("支持 http:///ipfs:// 伪装前缀的 img src", async () => {
+		const el = createFakeElement({ src: "http:///ipfs://x" });
+		const resolve = vi
+			.fn()
+			.mockResolvedValue(resolvedURL("app://local/a.png"));
+
+		await patchElementURL(el, "src", resolve, {
+			imageFallback: true,
+			placeholderImageURL: placeholderURL,
+			notFoundImageURL: notFoundURL,
+		});
+
+		expect(el.getAttribute("src")).toBe("app://local/a.png");
+		expect(el.getAttribute("data-original-src")).toBe("ipfs://x");
+		expect(resolve).toHaveBeenCalledWith("ipfs://x");
+	});
+
+	it("支持 http:///internal.ipfs-locked: 伪装前缀的 img src", async () => {
+		const lockedURL =
+			"internal.ipfs-locked:bafybei...,https://example.com/x.png";
+		const el = createFakeElement({ src: `http:///${lockedURL}` });
+		const resolve = vi
+			.fn()
+			.mockResolvedValue(resolvedURL("app://local/a.png"));
+
+		await patchElementURL(el, "src", resolve, {
+			imageFallback: true,
+			placeholderImageURL: placeholderURL,
+			notFoundImageURL: notFoundURL,
+		});
+
+		expect(el.getAttribute("src")).toBe("app://local/a.png");
+		expect(el.getAttribute("data-original-src")).toBe(lockedURL);
+		expect(resolve).toHaveBeenCalledWith(lockedURL);
+	});
+
+	it("http:/// 伪装前缀但内容不是 IPFS 链接时跳过", async () => {
+		const el = createFakeElement({
+			src: "http:///https://example.com/x.png",
+		});
+		const resolve = vi.fn();
+
+		await patchElementURL(el, "src", resolve, {
+			imageFallback: true,
+			placeholderImageURL: placeholderURL,
+			notFoundImageURL: notFoundURL,
+		});
+
+		expect(el.getAttribute("src")).toBe(
+			"http:///https://example.com/x.png",
+		);
+		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it("http:/// 伪装前缀的 img 在解析失败时正确显示 notFound", async () => {
+		const el = createFakeElement({ src: "http:///ipfs://x" });
+
+		await patchElementURL(el, "src", vi.fn().mockResolvedValue(undefined), {
+			imageFallback: true,
+			placeholderImageURL: placeholderURL,
+			notFoundImageURL: notFoundURL,
+		});
+
+		expect(el.getAttribute("src")).toBe(notFoundURL);
+	});
+
+	it("http:/// 伪装前缀的 img 在等待期间被修改时竞态保护生效", async () => {
+		const el = createFakeElement({ src: "http:///ipfs://x" });
+		const p = pendingResolve();
+
+		const pending = patchElementURL(el, "src", p.resolve, {
+			imageFallback: true,
+			placeholderImageURL: placeholderURL,
+			notFoundImageURL: notFoundURL,
+		});
+		expect(el.getAttribute("src")).toBe(placeholderURL);
+
+		const userSrc = "app://local/user-modified.png";
+		el.setAttribute("src", userSrc);
+
+		releaseResolved(p, "app://local/resolved.png");
+		await pending;
+
+		expect(el.getAttribute("src")).toBe(userSrc);
+		expect(el.getAttribute("data-original-src")).toBeNull();
+	});
+
+	it("纯文本 http:/// 伪装前缀的 href 在解析成功时不写占位图（非 imageFallback）", async () => {
+		const el = createFakeElement({ href: "http:///ipfs://x" });
+		const resolve = vi
+			.fn()
+			.mockResolvedValue(resolvedURL("app://local/a.txt"));
+
+		await patchElementURL(el, "href", resolve, {
+			imageFallback: false,
+			placeholderImageURL: placeholderURL,
+			notFoundImageURL: notFoundURL,
+		});
+
+		expect(el.getAttribute("href")).toBe("app://local/a.txt");
+		expect(el.getAttribute("data-original-href")).toBe("ipfs://x");
+		expect(resolve).toHaveBeenCalledWith("ipfs://x");
+	});
 });
 
 describe("patchElementBackgroundImage", () => {

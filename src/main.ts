@@ -48,6 +48,7 @@ import findIPFSLinks from "./utils/findIPFSLinks";
 import patchElementURL, {
 	patchElementBackgroundImage,
 } from "./utils/patchElementURLs";
+import { stripWrappedPrefix } from "./utils/wrappedBackgroundImage";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
@@ -536,9 +537,12 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		};
 		for (const attr of ["src", "href"]) {
 			const value = el.getAttribute(attr);
+			if (!value) continue;
+			// 检查是否是 IPFS/锁定链接（含 http:/// 伪装前缀的链接）
+			const canonical: string = stripWrappedPrefix(value) ?? value;
 			if (
-				value?.startsWith("ipfs://") ||
-				value?.startsWith("internal.ipfs-locked:")
+				canonical.startsWith("ipfs://") ||
+				canonical.startsWith("internal.ipfs-locked:")
 			) {
 				console.debug("🖼️ 处理 URL:", value);
 				await patchElementURL(
@@ -575,8 +579,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	private async process(parent: ParentNode = activeDocument): Promise<void> {
+		// 匹配 ipfs:// 或 internal.ipfs-locked: 前缀（含 http:/// 伪装前缀）
 		const match = parent.querySelectorAll<HTMLElement>(
-			'[src^="ipfs://"], [href^="ipfs://"], [src^="internal.ipfs-locked:"], [href^="internal.ipfs-locked:"]',
+			'[src^="ipfs://"], [href^="ipfs://"], [src^="internal.ipfs-locked:"], [href^="internal.ipfs-locked:"], [src*="http:///ipfs://"], [href*="http:///ipfs://"], [src*="http:///internal.ipfs-locked:"], [href*="http:///internal.ipfs-locked:"]',
 		);
 		// Base 封面：background-image 中被 http:/// 前缀伪装的 IPFS 链接
 		const backgroundMatch = parent.querySelectorAll<HTMLElement>(

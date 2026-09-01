@@ -2,6 +2,7 @@ import type { ResolveURLResult } from "../URLResolver";
 import {
 	extractWrappedBackgroundURL,
 	formatBackgroundImage,
+	stripWrappedPrefix,
 } from "./wrappedBackgroundImage";
 
 export interface PatchElementURLOptions {
@@ -37,9 +38,14 @@ export default async function patchElementURL(
 	options: PatchElementURLOptions,
 ): Promise<void> {
 	const value = el.getAttribute(attr);
+	if (!value) {
+		return;
+	}
+	// 剥离 http:/// 伪装前缀（如卡片封面专用格式），使普通 img 也能使用同一份元数据链接
+	const canonical = stripWrappedPrefix(value) ?? value;
 	if (
-		!value?.startsWith("ipfs://") &&
-		!value?.startsWith("internal.ipfs-locked:")
+		!canonical.startsWith("ipfs://") &&
+		!canonical.startsWith("internal.ipfs-locked:")
 	) {
 		return;
 	}
@@ -50,14 +56,14 @@ export default async function patchElementURL(
 	if (options.imageFallback) {
 		el.setAttribute(attr, waitingValue);
 	}
-	const resolvedURL = await resolveURL(value);
+	const resolvedURL = await resolveURL(canonical);
 	// 竞态保护：等待期间元素属性可能已被组件修改，
 	// 仅当属性仍是等待态（占位图或初始值）时才写回解析结果，避免覆盖组件自己的修改
 	if (el.getAttribute(attr) !== waitingValue) {
 		return;
 	}
 	if (resolvedURL) {
-		el.setAttribute(`data-original-${attr}`, value);
+		el.setAttribute(`data-original-${attr}`, canonical);
 		el.setAttribute(attr, resolvedURL.url);
 		return;
 	}

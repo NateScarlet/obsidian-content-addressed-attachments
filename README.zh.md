@@ -44,7 +44,7 @@
 - **复制粘贴**：直接向笔记中粘贴文件
 - **自动处理**：`ipfs://` 链接会自动解析为可访问的 URL
 
-### Obsidian Base 卡片封面
+### Obsidian Base 卡片封面与 IPFS URL
 
 Obsidian Base 的卡片视图封面属性只接受 `http(s)` URL 或本地附件链接，会直接丢弃 `ipfs://` / `internal.ipfs-locked:` 值。要让封面展示 IPFS 内容，用 `http:///` 前缀包装 IPFS 链接，使其通过 Obsidian 的前缀检查并保留在 DOM 中，插件会自动将其改写为可访问的本地资源 URL：
 
@@ -56,6 +56,11 @@ cover: http:///ipfs://bafybei...
 
 - `http:///` 仅是用于通过 Obsidian 检查的伪装前缀，插件会剥掉它并解析真实内容（桌面端与移动端均生效）
 - 封面值中内嵌的 `ipfs://` 链接仍会被插件识别并纳入引用管理
+- **`http:///` 前缀同样适用于普通 `<img src>` 属性** —— 你可以在卡片封面和正文中使用相同的链接引用同一份内容，无需维护两种格式：
+
+```markdown
+![正文中使用同一 IPFS 图片](http:///ipfs://bafybei...)
+```
 
 ### 预处理附件
 

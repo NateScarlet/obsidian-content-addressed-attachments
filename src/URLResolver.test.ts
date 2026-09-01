@@ -56,6 +56,52 @@ describe("URLResolver", () => {
 		return undefined;
 	}
 
+	/** 手动控制的请求响应 Promise：与真实 requestUrl 返回类型一致，用于精确编排完成顺序。 */
+	function deferred(): {
+		promise: RequestUrlResponsePromise;
+		resolve: (v: RequestUrlResponse) => void;
+	} {
+		let resolve!: (v: RequestUrlResponse) => void;
+		const inner = new Promise<RequestUrlResponse>((res) => {
+			resolve = res;
+		});
+		// 与 mockResponse 一样在 Promise 上附带快捷方法，满足 RequestUrlResponsePromise 类型
+		const promise = Object.assign(inner, {
+			arrayBuffer: Promise.resolve(new ArrayBuffer(0)),
+			json: Promise.resolve({}),
+			text: Promise.resolve(""),
+		}) as RequestUrlResponsePromise;
+		return { promise, resolve };
+	}
+
+	/** 反复让出微任务队列，观察基于 Promise 的编排是否推进到期望步骤。 */
+	async function flushMicrotasks(times = 8) {
+		for (let i = 0; i < times; i++) {
+			await Promise.resolve();
+		}
+	}
+
+	/** 过滤指定 HTTP 方法的 requestUrl 调用，返回其 URL 列表。 */
+	function requestURLsFor(
+		method: string,
+		predicate: (url: string) => boolean,
+	): string[] {
+		return vi
+			.mocked(requestUrl)
+			.mock.calls.filter(([options]) => {
+				const m =
+					typeof options === "string"
+						? "GET"
+						: (options.method ?? "GET");
+				if (m !== method) return false;
+				const url = typeof options === "string" ? options : options.url;
+				return predicate(url);
+			})
+			.map(([options]) =>
+				typeof options === "string" ? options : options.url,
+			);
+	}
+
 	/** 访问 vitest 别名注入的 Notice mock 的实例记录（真实 obsidian 类型上没有该静态成员）。 */
 	function noticeInstances() {
 		return (Notice as unknown as { instances: { message: string }[] })
@@ -69,6 +115,8 @@ describe("URLResolver", () => {
 	let resolver: URLResolver;
 
 	beforeEach(() => {
+		// 每个测试从干净的请求记录开始，避免跨用例累积影响断言
+		vi.mocked(requestUrl).mockClear();
 		mockApp = {
 			vault: {
 				adapter: {
@@ -473,5 +521,315 @@ describe("URLResolver", () => {
 		);
 		expect(call).toBeDefined();
 		expect(getHeader(call?.headers ?? {}, "X-Token")).toBeUndefined();
+	});
+
+	it("downloads from only the HEAD-fastest source when multiple sources are reachable", async () => {
+		settings.gateways = [
+			{
+				name: "gw-slow",
+				urlTemplate: "https://gw1.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+			{
+				name: "gw-fast",
+				urlTemplate: "https://gw2.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+		];
+
+		const gw1Head = deferred();
+		const gw2Head = deferred();
+		const gw1Get = deferred();
+		const gw2Get = deferred();
+
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			const method =
+				typeof request === "string" ? "GET" : (request.method ?? "GET");
+			if (method === "HEAD") {
+				if (url.startsWith("https://gw1")) return gw1Head.promise;
+				if (url.startsWith("https://gw2")) return gw2Head.promise;
+			}
+			if (method === "GET") {
+				if (url.startsWith("https://gw1")) return gw1Get.promise;
+				if (url.startsWith("https://gw2")) return gw2Get.promise;
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const okResponse = (): RequestUrlResponse => ({
+			status: 200,
+			headers: { "content-type": "image/png" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await flushMicrotasks();
+
+		// HEAD 更快的网关先返回
+		gw2Head.resolve(okResponse());
+		await flushMicrotasks();
+
+		// 只有 HEAD 最快的网关发起了完整下载，另一个仍在 HEAD 阶段
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw2")),
+		).toHaveLength(1);
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
+		).toHaveLength(0);
+
+		// 慢网关的 HEAD 稍后返回，但完整下载严格串行：不打断在飞的 GET
+		gw1Head.resolve(okResponse());
+		await flushMicrotasks();
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
+		).toHaveLength(0);
+
+		// 第一个完整下载成功，解析结束
+		gw2Get.resolve(okResponse());
+		const result = await resultPromise;
+
+		expect(result).toBeDefined();
+		// 整个解析过程只发出过一个完整下载（其余测试的调用记录不在 gw 前缀下）
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw")),
+		).toHaveLength(1);
+	});
+
+	it("falls back to the next source when the HEAD-fastest source fails to download", async () => {
+		settings.gateways = [
+			{
+				name: "gw-slow",
+				urlTemplate: "https://gw1.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+			{
+				name: "gw-fast",
+				urlTemplate: "https://gw2.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+		];
+
+		const gw1Head = deferred();
+		const gw2Head = deferred();
+		const gw1Get = deferred();
+		const gw2Get = deferred();
+
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			const method =
+				typeof request === "string" ? "GET" : (request.method ?? "GET");
+			if (method === "HEAD") {
+				if (url.startsWith("https://gw1")) return gw1Head.promise;
+				if (url.startsWith("https://gw2")) return gw2Head.promise;
+			}
+			if (method === "GET") {
+				if (url.startsWith("https://gw1")) return gw1Get.promise;
+				if (url.startsWith("https://gw2")) return gw2Get.promise;
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const okResponse = (): RequestUrlResponse => ({
+			status: 200,
+			headers: { "content-type": "image/png" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+		const missingResponse = (): RequestUrlResponse => ({
+			status: 404,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			json: {},
+			text: "",
+		});
+
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await flushMicrotasks();
+
+		// HEAD 快的网关先返回并通过预检
+		gw2Head.resolve(okResponse());
+		await flushMicrotasks();
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw2")),
+		).toHaveLength(1);
+
+		// 慢网关 HEAD 返回，但串行：不得在快网关 GET 结果揭晓前开始下载
+		gw1Head.resolve(okResponse());
+		await flushMicrotasks();
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
+		).toHaveLength(0);
+
+		// 快网关完整下载失败（404 视为合法缺失），才轮到慢网关
+		gw2Get.resolve(missingResponse());
+		await flushMicrotasks();
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
+		).toHaveLength(1);
+
+		// 慢网关下载成功，解析结束
+		gw1Get.resolve(okResponse());
+		const result = await resultPromise;
+
+		expect(result).toBeDefined();
+		// 两个来源各发出一次完整下载，且 gw2（失败者）先于 gw1（成功者）
+		const gwGetCalls: string[] = [];
+		for (const [options] of vi.mocked(requestUrl).mock.calls) {
+			const url = typeof options === "string" ? options : options.url;
+			const method =
+				typeof options === "string" ? "GET" : (options.method ?? "GET");
+			if (method === "GET" && url.startsWith("https://gw")) {
+				gwGetCalls.push(url);
+			}
+		}
+		expect(gwGetCalls).toEqual([
+			"https://gw2.example.com/ipfs/" + dummyCIDStr,
+			"https://gw1.example.com/ipfs/" + dummyCIDStr,
+		]);
+	});
+
+	it("does not download from a source whose HEAD precheck fails", async () => {
+		settings.gateways = [
+			{
+				name: "gw1",
+				urlTemplate: "https://gw1.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+			{
+				name: "gw2",
+				urlTemplate: "https://gw2.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+		];
+
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			if (url.startsWith("https://gw1")) {
+				// gw1 的 HEAD 预检不通过，不应有任何完整下载
+				return mockResponse({
+					status: 404,
+					headers: {},
+					arrayBuffer: new ArrayBuffer(0),
+					json: {},
+					text: "",
+				});
+			}
+			// gw2 预检与完整下载都正常
+			return mockResponse({
+				status: 200,
+				headers: { "content-type": "image/png" },
+				arrayBuffer: new ArrayBuffer(8),
+				json: {},
+				text: "",
+			});
+		});
+
+		const result = await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+
+		expect(result).toBeDefined();
+		// HEAD 非 200 的来源从未发起完整下载
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
+		).toHaveLength(0);
+		// 预检通过的来源完成了唯一一次完整下载
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gw2")),
+		).toHaveLength(1);
+	});
+
+	it("prefers the locked URL source when both source and gateway are reachable", async () => {
+		const sourceURL = "https://source.example.com/image.png";
+		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
+		settings.gateways = [
+			{
+				name: "test-gw",
+				urlTemplate: "https://gateway.example.com/ipfs/{{cid}}",
+				headers: [],
+				enabled: true,
+			},
+		];
+
+		const sourceHead = deferred();
+		const sourceGet = deferred();
+		const gatewayHead = deferred();
+		const gatewayGet = deferred();
+
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			const method =
+				typeof request === "string" ? "GET" : (request.method ?? "GET");
+			if (method === "HEAD") {
+				if (url === sourceURL) return sourceHead.promise;
+				if (url.startsWith("https://gateway"))
+					return gatewayHead.promise;
+			}
+			if (method === "GET") {
+				if (url === sourceURL) return sourceGet.promise;
+				if (url.startsWith("https://gateway"))
+					return gatewayGet.promise;
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const okResponse = (): RequestUrlResponse => ({
+			status: 200,
+			headers: { "content-type": "image/png" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		const resultPromise = resolver.resolveURL(lockedURL);
+		await flushMicrotasks();
+
+		// 源站 HEAD 先返回：源站优先获得完整下载
+		sourceHead.resolve(okResponse());
+		await flushMicrotasks();
+		expect(requestURLsFor("GET", (url) => url === sourceURL)).toHaveLength(
+			1,
+		);
+
+		// 网关 HEAD 返回，但源站 GET 在飞时网关不得开始完整下载
+		gatewayHead.resolve(okResponse());
+		await flushMicrotasks();
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gateway")),
+		).toHaveLength(0);
+
+		// 源站下载成功，解析结束；网关从未完整下载
+		sourceGet.resolve(okResponse());
+		const result = await resultPromise;
+		expect(result).toBeDefined();
+		expect(
+			requestURLsFor("GET", (url) => url.startsWith("https://gateway")),
+		).toHaveLength(0);
 	});
 });
