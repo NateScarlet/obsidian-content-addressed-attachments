@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.16](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.15...0.1.16) (2026-09-01)
+
+
+### Features
+
+* **encryption:** support attachment encryption with AES-256-GCM ([#22](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/22)) ([009b809](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/009b809a14f61a261c5c46d71551e24e72930f09))
+* **preprocess:** add attachment preprocessing pipeline ([#28](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/28)) ([93e8e0b](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/93e8e0ba4816f63665e7393f131d0208fb22c355))
+* render IPFS covers in Obsidian Base card views ([5fda0e4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/5fda0e49c64b8f497e971afd1353889fb70a3a60))
+* **resolver:** support per-baseUrl request headers ([0488e32](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/0488e3219a2cf86334d5497c8218a432d2a1e074))
+* **utils:** support http:/// wrapped prefix for regular img src ([ced5631](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/ced56313bc05681830131145dd03a4ff4688ca9f)), closes [#34](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/34)
+
+
+### Bug Fixes
+
+* **encryption:** decrypt downloaded non-local encrypted files immediately upon resolution ([e137d99](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/e137d999d9b829e4b1ec6b3b6280702b0ae86430))
+* **encryption:** preserve deleted status on key import and auto-refresh settings UI ([8349cf4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/8349cf4b98755d7ed638debcfbb3f2c66200c1a4))
+* **locking:** should resolve locked URL via gateways when source is unavailable ([f22c942](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/f22c94249bf8923dc1cf4985a33459e0b55eea9c))
+* **resolver:** should not notify per-source failure when another source succeeds ([ac6e2e5](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/ac6e2e57c22eeeb14bf763537419032d6c029677))
+* should not lose recycle-bin state when the same cid exists in multiple dirs ([86e0db4](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/86e0db45c700ecc0bb7754dfafaee7be23aaf537))
+* should not overwrite element changes while URL resolves asynchronously ([5dad4a9](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/5dad4a9d65defd19a62d727ebc130d2377c5fe14))
+* **test:** polyfill DisposableStack in Vitest setup for CI environments ([55b2ce6](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/55b2ce6e36ce37827bcc3e549a95f3bbb52edddf))
+* **ui:** clear svelte-check state_referenced_locally warnings in CASFileExplorer ([05feddf](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/05feddfce12a6d56d114966c930d478791b7e7fa))
+* **ui:** make svelte-check and tsc pass on Svelte 5 component instances ([aa97b86](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/aa97b86d6d40c9cccd7373bdab7c2bff83f52e48))
+* **ui:** should allow one note to reference the same cid multiple times ([ec4f84e](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/ec4f84ed3d462a9a445e84f2fd35de12c11ed30f))
+* **ui:** use unique index keys for CASFileExplorer loading skeleton items ([56fbe2c](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/56fbe2cbd5327e914b144a7eac2db8523014664a))
+
 ## [0.1.15](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.14...0.1.15) (2026-06-26)
 
 
