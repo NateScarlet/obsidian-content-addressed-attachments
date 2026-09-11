@@ -99,10 +99,10 @@ export default class ScriptLoader implements ScriptLoaderContract {
 		const cached = this.moduleCache.get(baseURL);
 		if (cached) return cached;
 
-		const { result: module, isShared } = await this.flight.do(baseURL, () =>
-			this.doLoadScript(scriptURL),
-		);
-		if (module && !isShared) {
+		const module = await this.flight
+			.do(baseURL, () => this.doLoadScript(scriptURL))
+			.then(({ result }) => result);
+		if (module) {
 			this.moduleCache.set(baseURL, module);
 		}
 		return module;

@@ -188,7 +188,7 @@ const reprocessFlight = new SingleFlightGroup<number>();
 export async function reprocessCurrentNote(
 	ctx: ReprocessContext,
 ): Promise<number> {
-	const { result, isShared } = await reprocessFlight.do(
+	const { result, index } = await reprocessFlight.do(
 		"current-note",
 		async () => {
 			const file = ctx.app.workspace.getActiveFile();
@@ -202,7 +202,8 @@ export async function reprocessCurrentNote(
 			});
 		},
 	);
-	if (isShared) {
+	// index > 0：本次调用是加入进行中的任务而非发起者，不把他人任务的结果冒充为自己的
+	if (index > 0) {
 		new Notice(t("reprocessCancelled"));
 		return 0;
 	}
@@ -239,7 +240,7 @@ export async function reprocessSingleLinkCommand(
 export async function reprocessWholeVault(
 	ctx: ReprocessContext,
 ): Promise<number> {
-	const { result, isShared } = await reprocessFlight.do(
+	const { result, index } = await reprocessFlight.do(
 		"whole-vault",
 		async () => {
 			return new Promise<number>((resolve, reject) => {
@@ -327,7 +328,8 @@ export async function reprocessWholeVault(
 			});
 		},
 	);
-	if (isShared) {
+	// index > 0：本次调用是加入进行中的任务而非发起者，不把他人任务的结果冒充为自己的
+	if (index > 0) {
 		new Notice(t("reprocessCancelled"));
 		return 0;
 	}
