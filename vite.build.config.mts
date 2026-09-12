@@ -99,11 +99,9 @@ if you want to view the source, please visit the github repository of this plugi
 				treeshake: {
 					// 复刻 esbuild pure: ["console.log", "console.warn", "console.debug"]：
 					// 仅剥离这三个方法的生产产物调用，保留 console.error
-					manualPureFunctions: [
-						"console.log",
-						"console.warn",
-						"console.debug",
-					],
+					manualPureFunctions: prod
+						? ["console.log", "console.warn", "console.debug"]
+						: undefined,
 				},
 			},
 		},
