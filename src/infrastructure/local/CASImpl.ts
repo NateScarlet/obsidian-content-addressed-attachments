@@ -7,7 +7,11 @@ import makeDirs from "#src/utils/makeDirs";
 import { mergeCopies } from "#src/utils/casCopies";
 import { basename, dirname, join } from "path-browserify";
 import type { CAS } from "#src/types/CAS";
-import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
+import type {
+	CASMetadata,
+	CASMetadataCopy,
+	CASMetadataObject,
+} from "#src/types/CASMetadata";
 
 export class CASImpl implements CAS {
 	private trashRelPath = ".trash";
@@ -18,31 +22,62 @@ export class CASImpl implements CAS {
 		private dirs: () => Iterable<string>,
 	) {}
 
+	// #region 副本探测
+
 	async *lookup(cid: CID) {
+		// 公开契约为「该 CID 在所有目录的全部副本」，不传 dirs 即全部目录
+		yield* this.probeCopies(cid);
+	}
+
+	/**
+	 * 探测某 CID 在给定目录中的副本（每个目录的正常路径与回收站路径）。
+	 * 不传 dirs 即探测全部目录；调用方可只传部分目录，借此跳过已知不含该 CID 的目录。
+	 * cache 用于跨调用复用「该目录有无回收站」的判断；skip 排除已从别处取得 stat
+	 * 的那个副本，避免重复探测。
+	 */
+	private async *probeCopies(
+		cid: CID,
+		dirs: string[] = [...this.dirs()],
+		cache: TrashDirCache = new TrashDirCache(),
+		skip?: { dir: string; trashed: boolean },
+	) {
 		const relPath = this.formatRelPath(cid);
-		for (const dir of this.dirs()) {
-			const path = this.getFilePath(dir, relPath);
-			let stat = await this.app.vault.adapter.stat(path);
-			if (stat) {
-				yield {
-					dir,
-					path,
-					stat,
-					isTrashed: false,
-				};
-			}
-			const trashPath = this.getTrashPath(dir, relPath);
-			stat = await this.app.vault.adapter.stat(trashPath);
-			if (stat) {
-				yield {
-					dir,
-					path: trashPath,
-					stat,
-					isTrashed: true,
-				};
+		for (const dir of dirs) {
+			for (const trashed of [false, true]) {
+				if (skip?.dir === dir && skip.trashed === trashed) {
+					continue;
+				}
+				if (trashed && !(await this.hasTrashDir(dir, cache))) {
+					continue;
+				}
+				const found = await this.statCopy(dir, relPath, trashed);
+				if (found) {
+					yield found;
+				}
 			}
 		}
 	}
+
+	/** 探测单个副本路径；文件不存在时返回 undefined */
+	private async statCopy(dir: string, relPath: string, trashed: boolean) {
+		const path = trashed
+			? this.getTrashPath(dir, relPath)
+			: this.getFilePath(dir, relPath);
+		const stat = await this.app.vault.adapter.stat(path);
+		if (stat?.type !== "file") {
+			return undefined;
+		}
+		return { dir, path, stat, isTrashed: trashed };
+	}
+
+	/** 目录是否已有回收站；结果按目录缓存，一次扫描内复用 */
+	private hasTrashDir(dir: string, cache: TrashDirCache) {
+		return cache.get(dir, () =>
+			this.app.vault.adapter.exists(join(dir, this.trashRelPath)),
+		);
+	}
+
+	// #endregion
 
 	async index(meta: CASMetadataObject): Promise<void> {
 		const existing = await this.meta.get(meta.cid);
@@ -105,35 +140,80 @@ export class CASImpl implements CAS {
 	}
 
 	async *objects(): AsyncIterableIterator<CASMetadataObject> {
-		// 同一 CID 可能同时存在于多个目录（正常或回收站），按 CID 聚合为单条记录
-		const byCid = new Map<string, CASMetadataObject>();
-		const add = (obj: CASMetadataObject) => {
-			const key = obj.cid.toString();
-			const existing = byCid.get(key);
-			if (existing) {
-				existing.copies = mergeCopies(
-					existing.copies,
-					obj.copies ?? [],
-				);
-			} else {
-				byCid.set(key, obj);
-			}
-		};
-		for (const dir of this.dirs()) {
-			// 扫描正常文件
-			for await (const obj of this.scanBaseDir(dir, dir, false)) {
-				add(obj);
-			}
+		const dirs = [...this.dirs()];
+		// 已产出的 CID：其全部副本都在首次出现时查清，后续目录遇到直接跳过
+		const processed = new Set<string>();
+		const cache = new TrashDirCache();
 
-			// 扫描回收站文件
-			const trashDir = join(dir, this.trashRelPath);
-			if (await this.app.vault.adapter.exists(trashDir)) {
-				for await (const obj of this.scanBaseDir(trashDir, dir, true)) {
-					add(obj);
+		for (const [dirIndex, dir] of dirs.entries()) {
+			// 先正常区，再回收站；回收站不存在时整段跳过
+			const areas = [
+				{ baseDir: dir, trashed: false },
+				{ baseDir: join(dir, this.trashRelPath), trashed: true },
+			];
+			for (const { baseDir, trashed } of areas) {
+				if (trashed && !(await this.hasTrashDir(dir, cache))) {
+					continue;
+				}
+				for await (const found of this.scanBaseDir(
+					baseDir,
+					dir,
+					trashed,
+				)) {
+					const key = found.cid.toString();
+					if (processed.has(key)) {
+						continue;
+					}
+					processed.add(key);
+					yield await this.completeObject(
+						found,
+						dirs,
+						dirIndex,
+						trashed,
+						cache,
+					);
 				}
 			}
 		}
-		yield* byCid.values();
+	}
+
+	/**
+	 * 把「首次发现的单个副本」补成该 CID 的完整副本集合。
+	 * 只在尚未扫描的目录中探测，不回查已扫描过的目录：
+	 * - 正常区首见：本目录正常路径即命中项，只需补本目录回收站与后续目录；
+	 * - 回收站首见：本目录正常区已扫完且此前未产出该 CID（否则已被跳过），
+	 *   故自下一个目录开始补。
+	 */
+	private async completeObject(
+		found: CASMetadataObject,
+		dirs: string[],
+		dirIndex: number,
+		trashed: boolean,
+		cache: TrashDirCache,
+	): Promise<CASMetadataObject> {
+		// 命中项已带本目录该副本的 stat，其余未扫描目录需探测
+		const probeDirs = trashed
+			? dirs.slice(dirIndex + 1)
+			: dirs.slice(dirIndex);
+		// 回收站首见时整个当前目录已排除，无需再指定要跳过的副本
+		const skip = trashed
+			? undefined
+			: { dir: dirs[dirIndex], trashed: false };
+		const copies: CASMetadataCopy[] = [...(found.copies ?? [])];
+		for await (const probe of this.probeCopies(
+			found.cid,
+			probeDirs,
+			cache,
+			skip,
+		)) {
+			copies.push({
+				dir: probe.dir,
+				trashedAt: probe.isTrashed
+					? new Date(probe.stat.mtime)
+					: undefined,
+			});
+		}
+		return { ...found, copies: mergeCopies(undefined, copies) };
 	}
 
 	private async *scanBaseDir(
@@ -447,5 +527,23 @@ export class CASImpl implements CAS {
 
 	private formatInvalidName(src: string): string {
 		return `${src}~${Date.now()}.invalid`;
+	}
+}
+
+/**
+ * 「目录是否已有回收站」的惰性缓存，一次扫描内复用同一目录的判断结果。
+ * 复用范围限于单次调用：重建索引会扫描上万 CID，同一目录的回收站存在性
+ * 只需问一次磁盘，但该结论不跨调用，避免外部改动回收站后读到过期结果。
+ */
+class TrashDirCache {
+	private entries = new Map<string, Promise<boolean>>();
+
+	get(dir: string, probe: () => Promise<boolean>): Promise<boolean> {
+		let cached = this.entries.get(dir);
+		if (!cached) {
+			cached = probe();
+			this.entries.set(dir, cached);
+		}
+		return cached;
 	}
 }

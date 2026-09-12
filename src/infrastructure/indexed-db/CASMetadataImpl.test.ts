@@ -85,6 +85,213 @@ describe("buildMergedPO 合并持久化对象", () => {
 		);
 		expect(result.copies).toEqual([{ dir: "dirB", trashedAt: undefined }]);
 	});
+
+	describe("回收时间以既有记录为准", () => {
+		const trashed = {
+			cid: "x",
+			indexedAt: 1,
+			copies: [{ dir: "dirA", trashedAt: 1000 }],
+		};
+
+		it("同一副本已有回收时间时，保留该时间而不被磁盘修改时间覆盖", () => {
+			// 扫描磁盘得到的 mtime 是内容修改时间，恒早于实际回收时刻
+			const result = buildMergedPO(
+				{
+					cid: "x",
+					indexedAt: 2,
+					copies: [{ dir: "dirA", trashedAt: 500 }],
+				},
+				trashed,
+			);
+			expect(result.copies).toEqual([{ dir: "dirA", trashedAt: 1000 }]);
+		});
+
+		it("元数据里该副本尚无回收时间时，用磁盘修改时间填补（库外移入回收站）", () => {
+			// 元数据里 dirA 还是正常副本，但磁盘上它已在回收站：没有既有回收时间可用
+			const normal = {
+				cid: "x",
+				indexedAt: 1,
+				copies: [{ dir: "dirA", trashedAt: undefined }],
+			};
+			const result = buildMergedPO(
+				{
+					cid: "x",
+					indexedAt: 2,
+					copies: [{ dir: "dirA", trashedAt: 500 }],
+				},
+				normal,
+			);
+			expect(result.copies).toEqual([{ dir: "dirA", trashedAt: 500 }]);
+		});
+
+		it("既有副本已恢复正常时不保留其回收时间", () => {
+			const result = buildMergedPO(
+				{
+					cid: "x",
+					indexedAt: 2,
+					copies: [{ dir: "dirA", trashedAt: undefined }],
+				},
+				trashed,
+			);
+			expect(result.copies).toEqual([
+				{ dir: "dirA", trashedAt: undefined },
+			]);
+		});
+
+		it("磁盘已无该副本时该副本被移除，不复活", () => {
+			const result = buildMergedPO(
+				{
+					cid: "x",
+					indexedAt: 2,
+					copies: [{ dir: "dirB", trashedAt: undefined }],
+				},
+				trashed,
+			);
+			expect(result.copies).toEqual([
+				{ dir: "dirB", trashedAt: undefined },
+			]);
+		});
+
+		it("同一目录同时存在正常与回收实例时，回收时间按实例匹配", () => {
+			const both = {
+				cid: "x",
+				indexedAt: 1,
+				copies: [
+					{ dir: "dirA", trashedAt: undefined },
+					{ dir: "dirA", trashedAt: 1000 },
+				],
+			};
+			const result = buildMergedPO(
+				{
+					cid: "x",
+					indexedAt: 2,
+					copies: [
+						{ dir: "dirA", trashedAt: undefined },
+						{ dir: "dirA", trashedAt: 500 },
+					],
+				},
+				both,
+			);
+			expect(result.copies).toEqual([
+				{ dir: "dirA", trashedAt: undefined },
+				{ dir: "dirA", trashedAt: 1000 },
+			]);
+		});
+
+		// 规则落在 merge 必经点，各写入方无需自行处理；
+		// 下面按各写入方实际传入的 copies 形态核对继承结果。
+		describe("各写入方经必经点继承该规则", () => {
+			const trashedAt = 1000;
+
+			it("重建扫描（磁盘全集）保留既有回收时间", () => {
+				const result = buildMergedPO(
+					{
+						cid: "x",
+						indexedAt: 2,
+						copies: [
+							{ dir: "dirA", trashedAt: undefined },
+							{ dir: "dirB", trashedAt: 500 },
+						],
+					},
+					{
+						cid: "x",
+						indexedAt: 1,
+						copies: [
+							{ dir: "dirA", trashedAt: undefined },
+							{ dir: "dirB", trashedAt },
+						],
+					},
+				);
+				expect(result.copies).toEqual([
+					{ dir: "dirA", trashedAt: undefined },
+					{ dir: "dirB", trashedAt },
+				]);
+			});
+
+			it("保存/索引（本目录正常副本）不清空其他目录的回收时间", () => {
+				const result = buildMergedPO(
+					{
+						cid: "x",
+						indexedAt: 2,
+						copies: [
+							{ dir: "dirA", trashedAt: undefined },
+							{ dir: "dirB", trashedAt },
+						],
+					},
+					{
+						cid: "x",
+						indexedAt: 1,
+						copies: [
+							{ dir: "dirA", trashedAt: undefined },
+							{ dir: "dirB", trashedAt },
+						],
+					},
+				);
+				expect(result.copies).toEqual([
+					{ dir: "dirA", trashedAt: undefined },
+					{ dir: "dirB", trashedAt },
+				]);
+			});
+
+			it("清空回收站（仅剩正常副本）丢弃已删除副本的回收时间", () => {
+				const result = buildMergedPO(
+					{
+						cid: "x",
+						indexedAt: 2,
+						copies: [{ dir: "dirA", trashedAt: undefined }],
+					},
+					{
+						cid: "x",
+						indexedAt: 1,
+						copies: [
+							{ dir: "dirA", trashedAt: undefined },
+							{ dir: "dirB", trashedAt },
+						],
+					},
+				);
+				expect(result.copies).toEqual([
+					{ dir: "dirA", trashedAt: undefined },
+				]);
+			});
+
+			it("恢复（全部转为正常）不残留回收时间", () => {
+				const result = buildMergedPO(
+					{
+						cid: "x",
+						indexedAt: 2,
+						copies: [{ dir: "dirA", trashedAt: undefined }],
+					},
+					{
+						cid: "x",
+						indexedAt: 1,
+						copies: [{ dir: "dirA", trashedAt }],
+					},
+				);
+				expect(result.copies).toEqual([
+					{ dir: "dirA", trashedAt: undefined },
+				]);
+			});
+
+			it("移入回收站（记录移动时刻）时该时刻成为既有值", () => {
+				const result = buildMergedPO(
+					{
+						cid: "x",
+						indexedAt: 2,
+						copies: [{ dir: "dirA", trashedAt: 1200 }],
+					},
+					{
+						cid: "x",
+						indexedAt: 1,
+						copies: [{ dir: "dirA", trashedAt: undefined }],
+					},
+				);
+				// 元数据里尚无回收时间，首次记录由写入方给出
+				expect(result.copies).toEqual([
+					{ dir: "dirA", trashedAt: 1200 },
+				]);
+			});
+		});
+	});
 });
 
 describe("normalizePOForStaleV1 运行时兼容 v1 遗留数据", () => {

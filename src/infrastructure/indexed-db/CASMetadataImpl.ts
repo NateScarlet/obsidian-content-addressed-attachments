@@ -432,10 +432,47 @@ export function removePlaceholderCopies(
 }
 
 /**
+ * 保留既有回收时间：磁盘上能读到的只有文件修改时间，而 CAS 内容不可变，
+ * 它恒早于该副本真正进入回收站的时刻；应用内回收时记录的精确时间只存在于元数据。
+ * 因此对回收中的副本实例，已有回收时间时以既有值为准，
+ * 只有元数据里没有该副本（库外移入回收站）才采用传入的时间。
+ *
+ * 按目录匹配即可：每个目录的回收实例至多一条（副本实例以「目录 + 是否回收」为键去重），
+ * 故目录与回收实例一一对应。
+ */
+function keepExistingTrashedAt(
+	incoming: { dir: string; trashedAt?: number }[],
+	existing: { dir: string; trashedAt?: number }[] | undefined,
+): { dir: string; trashedAt?: number }[] {
+	if (!existing?.length) {
+		return incoming;
+	}
+	const known = new Map<string, number>();
+	for (const c of existing) {
+		if (c.trashedAt != null) {
+			known.set(c.dir, c.trashedAt);
+		}
+	}
+	if (known.size === 0) {
+		return incoming;
+	}
+	return incoming.map((c) => {
+		if (c.trashedAt == null) {
+			return c;
+		}
+		const knownTrashedAt = known.get(c.dir);
+		return knownTrashedAt != null
+			? { dir: c.dir, trashedAt: knownTrashedAt }
+			: c;
+	});
+}
+
+/**
  * 合并持久化对象（merge 的必经写入路径，所有更新都经由此处）。
  * - partial 更新（index/save/重建索引）可能缺失字段：index 进不来 size，
  *   重建索引进不来 filename/format，缺失时保留既有值，避免覆盖丢失。
  * - copies 未显式提供时保留已有副本状态，并提供时统一清理迁移占位副本。
+ * - 副本集合以传入（磁盘）为准，但回收时间沿用既有值（见 keepExistingTrashedAt）。
  */
 export function buildMergedPO(incoming: PO, existingPO: PO | undefined): PO {
 	if (!existingPO) {
@@ -450,7 +487,9 @@ export function buildMergedPO(incoming: PO, existingPO: PO | undefined): PO {
 		po.copies = existingPO.copies;
 	}
 	if (po.copies !== undefined) {
-		po.copies = removePlaceholderCopies(po.copies);
+		po.copies = removePlaceholderCopies(
+			keepExistingTrashedAt(po.copies, existingPO.copies),
+		);
 	}
 	return po;
 }

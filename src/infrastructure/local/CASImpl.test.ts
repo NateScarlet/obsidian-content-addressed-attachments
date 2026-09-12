@@ -23,7 +23,18 @@ class MemFS {
 	}
 
 	exists(path: string) {
-		return this.files.has(path);
+		return this.files.has(path) || this.isDir(path);
+	}
+
+	/** 目录是隐式条目：任何文件路径的中间段都算存在的目录 */
+	private isDir(path: string) {
+		const prefix = path === "" ? "" : `${path}/`;
+		for (const p of this.files.keys()) {
+			if (p.startsWith(prefix) && p.length > prefix.length) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	async stat(path: string) {
@@ -156,6 +167,198 @@ async function makeObject(content: string) {
 	const cid = CID.create(1, raw.code, hash);
 	return { cid, bytes };
 }
+
+/** 收集 objects() 中某 CID 的全部产出（按契约应当只有一条） */
+async function objectsFor(cas: CASImpl, cid: CID) {
+	const seen: CASMetadataObject[] = [];
+	for await (const obj of cas.objects()) {
+		if (obj.cid.equals(cid)) {
+			seen.push(obj);
+		}
+	}
+	return seen;
+}
+
+describe("CASImpl.objects 流式产出", () => {
+	/** 分片目录名：相对路径首段 */
+	function shardOf(cas: CASImpl, cid: CID) {
+		return cas.formatRelPath(cid).split("/")[0];
+	}
+
+	/** 找到两个落在不同分片目录的 CID，用于构造「先扫完的分片先产出」场景 */
+	async function makeTwoShards(cas: CASImpl) {
+		const first = await makeObject("shard-a");
+		let second = await makeObject("shard-b");
+		for (let i = 0; i < 1000; i++) {
+			if (shardOf(cas, first.cid) !== shardOf(cas, second.cid)) {
+				return { first, second };
+			}
+			second = await makeObject(`shard-b-${i}`);
+		}
+		throw new Error("未能找到两个不同分片的 CID");
+	}
+
+	it("后续分片未扫完时，先扫到的分片已能产出对象", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const { first, second } = await makeTwoShards(cas);
+		// 先写入 first：分片按首次出现顺序遍历，first 所在分片先被扫描
+		fs.write(`dirA/${cas.formatRelPath(first.cid)}`);
+		fs.write(`dirA/${cas.formatRelPath(second.cid)}`);
+
+		// 阻塞后一个分片的列举：若实现先聚合完再产出，则首个产出永远等不到
+		let releaseSecond!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			releaseSecond = resolve;
+		});
+		const blockedShard = `dirA/${shardOf(cas, second.cid)}`;
+		const list = fs.list.bind(fs);
+		fs.list = async (path: string) => {
+			if (path === blockedShard) {
+				await gate;
+			}
+			return list(path);
+		};
+
+		const iter = cas.objects();
+		const produced: CASMetadataObject[] = [];
+		const collectFirst = (async () => {
+			for await (const obj of iter) {
+				produced.push(obj);
+				if (obj.cid.equals(first.cid)) {
+					return;
+				}
+			}
+		})();
+
+		try {
+			await Promise.race([
+				collectFirst,
+				new Promise<never>((_, reject) =>
+					window.setTimeout(
+						() =>
+							reject(
+								new Error(
+									"objects() 在后续分片被阻塞时未产出先扫到的对象",
+								),
+							),
+						2000,
+					),
+				),
+			]);
+		} finally {
+			releaseSecond();
+		}
+
+		expect(produced.map((o) => o.cid.toString())).toContain(
+			first.cid.toString(),
+		);
+		await iter.return?.(undefined);
+	});
+
+	it("同一 CID 跨目录存在副本时，产出单条记录且包含全部副本实例", async () => {
+		const { cas, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		// dirA 正常副本；dirB 回收站副本；dirC 不在 dirs 内，不应被扫到
+		fs.write(`dirA/${relPath}`);
+		fs.write(`dirB/.trash/${relPath}`);
+		fs.write(`dirC/${relPath}`);
+
+		const seen = await objectsFor(cas, cid);
+
+		// 每个 CID 只产出一条记录，且副本实例齐全
+		expect(seen).toHaveLength(1);
+		const copies = seen[0].copies ?? [];
+		expect(copies).toHaveLength(2);
+		expect(copies.find((c) => c.dir === "dirA")?.trashedAt).toBeUndefined();
+		expect(copies.find((c) => c.dir === "dirB")?.trashedAt).toBeInstanceOf(
+			Date,
+		);
+		expect(copies.find((c) => c.dir === "dirC")).toBeUndefined();
+	});
+
+	it("已扫描过的目录不再被回查（在回收站中首见的 CID 不回查本目录正常区）", async () => {
+		const { cas, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("trashed-only");
+		const relPath = cas.formatRelPath(cid);
+		// 只在 dirA 的回收站存在：它会在 dirA 回收站阶段首见
+		fs.write(`dirA/.trash/${relPath}`);
+
+		const statPaths: string[] = [];
+		const stat = fs.stat.bind(fs);
+		fs.stat = async (path: string) => {
+			statPaths.push(path);
+			return stat(path);
+		};
+
+		const seen = await objectsFor(cas, cid);
+
+		expect(seen).toHaveLength(1);
+		// 在 dirA 回收站首见时，dirA 的正常路径已扫完，不应再被探测
+		expect(statPaths).not.toContain(`dirA/${relPath}`);
+		// dirB 尚未扫描，需要探测
+		expect(statPaths).toContain(`dirB/${relPath}`);
+	});
+
+	it("正常区首见的 CID 不重复探测本目录正常路径", async () => {
+		const { cas, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("normal-first");
+		const relPath = cas.formatRelPath(cid);
+		// dirA 正常副本（在 dirA 正常区首见）；dirB 也有正常副本（后续目录）
+		fs.write(`dirA/${relPath}`);
+		fs.write(`dirB/${relPath}`);
+		// 让 dirA 的回收站存在，否则该路径会被「回收站不存在」短路跳过
+		const other = await makeObject("other-trash");
+		fs.write(`dirA/.trash/${cas.formatRelPath(other.cid)}`);
+
+		const statPaths: string[] = [];
+		const stat = fs.stat.bind(fs);
+		fs.stat = async (path: string) => {
+			statPaths.push(path);
+			return stat(path);
+		};
+
+		const seen = await objectsFor(cas, cid);
+
+		expect(seen).toHaveLength(1);
+		const countOf = (p: string) => statPaths.filter((i) => i === p).length;
+		// 本目录正常路径只由列举阶段的 metadataFromPath 探测一次，
+		// 补齐阶段不再重复探测它
+		expect(countOf(`dirA/${relPath}`)).toBe(1);
+		// 本目录回收站与后续目录都要补齐
+		expect(statPaths).toContain(`dirA/.trash/${relPath}`);
+		expect(statPaths).toContain(`dirB/${relPath}`);
+	});
+
+	it("产出记录带磁盘 size，用于补齐仅有引用而无保存记录的元数据", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const { cid } = await makeObject("sized");
+		fs.write(`dirA/${cas.formatRelPath(cid)}`, undefined, 1234);
+
+		const seen = await objectsFor(cas, cid);
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0].size).toBe(1234);
+	});
+
+	it("在回收站首见的 CID，会补齐后续目录的正常副本且只产出一条", async () => {
+		const { cas, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("trash-first");
+		const relPath = cas.formatRelPath(cid);
+		// dirA 只有回收站副本（在 dirA 回收站阶段首见）；dirB 有正常副本（后续目录）
+		fs.write(`dirA/.trash/${relPath}`);
+		fs.write(`dirB/${relPath}`);
+
+		const seen = await objectsFor(cas, cid);
+
+		expect(seen).toHaveLength(1);
+		const copies = seen[0].copies ?? [];
+		expect(copies.find((c) => c.dir === "dirA")?.trashedAt).toBeInstanceOf(
+			Date,
+		);
+		expect(copies.find((c) => c.dir === "dirB")?.trashedAt).toBeUndefined();
+	});
+});
 
 describe("CASImpl 多目录回收站状态（copies）", () => {
 	it("index 首次登记时记录多目录副本状态（含回收站副本）", async () => {

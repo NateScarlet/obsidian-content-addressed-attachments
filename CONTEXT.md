@@ -82,6 +82,7 @@ preprocess-scripts/         # 官方维护的预处理脚本源码（构建入�
 - 每个物理副本一条实例，允许同一目录同时存在正常与回收两个实例（per-instance 模型，`src/utils/casCopies.ts` 的 `mergeCopies` 按"目录+是否回收"合并）。
 - 回收站判定：任一副本实例 `trashedAt` 非空（`isCASObjectTrashed`）。
 - 写入元数据时**不**扫描磁盘来判定回收站状态：`index`/`save` 保留已有副本状态；`trash`/`load`/`restoreIfTrashed`/`deleteIfTrashed` 基于磁盘操作重建副本状态。
+- 回收站副本的回收时间**以元数据既有值为准**：磁盘只能读到文件修改时间，而 CAS 内容不可变，修改时间恒早于该副本真正进入回收站的时刻；只有元数据里没有该副本（库外移入回收站）才采用磁盘修改时间。
 - 清空回收站（`src/commands/emptyTrash.ts`）仍基于元数据增量执行，不做全量磁盘扫描。
-- **重建索引对账**（`src/commands/rebuildIndex.ts`）：以磁盘为权威，分两阶段流式清理残留（不把全部对象加载进内存）——① 扫描磁盘副本，merge 时把该 CID 记为 `lastVisitedAt = scannedAt` 并以磁盘副本实例覆盖 copies；② 遍历元数据，凡 `lastVisitedAt` 早于 `scannedAt`（磁盘已无该 CID 任何副本）的记录：仍被引用则保留记录与 filename/format 并清空副本状态退出回收站，否则整体删除。这样 `.trash` 文件被外部删除后回收站不再残留。
+- **重建索引对账**（`src/commands/rebuildIndex.ts`）：以磁盘为权威，分两阶段清理残留，内存只保留已产出 CID 的集合（不把全部对象加载进内存）——① 流式扫描磁盘副本：按「目录的正常区 → 同目录回收站 → 下一目录」顺序遍历，某 CID 首次出现时就地探测它在**尚未扫描目录**中的副本（已扫描过的目录不回查），凑成一条完整记录立即产出并记为 `lastVisitedAt = scannedAt`，之后在其它目录再遇到同一 CID 直接跳过；② 遍历元数据，凡 `lastVisitedAt` 早于 `scannedAt`（磁盘已无该 CID 任何副本）的记录：仍被引用则保留记录与 filename/format 并清空副本状态退出回收站，否则整体删除。这样 `.trash` 文件被外部删除后回收站不再残留。
 - IndexedDB schema 为 v2（`DB_VERSION=2`）：v1 的 `trashedAt` 在升级时迁移为 `copies`（用空字符串占位“未知目录”），**迁移惰性化**——不在 `onupgradeneeded` 里遍历数据（会卡住），改为运行时 decode/merge 兼容。
