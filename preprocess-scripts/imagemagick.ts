@@ -46,7 +46,9 @@ async function getWorker(): Promise<Worker> {
 
 	workerPromise = (async () => {
 		try {
-			const workerURL = new URL("imagemagick.worker.js", import.meta.url);
+			// 用变量拼接使打包器保留运行时解析（字符串字面量会被 vite 静态化为资产引用）
+			const workerFile = "imagemagick.worker.js";
+			const workerURL = new URL(workerFile, import.meta.url);
 			// worker 源码通过 fetch 读取文本后以 Blob URL 创建：
 			// Obsidian 的资源协议 app:// 不支持直接 `new Worker(app://...)`，
 			// 但 fetch app:// 可用（见 .scratch 实测）。
@@ -175,7 +177,9 @@ export function createTransform(convert: ConvertFn) {
 		const format = ctx.params.get("format") || "avif";
 		const quality = parseInt(ctx.params.get("quality") || "80", 10);
 		const minSavings = parseInt(ctx.params.get("minSavings") || "10", 10);
-		const wasmURL = new URL("magick.wasm", import.meta.url).href;
+		// 用变量拼接使打包器保留运行时解析（wasm 非打包依赖，运行时按相对位置加载）
+		const wasmFile = "magick.wasm";
+		const wasmURL = new URL(wasmFile, import.meta.url).href;
 
 		const originalSize = input.data.byteLength;
 

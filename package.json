@@ -7,12 +7,11 @@
 	"description": "Manage attachments without consider about it's location in Obsidian (https://obsidian.md)",
 	"main": "main.js",
 	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "pnpm run preprocess:build && pnpm run build:svelte-check && pnpm run build:esbuild",
+		"dev": "node vite-build.mjs",
+		"build": "pnpm run preprocess:build && pnpm run build:svelte-check && pnpm run build:vite",
 		"build:svelte-check": "svelte-check --tsconfig tsconfig.json",
-		"build:esbuild": "node esbuild.config.mjs production",
 		"check": "pnpm test && pnpm lint",
-		"test": "vitest run && svelte-check",
+		"test": "vitest run --configLoader native && svelte-check",
 		"lint": "eslint src preprocess-scripts",
 		"format": "oxfmt src preprocess-scripts",
 		"format:check": "oxfmt --check src preprocess-scripts",
@@ -23,7 +22,8 @@
 		"preprocess:release": "pnpm run preprocess:build && pnpm run preprocess:generate-index",
 		"e2e:vault": "pwsh scripts/e2e-vault.ps1",
 		"e2e": "playwright test --project e2e",
-		"prepare": "husky"
+		"prepare": "husky",
+		"build:vite": "node vite-build.mjs production"
 	},
 	"imports": {
 		"#src/*": "./src/*"
@@ -33,11 +33,10 @@
 	"devDependencies": {
 		"@codemirror/view": "^6.38.7",
 		"@playwright/test": "1.62.0",
+		"@sveltejs/vite-plugin-svelte": "^7.3.0",
 		"@tailwindcss/cli": "^4.1.17",
 		"@types/node": "^16.11.6",
 		"@typescript-eslint/utils": "^8.60.0",
-		"esbuild": "0.27.0",
-		"esbuild-svelte": "^0.9.3",
 		"eslint": "^10.4.0",
 		"eslint-plugin-obsidianmd": "^0.3.0",
 		"eslint-plugin-svelte": "^3.18.0",
@@ -54,6 +53,7 @@
 		"tslib": "2.4.0",
 		"typescript": "6.0.3",
 		"typescript-eslint": "^8.60.0",
+		"vite": "^8.2.2",
 		"vitest": "^4.1.10"
 	},
 	"dependencies": {

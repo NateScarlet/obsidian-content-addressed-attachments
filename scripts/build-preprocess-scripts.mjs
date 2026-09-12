@@ -2,7 +2,7 @@
  * 构建预处理脚本并生成清单文件（纯构建产物，不涉及运行时索引）。
  *
  * 职责：
- * 1. 使用 esbuild 将 preprocess-scripts/*.ts 编译为 dist/preprocess-scripts/*.js
+ * 1. 使用 rolldown-vite 将 preprocess-scripts/*.ts 编译为 dist/preprocess-scripts/*.js
  * 2. 复制依赖的 WASM 文件到 dist/preprocess-scripts/
  * 3. 为每个脚本生成 per-script 清单 (.json)，包含 CID 与 sources
  *
@@ -14,15 +14,10 @@
  * 该索引由 scripts/generate-preprocess-index.mjs 负责。
  */
 
-import {
-	copyFileSync,
-	mkdirSync,
-	existsSync,
-	writeFileSync,
-} from "fs";
+import { copyFileSync, mkdirSync, existsSync, writeFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
-import * as esbuild from "esbuild";
+import { build } from "vite";
 import {
 	RELEASE_ASSET_BASE_URL,
 	computeCID,
@@ -51,52 +46,19 @@ const RELEASE_ASSET_URL = `${RELEASE_ASSET_BASE_URL}<TAG>/`;
 
 const scripts = ["imagemagick.ts"];
 
-// 每个脚本配套的 Web Worker 入口（若存在，需一并构建并加入清单）
-const workerScripts = ["imagemagick.worker.ts"];
-
 if (!existsSync(scriptDistDir)) {
 	mkdirSync(scriptDistDir, { recursive: true });
 }
 
-// 构建脚本
-for (const script of scripts) {
-	const srcPath = resolve(scriptSrcDir, script);
-	const distPath = resolve(scriptDistDir, script.replace(/\.ts$/, ".js"));
-
-	await esbuild.build({
-		entryPoints: [srcPath],
-		outfile: distPath,
-		bundle: true,
-		format: "esm",
-		platform: "browser",
-		target: "es2020",
-		minify: true,
-	});
-
-	console.log(`Built script: ${script} -> ${distPath}`);
-}
-
-// 构建 worker 脚本
-for (const worker of workerScripts) {
-	const srcPath = resolve(scriptSrcDir, worker);
-	if (!existsSync(srcPath)) {
-		console.warn(`Skip missing worker: ${worker}`);
-		continue;
-	}
-	const distPath = resolve(scriptDistDir, worker.replace(/\.ts$/, ".js"));
-
-	await esbuild.build({
-		entryPoints: [srcPath],
-		outfile: distPath,
-		bundle: true,
-		format: "esm",
-		platform: "browser",
-		target: "es2020",
-		minify: true,
-	});
-
-	console.log(`Built worker: ${worker} -> ${distPath}`);
-}
+// 多入口构建：入口与产物名声明在 preprocess.vite.config.mts 的 build.lib.entry
+// configLoader: 'native' 使配置由 Node 原生 ESM 加载（绕开 vite 用 esbuild
+// 打包配置文件时的子进程 spawn，DSH 沙箱禁止）
+console.log("Building preprocess scripts with vite...");
+await build({
+	configFile: resolve(__dirname, "..", "preprocess.vite.config.mts"),
+	configLoader: "native",
+	logLevel: "warn",
+});
 
 // 复制 magick.wasm
 if (existsSync(wasmSrc)) {

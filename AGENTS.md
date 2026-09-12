@@ -3,10 +3,11 @@
 ## 开发环境与工具链
 
 - **Node.js**：建议使用当前 LTS 版本（推荐 Node 18+）。
-- **包管理器**：`npm`（项目定义了相应的 npm 脚本和依赖）。
-- **构建工具**：`esbuild`（由 `esbuild.config.mjs` 配置打包逻辑）。
+- **包管理器**：`pnpm`（项目定义了相应的 npm 脚本和依赖）。
+- **构建工具**：`vite`（rolldown-vite 8，由 `vite.build.config.mts` 配置主插件打包逻辑，`vite-build.mjs` 为 dev/build 统一入口；预处理脚本由 `preprocess.vite.config.mts` 多入口构建）。
 - **类型诊断**：针对 Svelte 组件使用 `svelte-check` 进行类型诊断。
 - **样式**：配合 TailwindCSS 进行 CSS 样式编译。
+- **DSH 受限沙箱**：测试与构建链路已适配沙箱免提权运行；`pnpm install` 与 git 写操作需提权。见 [.dsh/skills/dsh-sandbox/SKILL.md](./.dsh/skills/dsh-sandbox/SKILL.md)。
 
 ### 安装依赖
 
@@ -32,7 +33,7 @@ pnpm run preprocess:build
 pnpm run build
 ```
 
-该命令会依次执行 `npm run build:svelte-check` 诊断 Svelte 类型问题，以及 `npm run build:esbuild` 编译打包 js/css 资源。
+该命令会依次执行 `pnpm run preprocess:build` 构建预处理脚本、`pnpm run build:svelte-check` 诊断 Svelte 类型问题，以及 `pnpm run build:vite` 编译打包 js/css 资源。
 
 ### 预处理可复用转码 E2E 测试
 
