@@ -133,6 +133,8 @@ interface RemoteSource {
 
 export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
+	// 探测按 Host 去重：同一 Host 的并发探测共享一次请求，结论适用于本批全部来源
+	private probeFlight = new SingleFlightGroup<{ rtt: number }>();
 	private cacheManager: DecryptedCacheManager;
 	// 防抖 cleanup 的 timer ID
 	private cleanupTimer: number | undefined;
@@ -329,11 +331,32 @@ export class URLResolver {
 	}
 
 	/**
-	 * 并发对全部来源发起 HEAD 预检并按完成顺序排队，串行消费队列发完整下载。
-	 * 同一时刻至多一个 GET 在飞：前一名失败（HEAD 非 200 或 GET 失败）后
-	 * 下一名才开始，第一名成功即结束。多源冗余仍是回退设计——不可达的源
-	 * 止步于 HEAD 预检；单个源失败不打扰用户，仅当所有源都失败且确有异常时
-	 * 提示一次。
+	 * 探测（probe）：以 no-cors HEAD 测量来源所在 Host 的可达性，并记录往返延迟。
+	 * 收到任意 HTTP 响应（no-cors 下为 opaque response，不读内容不看状态码）即视为
+	 * Host 可达；仅网络层失败（reject）判为不可达。探测不做跨调用缓存，
+	 * 进行中的探测由 SingleFlightGroup 按 Host 去重，取消随最后一个放弃的调用者传播。
+	 */
+	private probeSource(source: RemoteSource): Promise<{ rtt: number }> {
+		const url = source.getURL();
+		const host = new URL(url).host;
+		return this.probeFlight
+			.do(host, async (signal) => {
+				const startedAt = performance.now();
+				// no-cors 模式不做 CORS 判定且不发送自定义头（浏览器会静默丢弃
+				// 非 CORS-safelisted 头），任意服务的任意响应都算"可达"（ADR-0001）
+				// eslint-disable-next-line no-restricted-globals -- ADR-0001：requestUrl 不可取消，探测必须用 fetch
+				await fetch(url, { method: "HEAD", mode: "no-cors", signal });
+				return { rtt: performance.now() - startedAt };
+			})
+			.then(({ result }) => result);
+	}
+
+	/**
+	 * 流式消费探测结果：任一来源的探测 settle（可达）即按 settle 顺序
+	 * （天然为 RTT 序）开始完整下载，不等待其余仍在飞的探测——挂住的
+	 * 探测只影响它自己的来源，不拖住其他健康来源。
+	 * 串行下载：同一时刻至多一个 GET 在飞，首个成功即结束。
+	 * 全部来源出局且确有异常时提示一次（与既有失败反馈语义一致）。
 	 */
 	private async resolveFromRemote(
 		data: TemplateData,
@@ -345,58 +368,46 @@ export class URLResolver {
 		}
 		const errors: unknown[] = [];
 
-		// #region HEAD 预检排队：并发发出，按完成顺序交付给消费者
-		const headQueue: RemoteSource[] = [];
-		const headWaiters: ((source: RemoteSource | undefined) => void)[] = [];
-		let headPending = sources.length;
-		let headAllSettled = false;
+		// #region 探测交付队列：并发探测，按 settle 顺序交付给消费者
+		const probedQueue: RemoteSource[] = [];
+		const probedWaiters: ((source: RemoteSource | undefined) => void)[] =
+			[];
+		let probedPending = sources.length;
 
-		/** 记录一个通过 HEAD 预检的来源：有消费者等待时直接交付，否则入队。 */
-		const enqueueHead = (source: RemoteSource) => {
-			const waiter = headWaiters.shift();
+		/** 有消费者等待时直接交付，否则入队。 */
+		const enqueueProbed = (source: RemoteSource) => {
+			const waiter = probedWaiters.shift();
 			if (waiter) {
 				waiter(source);
 			} else {
-				headQueue.push(source);
+				probedQueue.push(source);
 			}
 		};
 
-		/** 取出下一个通过预检的来源；全部 HEAD 结束且无候补时返回 undefined。 */
-		const nextSource = (): Promise<RemoteSource | undefined> => {
-			const head = headQueue.shift();
-			if (head) return Promise.resolve(head);
-			if (headAllSettled) return Promise.resolve(undefined);
-			return new Promise((resolve) => headWaiters.push(resolve));
+		/** 取出下一个探测可达的来源；全部探测结束且无候补时返回 undefined。 */
+		const nextProbed = (): Promise<RemoteSource | undefined> => {
+			const probed = probedQueue.shift();
+			if (probed) return Promise.resolve(probed);
+			if (probedPending === 0) return Promise.resolve(undefined);
+			return new Promise((resolve) => probedWaiters.push(resolve));
 		};
 
-		// HEAD 预检不阻塞消费循环：网络错误只收集到 errors，不打扰用户
+		// 探测失败只收集到 errors，不阻塞其他来源的消费
 		void Promise.all(
 			sources.map(async (source) => {
 				try {
-					const url = source.getURL();
-					// XXX: requestUrl 接口不支持 signal，没法中途取消，只能先用 HEAD 来预检
-					const resp = await requestUrl({
-						url,
-						method: "HEAD",
-						headers: headersToRecord(source.buildHeaders()),
-						throw: false,
-					});
-					if (resp.status === 200) {
-						console.debug("HEAD", url);
-						enqueueHead(source);
-					}
-					// HEAD 非 200：该来源失去完整下载资格（静默，视为不可达）
+					await this.probeSource(source);
+					enqueueProbed(source);
 				} catch (error) {
 					if (!isAbortError(error)) {
 						errors.push(error);
-						console.debug(`解析源 ${source.label} 失败`, error);
+						console.debug(`探测来源 ${source.label} 失败`, error);
 					}
 				} finally {
-					headPending -= 1;
-					if (headPending === 0) {
-						headAllSettled = true;
+					probedPending -= 1;
+					if (probedPending === 0) {
 						// 唤醒仍在等待的消费者，交付「没有更多候补」
-						for (const waiter of headWaiters.splice(0)) {
+						for (const waiter of probedWaiters.splice(0)) {
 							waiter(undefined);
 						}
 					}
@@ -407,7 +418,7 @@ export class URLResolver {
 
 		// 串行消费：同一时刻至多一个完整下载在飞
 		while (true) {
-			const source = await nextSource();
+			const source = await nextProbed();
 			if (!source) break;
 			try {
 				const result = await this.downloadFromSource(source, data);
@@ -417,12 +428,12 @@ export class URLResolver {
 			} catch (error) {
 				if (!isAbortError(error)) {
 					errors.push(error);
-					console.debug(`解析源 ${source.label} 失败`, error);
+					console.debug(`解析来源 ${source.label} 失败`, error);
 				}
 			}
 		}
 
-		// 全部源都失败：仅当确有异常时才提示一次（404/CID 不匹配属于合法缺失，保持静默）
+		// 全部来源失败：仅当确有异常时才提示一次（404/CID 不匹配属于合法缺失，保持静默）
 		if (errors.length > 0) {
 			console.error("解析 IPFS 网址失败", data.rawURL, errors);
 			new Notice(t("allSourcesFailed")(castError(errors[0]).message));
@@ -431,7 +442,7 @@ export class URLResolver {
 	}
 
 	/**
-	 * 对一个通过 HEAD 预检的来源发起完整下载并保存到 CAS。
+	 * 对一个探测可达的来源发起完整下载并保存到 CAS。
 	 * GET 非 200 视为该来源失败（静默返回 undefined）；网络/存储错误
 	 * 向上抛出，由调用方收集错误后决定换下一个来源或结束。
 	 */

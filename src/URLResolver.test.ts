@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { URLResolver } from "./URLResolver";
 import { CID } from "multiformats/cid";
 import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
@@ -70,7 +70,7 @@ describe("URLResolver", () => {
 			arrayBuffer: Promise.resolve(new ArrayBuffer(0)),
 			json: Promise.resolve({}),
 			text: Promise.resolve(""),
-		}) as RequestUrlResponsePromise;
+		});
 		return { promise, resolve };
 	}
 
@@ -79,6 +79,64 @@ describe("URLResolver", () => {
 		for (let i = 0; i < times; i++) {
 			await Promise.resolve();
 		}
+	}
+
+	/** 探测阶段工具：记录 fetch 调用并按 URL 前缀手动放行/拒绝探测。 */
+	let fetchCalls: { url: string; init: RequestInit }[];
+	let fetchDeferreds: Map<
+		string,
+		{
+			resolve: (v: Response) => void;
+			reject: (e: unknown) => void;
+		}
+	>;
+
+	/** 记录并手动控制所有 fetch 探测请求；测试结束时恢复全局 fetch。 */
+	function stubFetch() {
+		fetchCalls = [];
+		fetchDeferreds = new Map();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+				const url =
+					typeof input === "string"
+						? input
+						: input instanceof URL
+							? input.href
+							: input.url;
+				fetchCalls.push({ url, init: init ?? {} });
+				let resolve!: (v: Response) => void;
+				let reject!: (e: unknown) => void;
+				const promise = new Promise<Response>((res, rej) => {
+					resolve = res;
+					reject = rej;
+				});
+				// 模拟真实 fetch：signal 中止后 promise 以 AbortError reject
+				const signal = init?.signal;
+				if (signal) {
+					signal.addEventListener("abort", () => {
+						reject(new DOMException("Aborted", "AbortError"));
+					});
+				}
+				promise.catch(() => {});
+				fetchDeferreds.set(url, { resolve, reject });
+				return promise;
+			}),
+		);
+	}
+
+	/** 放行所有已发出的探测（no-cors opaque response：任意响应都算 Host 可达）。 */
+	function resolveAllProbes() {
+		for (const { resolve } of fetchDeferreds.values()) {
+			resolve({ status: 0, type: "opaque" } as unknown as Response);
+		}
+	}
+
+	/** 等待全部探测发出并放行，再让解析推进到完整下载阶段。 */
+	async function passProbeStage() {
+		await flushMicrotasks();
+		resolveAllProbes();
+		await flushMicrotasks();
 	}
 
 	/** 过滤指定 HTTP 方法的 requestUrl 调用，返回其 URL 列表。 */
@@ -117,6 +175,7 @@ describe("URLResolver", () => {
 	beforeEach(() => {
 		// 每个测试从干净的请求记录开始，避免跨用例累积影响断言
 		vi.mocked(requestUrl).mockClear();
+		stubFetch();
 		mockApp = {
 			vault: {
 				adapter: {
@@ -169,6 +228,10 @@ describe("URLResolver", () => {
 		);
 	});
 
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it("decrypts downloaded encrypted file when resolving an IPFS URL", async () => {
 		vi.mocked(requestUrl).mockResolvedValue({
 			status: 200,
@@ -179,7 +242,9 @@ describe("URLResolver", () => {
 		});
 
 		const rawURL = `ipfs://${dummyCIDStr}?format=${encodeURIComponent(ENCRYPTED_FORMAT)}`;
-		const result = await resolver.resolveURL(rawURL);
+		const resultPromise = resolver.resolveURL(rawURL);
+		await passProbeStage();
+		const result = await resultPromise;
 
 		expect(result).toBeDefined();
 		// Should have called ensureDecrypted on the downloaded payload
@@ -256,7 +321,9 @@ describe("URLResolver", () => {
 			});
 		});
 
-		const result = await resolver.resolveURL(lockedURL);
+		const resultPromise = resolver.resolveURL(lockedURL);
+		await passProbeStage();
+		const result = await resultPromise;
 
 		expect(result).toBeDefined();
 		expect(result?.cid.toString()).toBe(dummyCIDStr);
@@ -291,12 +358,24 @@ describe("URLResolver", () => {
 			});
 		});
 
-		const result = await resolver.resolveURL(lockedURL);
+		const resultPromise = resolver.resolveURL(lockedURL);
+		await flushMicrotasks();
+		// 源站探测先 settle（流式消费：先 settle 者先获得下载机会）
+		fetchDeferreds
+			.get(sourceURL)!
+			.resolve({ status: 0, type: "opaque" } as unknown as Response);
+		await flushMicrotasks(16);
+		// 网关探测随后 settle
+		fetchDeferreds
+			.get(`https://gateway.com/ipfs/${dummyCIDStr}`)!
+			.resolve({ status: 0, type: "opaque" } as unknown as Response);
+		await flushMicrotasks(16);
+		const result = await resultPromise;
 
 		// 源站失效时不应直接放弃，应能通过网关解析成功
 		expect(result).toBeDefined();
 		expect(result?.cid.toString()).toBe(dummyCIDStr);
-		// 同时请求了源站与网关
+		// 先后请求了源站（404 失败）与网关（成功）
 		const requestedURLs = vi
 			.mocked(requestUrl)
 			.mock.calls.map(([options]) =>
@@ -330,22 +409,32 @@ describe("URLResolver", () => {
 	it("does not notify user when one source fails but another succeeds", async () => {
 		setupMutuallyExclusiveGateways();
 
-		// 内网网关不可达（网络级错误会 reject），外网网关正常返回
+		// 内网网关探测不可达（网络级错误会 reject），外网网关正常返回
 		vi.mocked(requestUrl).mockImplementation((request) => {
 			const url = typeof request === "string" ? request : request.url;
-			if (url.startsWith("https://internal.local")) {
-				throw new Error("net::ERR_CONNECTION_REFUSED");
+			if (url.startsWith("https://external.com")) {
+				return mockResponse({
+					status: 200,
+					headers: { "content-type": "image/png" },
+					arrayBuffer: new ArrayBuffer(8),
+					json: {},
+					text: "",
+				});
 			}
-			return mockResponse({
-				status: 200,
-				headers: { "content-type": "image/png" },
-				arrayBuffer: new ArrayBuffer(8),
-				json: {},
-				text: "",
-			});
+			throw new Error("net::ERR_CONNECTION_REFUSED");
 		});
-
-		const result = await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		// 内网网关在探测阶段就失败
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await flushMicrotasks();
+		for (const [url, defer] of fetchDeferreds) {
+			if (url.startsWith("https://internal.local")) {
+				defer.reject(new TypeError("Failed to fetch"));
+			} else {
+				defer.resolve({ status: 0 } as unknown as Response);
+			}
+		}
+		await flushMicrotasks();
+		const result = await resultPromise;
 
 		expect(result).toBeDefined();
 		// 单源失败是预期内的冗余回退，不应打扰用户
@@ -355,12 +444,13 @@ describe("URLResolver", () => {
 	it("shows a single notice when all sources fail", async () => {
 		setupMutuallyExclusiveGateways();
 
-		// 两个网关都不可达
-		vi.mocked(requestUrl).mockRejectedValue(
-			new Error("net::ERR_CONNECTION_REFUSED"),
-		);
-
-		const result = await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		// 两个网关都在探测阶段不可达
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await flushMicrotasks();
+		for (const defer of fetchDeferreds.values()) {
+			defer.reject(new TypeError("net::ERR_CONNECTION_REFUSED"));
+		}
+		const result = await resultPromise;
 
 		expect(result).toBeUndefined();
 		// 全部失败只提示一次，且带上首个错误原因
@@ -400,7 +490,9 @@ describe("URLResolver", () => {
 			});
 		});
 
-		const result = await resolver.resolveURL(lockedURL);
+		const resultPromise = resolver.resolveURL(lockedURL);
+		await passProbeStage();
+		const result = await resultPromise;
 
 		expect(result).toBeDefined();
 		const call = requestCallFor((url) => url === sourceURL);
@@ -437,7 +529,9 @@ describe("URLResolver", () => {
 			text: "",
 		});
 
-		await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await passProbeStage();
+		await resultPromise;
 
 		const call = requestCallFor((url) =>
 			url.startsWith("https://gateway.com/ipfs/"),
@@ -523,7 +617,7 @@ describe("URLResolver", () => {
 		expect(getHeader(call?.headers ?? {}, "X-Token")).toBeUndefined();
 	});
 
-	it("downloads from only the HEAD-fastest source when multiple sources are reachable", async () => {
+	it("downloads from the probe-fastest source when multiple sources are reachable", async () => {
 		settings.gateways = [
 			{
 				name: "gw-slow",
@@ -539,23 +633,13 @@ describe("URLResolver", () => {
 			},
 		];
 
-		const gw1Head = deferred();
-		const gw2Head = deferred();
 		const gw1Get = deferred();
 		const gw2Get = deferred();
 
 		vi.mocked(requestUrl).mockImplementation((request) => {
 			const url = typeof request === "string" ? request : request.url;
-			const method =
-				typeof request === "string" ? "GET" : (request.method ?? "GET");
-			if (method === "HEAD") {
-				if (url.startsWith("https://gw1")) return gw1Head.promise;
-				if (url.startsWith("https://gw2")) return gw2Head.promise;
-			}
-			if (method === "GET") {
-				if (url.startsWith("https://gw1")) return gw1Get.promise;
-				if (url.startsWith("https://gw2")) return gw2Get.promise;
-			}
+			if (url.startsWith("https://gw1")) return gw1Get.promise;
+			if (url.startsWith("https://gw2")) return gw2Get.promise;
 			return mockResponse({
 				status: 404,
 				headers: {},
@@ -575,22 +659,22 @@ describe("URLResolver", () => {
 
 		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
 		await flushMicrotasks();
+		expect(fetchCalls).toHaveLength(2);
 
-		// HEAD 更快的网关先返回
-		gw2Head.resolve(okResponse());
-		await flushMicrotasks();
+		// gw2 探测更快返回（RTT 更短）
+		fetchDeferreds
+			.get(`https://gw2.example.com/ipfs/${dummyCIDStr}`)!
+			.resolve({ status: 0 } as unknown as Response);
+		await new Promise((r) => window.setTimeout(r, 5));
+		fetchDeferreds
+			.get(`https://gw1.example.com/ipfs/${dummyCIDStr}`)!
+			.resolve({ status: 0 } as unknown as Response);
+		await flushMicrotasks(16);
 
-		// 只有 HEAD 最快的网关发起了完整下载，另一个仍在 HEAD 阶段
+		// 探测最快的网关先发起完整下载
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw2")),
 		).toHaveLength(1);
-		expect(
-			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
-		).toHaveLength(0);
-
-		// 慢网关的 HEAD 稍后返回，但完整下载严格串行：不打断在飞的 GET
-		gw1Head.resolve(okResponse());
-		await flushMicrotasks();
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
 		).toHaveLength(0);
@@ -600,13 +684,13 @@ describe("URLResolver", () => {
 		const result = await resultPromise;
 
 		expect(result).toBeDefined();
-		// 整个解析过程只发出过一个完整下载（其余测试的调用记录不在 gw 前缀下）
+		// 整个解析过程只发出过一个完整下载
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw")),
 		).toHaveLength(1);
 	});
 
-	it("falls back to the next source when the HEAD-fastest source fails to download", async () => {
+	it("falls back to the next-probe-fastest source when the first download fails", async () => {
 		settings.gateways = [
 			{
 				name: "gw-slow",
@@ -622,23 +706,13 @@ describe("URLResolver", () => {
 			},
 		];
 
-		const gw1Head = deferred();
-		const gw2Head = deferred();
 		const gw1Get = deferred();
 		const gw2Get = deferred();
 
 		vi.mocked(requestUrl).mockImplementation((request) => {
 			const url = typeof request === "string" ? request : request.url;
-			const method =
-				typeof request === "string" ? "GET" : (request.method ?? "GET");
-			if (method === "HEAD") {
-				if (url.startsWith("https://gw1")) return gw1Head.promise;
-				if (url.startsWith("https://gw2")) return gw2Head.promise;
-			}
-			if (method === "GET") {
-				if (url.startsWith("https://gw1")) return gw1Get.promise;
-				if (url.startsWith("https://gw2")) return gw2Get.promise;
-			}
+			if (url.startsWith("https://gw1")) return gw1Get.promise;
+			if (url.startsWith("https://gw2")) return gw2Get.promise;
 			return mockResponse({
 				status: 404,
 				headers: {},
@@ -666,19 +740,18 @@ describe("URLResolver", () => {
 		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
 		await flushMicrotasks();
 
-		// HEAD 快的网关先返回并通过预检
-		gw2Head.resolve(okResponse());
-		await flushMicrotasks();
+		// gw2 探测更快，gw1 探测稍后返回（间隔保证 RTT 排序稳定）
+		fetchDeferreds
+			.get(`https://gw2.example.com/ipfs/${dummyCIDStr}`)!
+			.resolve({ status: 0 } as unknown as Response);
+		await new Promise((r) => window.setTimeout(r, 5));
+		fetchDeferreds
+			.get(`https://gw1.example.com/ipfs/${dummyCIDStr}`)!
+			.resolve({ status: 0 } as unknown as Response);
+		await flushMicrotasks(16);
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw2")),
 		).toHaveLength(1);
-
-		// 慢网关 HEAD 返回，但串行：不得在快网关 GET 结果揭晓前开始下载
-		gw1Head.resolve(okResponse());
-		await flushMicrotasks();
-		expect(
-			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
-		).toHaveLength(0);
 
 		// 快网关完整下载失败（404 视为合法缺失），才轮到慢网关
 		gw2Get.resolve(missingResponse());
@@ -708,7 +781,7 @@ describe("URLResolver", () => {
 		]);
 	});
 
-	it("does not download from a source whose HEAD precheck fails", async () => {
+	it("does not download from a source whose probe rejects", async () => {
 		settings.gateways = [
 			{
 				name: "gw1",
@@ -724,36 +797,35 @@ describe("URLResolver", () => {
 			},
 		];
 
-		vi.mocked(requestUrl).mockImplementation((request) => {
-			const url = typeof request === "string" ? request : request.url;
-			if (url.startsWith("https://gw1")) {
-				// gw1 的 HEAD 预检不通过，不应有任何完整下载
-				return mockResponse({
-					status: 404,
-					headers: {},
-					arrayBuffer: new ArrayBuffer(0),
-					json: {},
-					text: "",
-				});
-			}
-			// gw2 预检与完整下载都正常
-			return mockResponse({
+		vi.mocked(requestUrl).mockImplementation(() =>
+			mockResponse({
 				status: 200,
 				headers: { "content-type": "image/png" },
 				arrayBuffer: new ArrayBuffer(8),
 				json: {},
 				text: "",
-			});
-		});
+			}),
+		);
 
-		const result = await resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await flushMicrotasks();
+		// gw1 探测在网络层失败，gw2 探测正常
+		for (const [url, defer] of fetchDeferreds) {
+			if (url.startsWith("https://gw1")) {
+				defer.reject(new TypeError("Failed to fetch"));
+			} else {
+				defer.resolve({ status: 0 } as unknown as Response);
+			}
+		}
+		await flushMicrotasks(16);
+		const result = await resultPromise;
 
 		expect(result).toBeDefined();
-		// HEAD 非 200 的来源从未发起完整下载
+		// 探测失败的来源从未发起完整下载
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
 		).toHaveLength(0);
-		// 预检通过的来源完成了唯一一次完整下载
+		// 探测通过的来源完成了唯一一次完整下载
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw2")),
 		).toHaveLength(1);
@@ -771,25 +843,13 @@ describe("URLResolver", () => {
 			},
 		];
 
-		const sourceHead = deferred();
 		const sourceGet = deferred();
-		const gatewayHead = deferred();
 		const gatewayGet = deferred();
 
 		vi.mocked(requestUrl).mockImplementation((request) => {
 			const url = typeof request === "string" ? request : request.url;
-			const method =
-				typeof request === "string" ? "GET" : (request.method ?? "GET");
-			if (method === "HEAD") {
-				if (url === sourceURL) return sourceHead.promise;
-				if (url.startsWith("https://gateway"))
-					return gatewayHead.promise;
-			}
-			if (method === "GET") {
-				if (url === sourceURL) return sourceGet.promise;
-				if (url.startsWith("https://gateway"))
-					return gatewayGet.promise;
-			}
+			if (url === sourceURL) return sourceGet.promise;
+			if (url.startsWith("https://gateway")) return gatewayGet.promise;
 			return mockResponse({
 				status: 404,
 				headers: {},
@@ -809,20 +869,20 @@ describe("URLResolver", () => {
 
 		const resultPromise = resolver.resolveURL(lockedURL);
 		await flushMicrotasks();
+		expect(fetchCalls).toHaveLength(2);
 
-		// 源站 HEAD 先返回：源站优先获得完整下载
-		sourceHead.resolve(okResponse());
-		await flushMicrotasks();
+		// 源站探测更快返回：源站优先获得完整下载
+		fetchDeferreds.get(sourceURL)!.resolve({
+			status: 0,
+		} as unknown as Response);
+		await new Promise((r) => window.setTimeout(r, 5));
+		fetchDeferreds
+			.get(`https://gateway.example.com/ipfs/${dummyCIDStr}`)!
+			.resolve({ status: 0 } as unknown as Response);
+		await flushMicrotasks(16);
 		expect(requestURLsFor("GET", (url) => url === sourceURL)).toHaveLength(
 			1,
 		);
-
-		// 网关 HEAD 返回，但源站 GET 在飞时网关不得开始完整下载
-		gatewayHead.resolve(okResponse());
-		await flushMicrotasks();
-		expect(
-			requestURLsFor("GET", (url) => url.startsWith("https://gateway")),
-		).toHaveLength(0);
 
 		// 源站下载成功，解析结束；网关从未完整下载
 		sourceGet.resolve(okResponse());

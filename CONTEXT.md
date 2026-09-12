@@ -1,5 +1,21 @@
 # CONTEXT.md
 
+## Language
+
+**来源（source）**：
+一次解析中可尝试获取内容的任一远程 HTTP 端点的统称，包括网关与源站。
+_Avoid_: 候选、remote source
+
+**源站**：
+锁定链接（`internal.ipfs-locked:`）中记录的原始服务 URL，是来源的一种，与网关相区分。
+
+**网关（gateway）**：
+用户在设置中配置的 URL 模板化远程服务，是来源的一种。
+
+**探测（probe）**：
+以测量某来源所在 Host 的可达性与往返延迟为目的的轻量请求；不判定内容是否存在。
+_Avoid_: 预检（与 CORS preflight 混淆）
+
 ## 项目概述
 
 - **目标**：Obsidian 社区插件（将 TypeScript 编译并打包为单文件 JavaScript）。
