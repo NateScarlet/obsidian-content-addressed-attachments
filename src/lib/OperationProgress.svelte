@@ -10,12 +10,13 @@
 		},
 	});
 </script>
-
 <script lang="ts">
 	import ProgressBar from "./ProgressBar.svelte";
 
 	const { title }: { title: string } = $props();
 
+	// 实例级状态：绝不能放 module script（模块级 $state 会被所有实例共享，
+	// 多个进度条同时显示时互相覆盖数字——进度倒退的根因）
 	let currentIndex = $state(0);
 	let currentFile = $state("");
 

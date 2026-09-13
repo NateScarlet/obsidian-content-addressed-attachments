@@ -8,12 +8,16 @@
 			searchPlaceholder: "Search files...",
 			emptyTrash: "Empty trash",
 			cleanUnreferenced: "Clean unreferenced files",
+			cleanUnreferencedScan: "Checking references",
+			cleanUnreferencedClean: "Moving to trash",
 			rebuildIndex: "Rebuild index",
 		},
 		zh: {
 			searchPlaceholder: "搜索文件...",
 			emptyTrash: "清空回收站",
 			cleanUnreferenced: "清理未引用文件",
+			cleanUnreferencedScan: "检查引用状态",
+			cleanUnreferencedClean: "移入回收站",
 			rebuildIndex: "重建索引",
 		},
 	});
@@ -23,6 +27,7 @@
 	import showProgress from "#src/utils/showProgress";
 	import emptyTrashCmd from "#src/commands/emptyTrash";
 	import rebuildIndexCmd from "#src/commands/rebuildIndex";
+	import cleanUnreferencedCmd from "#src/commands/cleanUnreferenced";
 
 	const {
 		cas,
@@ -38,22 +43,32 @@
 	async function cleanUnreferenced() {
 		if (loading) return;
 		loading = true;
-		const notice = showProgress(t("cleanUnreferenced"));
+		// 扫描与清理各自独立的进度条（允许同时显示）：
+		// 扫描遍历全部元数据耗时长，用「检查引用状态」文案避免误认为在删文件；
+		// 清理仅在真正移入回收站时出现
+		const scanNotice = showProgress(t("cleanUnreferencedScan"));
+		let cleanNotice: ReturnType<typeof showProgress> | undefined;
 		try {
-			let i = 0;
-			for await (const { node } of casMetadata.find({
-				filterBy: {
-					hasReference: false,
+			await cleanUnreferencedCmd(
+				cas,
+				casMetadata,
+				referenceManager,
+				(i, cidStr, phase) => {
+					if (phase === "scanning") {
+						scanNotice.update(i, cidStr);
+						return;
+					}
+					cleanNotice ??= showProgress(
+						t("cleanUnreferencedClean"),
+					);
+					cleanNotice.update(i, cidStr);
 				},
-				signal: undefined,
-			})) {
-				await cas.trash(node.cid);
-				i++;
-				notice.update(i, node.cid.toString());
-			}
+				{ signal: metadataWriteSignal },
+			);
 		} finally {
+			scanNotice.hide();
+			cleanNotice?.hide();
 			loading = false;
-			notice.hide();
 		}
 	}
 

@@ -42,21 +42,23 @@ export default async function rebuildIndex(
 	// 阶段 1：扫描磁盘，刷新仍存在副本的元数据（按块批量合并）
 	let scanned = 0;
 	let pending: CASMetadataObject[] = [];
+	const flush = async () => {
+		if (pending.length === 0) {
+			return;
+		}
+		await casMetadata.mergeBatch(pending, signal);
+		scanned += pending.length;
+		onProgress?.(scanned, pending[pending.length - 1].cid.toString());
+		pending = [];
+	};
 	for await (const obj of cas.objects()) {
 		signal.throwIfAborted();
 		pending.push({ ...obj, lastVisitedAt: scannedAt });
 		if (pending.length >= DEFAULT_MERGE_BATCH_SIZE) {
-			await casMetadata.mergeBatch(pending, signal);
-			scanned += pending.length;
-			onProgress?.(scanned, pending[pending.length - 1].cid.toString());
-			pending = [];
+			await flush();
 		}
 	}
-	if (pending.length > 0) {
-		await casMetadata.mergeBatch(pending, signal);
-		scanned += pending.length;
-		onProgress?.(scanned, pending[pending.length - 1].cid.toString());
-	}
+	await flush();
 
 	// 阶段 2：对账清理磁盘上已无副本的残留
 	let pruned = 0;

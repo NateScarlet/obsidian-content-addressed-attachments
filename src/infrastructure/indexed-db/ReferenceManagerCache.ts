@@ -9,6 +9,9 @@ const DB_VERSION = 1;
 const STORE_REFERENCES = "references";
 const STORE_META = "meta";
 
+/** 批量查询中单个 cid 的扫描上限：count 场景只需知道存在性，防御异常膨胀 */
+const FIND_BATCH_SCAN_LIMIT = 128;
+
 export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 	private db: Promise<IDBDatabase>;
 
@@ -132,6 +135,59 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 			yield edge.node.normalizedPath;
 	}
 
+	/**
+	 * 批量查询一批 cid 的引用条目（实现内部供请求合并使用）：
+	 * 单个只读事务内按 cid 主键前缀逐个游标取回，事务推进均为微任务 await。
+	 * 返回 cid 字符串 → 该 cid 的引用条目列表（无条目的 cid 不在 Map 中）。
+	 * 注意：单个 cid 最多取回 FIND_BATCH_SCAN_LIMIT 条——服务的是
+	 * skipVerify 存在性判定（条目有无），不能用于精确计数。
+	 */
+	async findBatch(
+		cids: CID[],
+		signal: AbortSignal | undefined,
+	): Promise<Map<string, ReferencePO[]>> {
+		if (cids.length === 0) {
+			return new Map();
+		}
+		const result = new Map<string, ReferencePO[]>();
+		await this.tx("readonly", [STORE_REFERENCES], async (stores) => {
+			const store = stores.get(STORE_REFERENCES)!;
+			for (const cid of cids) {
+				const cidStr = cid.toString();
+				const entries: ReferencePO[] = [];
+				for (
+					let after: string | undefined;
+					;
+					after = entries[entries.length - 1]?.normalizedPath
+				) {
+					const cursor = await executeIDBRequest(
+						store.openCursor(
+							IDBKeyRange.bound(
+								[cidStr, after ?? ""],
+								[cidStr + "\x00"],
+								true,
+								true,
+							),
+						),
+						signal,
+					);
+					if (!cursor) {
+						break;
+					}
+					const po = cursor.value as ReferencePO;
+					entries.push(po);
+					if (entries.length >= FIND_BATCH_SCAN_LIMIT) {
+						break;
+					}
+				}
+				if (entries.length > 0) {
+					result.set(cidStr, entries);
+				}
+			}
+		});
+		return result;
+	}
+
 	async expireByPath(
 		normalizedPath: string,
 		lastUpdatedBefore: Date,
@@ -216,6 +272,93 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 			await executeIDBRequest(store.put(po), signal);
 		});
 	}
+
+	/** 引用缓存中记录的全部笔记路径（去重），供外部删除对账做差集 */
+	async cachedPaths(signal?: AbortSignal): Promise<Set<string>> {
+		const db = await this.db;
+		const paths = new Set<string>();
+		await iterateAllEntries(db, [STORE_REFERENCES], signal, (po) => {
+			paths.add((po as ReferencePO).normalizedPath);
+			return false;
+		});
+		return paths;
+	}
+
+	/** 清除指向已消失笔记路径的全部缓存条目，返回清除数量 */
+	async removeByPaths(
+		paths: string[],
+		signal?: AbortSignal,
+	): Promise<number> {
+		if (paths.length === 0) {
+			return 0;
+		}
+		const targets = new Set(paths);
+		const db = await this.db;
+		const toDelete: ReferencePO[] = [];
+		await iterateAllEntries(db, [STORE_REFERENCES], signal, (po) => {
+			if (targets.has((po as ReferencePO).normalizedPath)) {
+				toDelete.push(po as ReferencePO);
+			}
+			return false;
+		});
+		if (toDelete.length === 0) {
+			return 0;
+		}
+		return await this.tx(
+			"readwrite",
+			[STORE_REFERENCES],
+			async (stores) => {
+				const store = stores.get(STORE_REFERENCES)!;
+				for (const po of toDelete) {
+					await executeIDBRequest(
+						store.delete([po.cid, po.normalizedPath]),
+						signal,
+					);
+				}
+				return toDelete.length;
+			},
+		);
+	}
+}
+
+/**
+ * 单事务遍历 store 全部条目（游标推进均为同一事务内的微任务 await，
+ * 满足 IDB 事务不过宏任务的约束）；回调返回 true 时提前结束。
+ */
+async function iterateAllEntries(
+	db: IDBDatabase,
+	storeNames: string[],
+	signal: AbortSignal | undefined,
+	visit: (po: unknown) => boolean | void,
+): Promise<void> {
+	await new Promise<void>((resolve, reject) => {
+		const tx = db.transaction(storeNames, "readonly");
+		tx.oncomplete = () => resolve();
+		tx.onerror = () =>
+			reject(tx.error ?? new Error("reference cache scan failed"));
+		tx.onabort = () =>
+			reject(tx.error ?? new Error("reference cache scan aborted"));
+		for (const name of storeNames) {
+			const cursorRequest = tx.objectStore(name).openCursor();
+			cursorRequest.onsuccess = () => {
+				const cursor = cursorRequest.result;
+				if (!cursor) {
+					return;
+				}
+				try {
+					if (visit(cursor.value)) {
+						return;
+					}
+				} catch (err) {
+					reject(err instanceof Error ? err : new Error(String(err)));
+					tx.abort();
+					return;
+				}
+				cursor.continue();
+			};
+		}
+		signal?.throwIfAborted();
+	});
 }
 
 interface ReferencePO {
