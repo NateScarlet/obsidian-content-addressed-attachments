@@ -75,6 +75,14 @@ preprocess-scripts/         # 官方维护的预处理脚本源码（构建入�
 
 `scriptURL` 支持多种 scheme：vault 相对路径、`https:`、`ipfs:`、`internal.ipfs-locked:`；参数经 URL fragment 传入。首个正式脚本发布前 index 条目使用 vault 相对路径，发布后切换为 `internal.ipfs-locked:<cid>,<release-url>`。
 
+## 数据权威：磁盘为唯一可信源
+
+附件的事实（是否存在、在哪个目录、路径/URL）以**磁盘文件系统**为唯一权威，IndexedDB 元数据（`CASMetadataImpl`/`ReferenceManagerCache`）**不是**权威源，只是可推导、可删除重建的索引：
+
+- 事实判定必须基于磁盘探测（`adapter.stat`/`exists` + CID 推导路径），不得依赖或等待 IndexedDB。
+- 元数据删除后按磁盘实际内容重建即可恢复正确；元数据丢失与磁盘真实缺失是不同的严重级别——前者可重建，后者才是真缺失。
+- 因此元数据同步（`meta.get/merge/delete`）是索引维护，不应阻塞任何仅需磁盘结果的操作（典型如 `resolveURL` 解析出落盘路径即可返回，不应被 IndexedDB 忙碌时的元数据写入拖住）。重建索引对账即遵循此原则（见下）。
+
 ## 回收站与多目录副本状态
 
 附件元数据（`CASMetadataObject`）用 `copies: [{dir, trashedAt?}]` 记录附件副本**实例**，不使用单一 `trashedAt` 字段：
