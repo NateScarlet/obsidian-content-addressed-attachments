@@ -48,6 +48,12 @@
 
 所有与文件名一致的导出应使用 `export default`。例如，`EncryptionService.ts` 中的 `EncryptionService` 类应使用 `export default class EncryptionService`，`toArrayBuffer.ts` 中的 `toArrayBuffer` 函数应使用 `export default function toArrayBuffer`。同一文件中可有其他命名导出，但主导出必须与文件名一致且使用默认导出。
 
+### 9. 日志不是可见反馈
+
+- `console.*` / 仅记录日志**不算**对调用者的可见反馈，不能据此宣称错误已处理、流程正常完成。生产构建（vite 打包）会清理这些日志，调用者根本看不到。
+- 唯一的可见反馈是真正的用户可见交互：`showError` 弹出报错，或明确的 `Notice` / UI 状态。
+- 因此"快速失败 / 可见反馈"原则的落点必须是 `showError` 等可见反馈，而非悄悄写日志再返回成功。
+
 ## 国际化多语言支持
 
 使用 `defineLocales` 定义中英文提示：
