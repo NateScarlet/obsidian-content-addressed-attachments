@@ -2,7 +2,7 @@
 	import formatFileSize from "#src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorerContext";
-	import { casMetadataSave, casMetadataBatchSave } from "#src/events";
+	import { casMetadataSave } from "#src/events";
 	import { debounce } from "obsidian";
 
 	const { t } = defineLocales({
@@ -31,12 +31,6 @@
 	}, 100);
 	$effect(() => {
 		return casMetadataSave.subscribe(() => {
-			updateEstimateStorage();
-		});
-	});
-	// 批量写入路径：批量事件已按 1s 节流派发，统计刷新跟随事件即可
-	$effect(() => {
-		return casMetadataBatchSave.subscribe(() => {
 			updateEstimateStorage();
 		});
 	});

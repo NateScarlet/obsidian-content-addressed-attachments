@@ -16,6 +16,13 @@ _Avoid_: 候选、remote source
 以测量某来源所在 Host 的可达性与往返延迟为目的的轻量请求；不判定内容是否存在。
 _Avoid_: 预检（与 CORS preflight 混淆）
 
+**合并批（coalescing batch）**：
+把同一注册窗口（同步块）内并发到达的请求自动合并为单个事务的通用机制
+（go 参照 `runInBatch`+`loop` 收集循环，`src/utils/CoalescingBatch.ts`）：
+写入侧把并发 `merge` 合并为一个 IndexedDB 读写事务，查询侧把并发引用计数
+查询合并为一个只读事务；调用方无需感知「逐条 vs 批量」、无需自行分块。
+_Avoid_: 批量写入、mergeBatch
+
 ## 项目概述
 
 - **目标**：Obsidian 社区插件（将 TypeScript 编译并打包为单文件 JavaScript）。
@@ -82,6 +89,7 @@ preprocess-scripts/         # 官方维护的预处理脚本源码（构建入�
 - 事实判定必须基于磁盘探测（`adapter.stat`/`exists` + CID 推导路径），不得依赖或等待 IndexedDB。
 - 元数据删除后按磁盘实际内容重建即可恢复正确；元数据丢失与磁盘真实缺失是不同的严重级别——前者可重建，后者才是真缺失。
 - 因此元数据同步（`meta.get/merge/delete`）是索引维护，不应阻塞任何仅需磁盘结果的操作（典型如 `resolveURL` 解析出落盘路径即可返回，不应被 IndexedDB 忙碌时的元数据写入拖住）。重建索引对账即遵循此原则（见下）。
+- 元数据写入经存储层合并批缓冲（见 Language「合并批」）：`merge` 单条调用在同一注册窗口内自动合并为一个读写事务，达到批上限（1000）才切新批，无积压时单条零等待（maxWait 而非 minWait）；调用方并行调用单条 `merge` 即可获得批量收益（重建索引按块 `Promise.all`、写侧同步服务同批 `Promise.all`），无需也不应使用批量入口。
 
 ## 回收站与多目录副本状态
 

@@ -11,14 +11,18 @@ import IncrementalScanProgress from "#src/lib/IncrementalScanProgress.svelte";
 import { getDownloadDirs } from "#src/settings";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import pruneDeletedPaths from "./ReferenceManager/pruneDeletedPaths";
-import {
-	batchKeyOf,
-	shouldExecuteImmediately,
-	type BatchState,
-} from "./ReferenceManager/mergeBatchPolicy";
+import CoalescingBatch from "#src/utils/CoalescingBatch";
 
 /** 请求合并的批上限：防积压场景下批无限膨胀与早到请求等待过久（max 非 min） */
-const MERGE_BATCH_MAX_SIZE = 64;
+const COALESCING_BATCH_MAX_SIZE = 64;
+
+/**
+ * 批归属键：合并只应用于相同验证语义的请求——
+ * skipVerify 与默认验证的调用方对结果的正确性前提不同，不共享批。
+ */
+function batchKeyOf(skipVerify: boolean): string {
+	return skipVerify ? "skipVerify" : "verify";
+}
 
 export interface ReferenceManagerCache {
 	add(
@@ -124,13 +128,14 @@ export default class ReferenceManager {
 		return count;
 	}
 
-	private pendingBatches = new Map<string, ReferenceLookupBatch>();
+	private pendingBatches = new Map<string, CoalescingBatch<CID, number>>();
 
 	/**
 	 * 经请求合并的缓存条目计数：并行到达的查询挂靠同一批，
-	 * 一个只读事务批量取回（零积压零等待语义，见 mergeBatchPolicy）。
+	 * 一个只读事务批量取回（零积压零等待语义，见 CoalescingBatch）。
 	 * 请求合并依赖调用侧的并行消费堆积——顺序逐条 await 时批内永远只有自己，
 	 * 等价于未合并（行为正确，仅无合并收益）。
+	 * 按验证语义（skipVerify/verify）分队列；同 cid 多 waiter 经合并键共享一次查询。
 	 */
 	private mergedEntryCount(
 		cid: CID,
@@ -138,30 +143,25 @@ export default class ReferenceManager {
 	): Promise<number> {
 		const key = batchKeyOf(true);
 		let batch = this.pendingBatches.get(key);
-		if (!batch || shouldExecuteImmediately(batch, MERGE_BATCH_MAX_SIZE)) {
-			if (batch) {
-				// 达到上限：立即收割当前批，为后续请求开新批
-				this.pendingBatches.delete(key);
-				void batch.execute(this.cache, signal);
-			}
-			batch = this.openBatch(key);
+		if (!batch) {
+			batch = new CoalescingBatch<CID, number>(
+				(cids, sig) => this.queryEntryCounts(cids, sig),
+				COALESCING_BATCH_MAX_SIZE,
+				this.scanController.signal,
+				{ keyOf: (c) => c.toString() },
+			);
+			this.pendingBatches.set(key, batch);
 		}
 		return batch.join(cid, signal);
 	}
 
-	private openBatch(key: string): ReferenceLookupBatch {
-		const batch = new ReferenceLookupBatch();
-		this.pendingBatches.set(key, batch);
-		// 收割：注册窗口在当前微任务链结束（下一个宏任务前）闭合。
-		// IDB 事务过不了宏任务，注册窗口天然被截断；无积压时窗口内
-		// 只有发起请求本身，立即执行（零 minWait）。
-		queueMicrotask(() => {
-			if (this.pendingBatches.get(key) === batch) {
-				this.pendingBatches.delete(key);
-				void batch.execute(this.cache, undefined);
-			}
-		});
-		return batch;
+	/** 一次只读事务批量取回一批 cid 的引用条目数（结果与输入逐项对齐） */
+	private async queryEntryCounts(
+		cids: CID[],
+		signal: AbortSignal | undefined,
+	): Promise<number[]> {
+		const entriesMap = await this.cache.findBatch(cids, signal);
+		return cids.map((cid) => entriesMap.get(cid.toString())?.length ?? 0);
 	}
 
 	async *findFilePath(
@@ -405,71 +405,3 @@ const defaultIncrementalScanReporter: IncrementalScanReporter = {
 		};
 	},
 };
-
-/**
- * 引用查询合并批：收集注册窗口内到达的 cid，一个只读事务批量取回后分发。
- * 生命周期：openBatch 创建 → 微任务窗口内 join → 窗口闭合即 execute（一次）；
- * 达到批上限时由 mergedEntryCount 提前 execute 并开新批。
- */
-class ReferenceLookupBatch implements BatchState {
-	/** 批内请求数（含去重前；合并策略按此判定收割时机） */
-	pending = 0;
-	private cids = new Set<string>();
-	private waiters = new Map<
-		string,
-		((entries: number, error?: Error) => void)[]
-	>();
-
-	join(cid: CID, signal: AbortSignal | undefined): Promise<number> {
-		return new Promise<number>((resolve, reject) => {
-			const onAbort = (): void => {
-				signal?.removeEventListener("abort", onAbort);
-				reject(new DOMException("Aborted", "AbortError"));
-			};
-			if (signal?.aborted) {
-				onAbort();
-				return;
-			}
-			signal?.addEventListener("abort", onAbort, { once: true });
-			const cidStr = cid.toString();
-			this.pending++;
-			this.cids.add(cidStr);
-			const waiters = this.waiters.get(cidStr) ?? [];
-			waiters.push((entries, error) => {
-				signal?.removeEventListener("abort", onAbort);
-				if (error !== undefined) {
-					reject(error);
-				} else {
-					resolve(entries);
-				}
-			});
-			this.waiters.set(cidStr, waiters);
-		});
-	}
-
-	async execute(
-		cache: ReferenceManagerCache,
-		signal: AbortSignal | undefined,
-	): Promise<void> {
-		if (this.cids.size === 0) {
-			return;
-		}
-		try {
-			const cids = [...this.cids].map((cidStr) => CID.parse(cidStr));
-			const entriesMap = await cache.findBatch(cids, signal);
-			this.settle((cidStr) => entriesMap.get(cidStr)?.length ?? 0);
-		} catch (err) {
-			// 批级失败（事务/中止）传播给全部挂靠者，互不拖垮其他批
-			const error = err instanceof Error ? err : new Error(String(err));
-			this.settle(() => 0, error);
-		}
-	}
-
-	private settle(entriesOf: (cidStr: string) => number, error?: Error): void {
-		for (const [cidStr, waiters] of this.waiters) {
-			for (const waiter of waiters) {
-				waiter(entriesOf(cidStr), error);
-			}
-		}
-	}
-}

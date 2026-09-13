@@ -6,19 +6,13 @@ import { casMetadataChanged } from "#src/events";
 import type { CAS } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 
-/** 内存元数据 mock：记录 mergeBatch/delete 调用，供断言批量落地 */
+/** 内存元数据 mock：记录 merge/delete 调用，供断言批量落地 */
 class MemMeta implements CASMetadata {
-	mergeBatch = vi.fn(
-		async (objs: CASMetadataObject[], signal: AbortSignal) => {
-			signal.throwIfAborted();
-			return { didCreate: objs.length, didChange: objs.length };
-		},
-	);
+	merge = vi.fn(async (_obj: CASMetadataObject) => ({ didCreate: true }));
 	delete = vi.fn(async (_cid: CID, signal?: AbortSignal) => {
 		signal?.throwIfAborted();
 	});
 	get = vi.fn(async () => undefined);
-	merge = vi.fn(async () => ({ didCreate: true }));
 	async *find() {}
 	async estimateStorage() {
 		return { normalBytes: 0, trashBytes: 0 };
@@ -60,13 +54,10 @@ describe("CASMetadataSyncService", () => {
 		casMetadataChanged.dispatch({ detail: { cid } });
 
 		await vi.waitFor(() => {
-			expect(meta.mergeBatch).toHaveBeenCalledTimes(1);
+			expect(meta.merge).toHaveBeenCalledTimes(1);
 		});
-		const [objs] = meta.mergeBatch.mock.calls[0] as unknown as [
-			CASMetadataObject[],
-		];
-		expect(objs).toHaveLength(1);
-		expect(objs[0].copies).toEqual([
+		const [obj] = meta.merge.mock.calls[0];
+		expect(obj.copies).toEqual([
 			{ dir: "dirA", trashedAt: undefined },
 			{ dir: "dirB", trashedAt: new Date("2026-01-01") },
 		]);
@@ -74,7 +65,7 @@ describe("CASMetadataSyncService", () => {
 		service[Symbol.dispose]();
 	});
 
-	it("有副本的 CID 按磁盘真相 mergeBatch 落地", async () => {
+	it("有副本的 CID 按磁盘真相 merge 落地", async () => {
 		const meta = new MemMeta();
 		const cas = makeCas(
 			new Map([["abc", [{ dir: "dirA", trashedAt: undefined }]]]),
@@ -95,17 +86,14 @@ describe("CASMetadataSyncService", () => {
 		});
 
 		await vi.waitFor(() => {
-			expect(meta.mergeBatch).toHaveBeenCalledTimes(1);
+			expect(meta.merge).toHaveBeenCalledTimes(1);
 		});
-		const [objs] = meta.mergeBatch.mock.calls[0] as unknown as [
-			CASMetadataObject[],
-		];
-		expect(objs).toHaveLength(1);
-		expect(objs[0].cid.toString()).toBe("abc");
-		expect(objs[0].filename).toBe("a.png");
-		expect(objs[0].format).toBe("image/png");
-		expect(objs[0].size).toBe(42);
-		expect(objs[0].copies).toEqual([{ dir: "dirA", trashedAt: undefined }]);
+		const [obj] = meta.merge.mock.calls[0];
+		expect(obj.cid.toString()).toBe("abc");
+		expect(obj.filename).toBe("a.png");
+		expect(obj.format).toBe("image/png");
+		expect(obj.size).toBe(42);
+		expect(obj.copies).toEqual([{ dir: "dirA", trashedAt: undefined }]);
 		// 有副本时不做 delete
 		expect(meta.delete).not.toHaveBeenCalled();
 
@@ -127,12 +115,12 @@ describe("CASMetadataSyncService", () => {
 			expect(meta.delete).toHaveBeenCalledTimes(1);
 		});
 		expect(meta.delete).toHaveBeenCalledWith(cid, expect.any(AbortSignal));
-		expect(meta.mergeBatch).not.toHaveBeenCalled();
+		expect(meta.merge).not.toHaveBeenCalled();
 
 		service[Symbol.dispose]();
 	});
 
-	it("同批到达的多个 CID 折叠为一次 mergeBatch", async () => {
+	it("同批到达的多个 CID 并行逐条 merge（同一微任务链入队）", async () => {
 		const meta = new MemMeta();
 		const cas = makeCas(
 			new Map([
@@ -152,11 +140,9 @@ describe("CASMetadataSyncService", () => {
 		casMetadataChanged.dispatch({ detail: { cid: b } });
 
 		await vi.waitFor(() => {
-			expect(meta.mergeBatch).toHaveBeenCalledTimes(1);
+			expect(meta.merge).toHaveBeenCalledTimes(2);
 		});
-		const [objs] = meta.mergeBatch.mock.calls[0] as unknown as [
-			CASMetadataObject[],
-		];
+		const objs = meta.merge.mock.calls.map(([obj]) => obj);
 		expect(objs.map((o) => o.cid.toString()).sort()).toEqual(["a", "b"]);
 
 		service[Symbol.dispose]();
@@ -179,21 +165,18 @@ describe("CASMetadataSyncService", () => {
 		casMetadataChanged.dispatch({ detail: { cid, filename: "new.png" } });
 
 		await vi.waitFor(() => {
-			expect(meta.mergeBatch).toHaveBeenCalledTimes(1);
+			expect(meta.merge).toHaveBeenCalledTimes(1);
 		});
-		const [objs] = meta.mergeBatch.mock.calls[0] as unknown as [
-			CASMetadataObject[],
-		];
-		expect(objs).toHaveLength(1);
-		expect(objs[0].filename).toBe("new.png");
+		const [obj] = meta.merge.mock.calls[0];
+		expect(obj.filename).toBe("new.png");
 
 		service[Symbol.dispose]();
 	});
 
 	it("写失败不阻断后续处理，且不依赖日志（可见反馈由组装方决定）", async () => {
 		const meta = new MemMeta();
-		// 第一次 mergeBatch 抛错，第二次成功
-		meta.mergeBatch.mockRejectedValueOnce(new Error("idb busy"));
+		// 第一次 merge 抛错，第二次成功
+		meta.merge.mockRejectedValueOnce(new Error("idb busy"));
 		const cas = makeCas(
 			new Map([["a", [{ dir: "dirA", trashedAt: undefined }]]]),
 		);
@@ -207,12 +190,12 @@ describe("CASMetadataSyncService", () => {
 		casMetadataChanged.dispatch({ detail: { cid } });
 		// 等待第一次（失败）处理完，再触发新变动
 		await vi.waitFor(() => {
-			expect(meta.mergeBatch).toHaveBeenCalledTimes(1);
+			expect(meta.merge).toHaveBeenCalledTimes(1);
 		});
 		casMetadataChanged.dispatch({ detail: { cid } });
 
 		await vi.waitFor(() => {
-			expect(meta.mergeBatch).toHaveBeenCalledTimes(2);
+			expect(meta.merge).toHaveBeenCalledTimes(2);
 		});
 		// 服务不因失败而永久卡死
 
@@ -236,7 +219,7 @@ describe("CASMetadataSyncService", () => {
 
 		// 给微任务机会，断言没有触发
 		await Promise.resolve();
-		expect(meta.mergeBatch).not.toHaveBeenCalled();
+		expect(meta.merge).not.toHaveBeenCalled();
 		expect(meta.delete).not.toHaveBeenCalled();
 	});
 });

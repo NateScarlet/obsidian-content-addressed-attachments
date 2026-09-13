@@ -8,11 +8,8 @@ import type CASMetadataObjectFilterBuilder from "#src/CASMetadataObjectFilterBui
 import executeIDBRequest from "#src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "#src/utils/iterateIDBObjectStore";
 import orderedParallelFilter from "#src/utils/orderedParallelFilter";
-import {
-	casMetadataDelete,
-	casMetadataSave,
-	casMetadataBatchSave,
-} from "#src/events";
+import { casMetadataDelete, casMetadataSave } from "#src/events";
+import CoalescingBatch from "#src/utils/CoalescingBatch";
 import { isEqual, uniqBy } from "es-toolkit";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
@@ -21,8 +18,8 @@ const OBJECTS_STORE_NAME = "objects";
 const STATS_STORE_NAME = "stats";
 const STATS_KEY = "summary";
 
-/** mergeBatch 每块的事务大小：块越大单事务越长，1000 兼顾事务时长与事务总数 */
-const MERGE_BATCH_CHUNK_SIZE = 1000;
+/** 合并批的事务大小：批越大单事务越长，1000 兼顾事务时长与事务总数（go 参照 maxBatchSize） */
+const COALESCING_BATCH_MAX_SIZE = 1000;
 
 /**
  * 非主键路径过滤的并发上限：一批元素同步启动谓词，使引用计数等异步谓词并发到达、
@@ -32,6 +29,20 @@ const PARALLEL_FILTER_LIMIT = 1024;
 
 export class CASMetadataImpl implements CASMetadata {
 	private db: Promise<IDBDatabase>;
+	/** 内部批执行阶段信号：dispose（卸载/热重载）时 abort 中止在飞事务 */
+	private readonly batchController = new AbortController();
+	/**
+	 * 内部合并批：merge 入队后在同一注册窗口内自动合并为单个读写事务
+	 * （go 参照 runInBatch+loop 收集循环，见 CoalescingBatch）。
+	 */
+	private readonly coalescingBatch = new CoalescingBatch<
+		CASMetadataObject,
+		{ didCreate: boolean }
+	>(
+		(objs) => this.executeMergeBatch(objs),
+		COALESCING_BATCH_MAX_SIZE,
+		this.batchController.signal,
+	);
 
 	constructor(private filterBuilder: CASMetadataObjectFilterBuilder) {
 		this.db = (() => {
@@ -79,12 +90,14 @@ export class CASMetadataImpl implements CASMetadata {
 	}
 
 	/**
-	 * 关闭 IndexedDB 连接。插件卸载时必须调用，否则热重载/重启用例下
+	 * 关闭 IndexedDB 连接并中止内部批在飞事务。插件卸载时必须调用，否则热重载/重启用例下
 	 * 旧连接残留，后续打开（尤其需要版本变更升级时）会被旧连接阻塞而永久 pending，
 	 * 表现为所有查询挂起、库目录被占用、进程无法退出。
 	 * fire-and-forget：open 尚未 resolve 时在 resolve 后立即关闭。
 	 */
 	[Symbol.dispose](): void {
+		// 中止内部批执行阶段（多版本竞争写同一 IndexedDB 的窗口关闭）
+		this.batchController.abort();
 		void this.db.then((db) => db.close());
 	}
 
@@ -217,115 +230,82 @@ export class CASMetadataImpl implements CASMetadata {
 		);
 	}
 
+	/**
+	 * 单条合并：入队内部合并批（go 参照 runInBatch+loop），并发到达的 merge
+	 * 在同一注册窗口内自动合并为一个读写事务。调用者 signal 只在收集阶段生效
+	 * （已 aborted 不入队）；执行阶段由内部后台信号控制（dispose 时中止），
+	 * 不支持调用者取消。
+	 */
 	async merge(obj: CASMetadataObject, signal?: AbortSignal) {
-		const result = await this.tx(
-			"readwrite",
-			async ({ store, recordChange }) => {
-				const cidStr = obj.cid.toString();
-				const existing = await executeIDBRequest(
-					store.get(cidStr) as IDBRequest<PO | undefined>,
-					signal,
-				);
-				// 兼容 v1 遗留：无 copies 但有 trashedAt 时按占位副本处理，
-				// 保证回收站状态可读出；正常读取（decode）亦做同样归一化
-				const existingPO = existing
-					? normalizePOForStaleV1(existing)
-					: undefined;
-				const po = buildMergedPO(this.encode(obj), existingPO);
-				if (existingPO && po.copies !== undefined) {
-					// 归一化后旧对象可能含 trashedAt，需与 po 对齐才能正确判定无变更且收敛旧数据
-					const existingNorm = { ...existingPO, copies: po.copies };
-					if (isEqual(existingNorm, po)) {
-						return {
-							didCreate: false,
-							didChange: false,
-							after: existingPO,
-						};
-					}
-				}
-				recordChange(po, existingPO);
-				await executeIDBRequest(store.put(po), signal);
-				return {
-					didCreate: !existingPO,
-					didChange: true,
-					after: po,
-				};
-			},
-			signal,
-		);
-		if (result.didChange) {
-			casMetadataSave.dispatch({ detail: this.decode(result.after) });
-		}
-		return result;
+		return this.coalescingBatch.join(obj, signal);
 	}
 
 	/**
-	 * 批量合并：按块共用一个读写事务，块内取回全部既有记录、经既有合并纯函数
-	 * 合成新记录后批量写回；统计（字节数）每块只在块末汇总更新一次。
-	 * 3 万文件场景下事务数从 3 万降到 ~30，同时缩小进程被杀时的损坏窗口。
-	 * 每块提交后立即派发一次聚合批量事件；界面更新频率由订阅方限流。
+	 * 内部批执行器：一个读写事务内按序逐 op get→put（同批同 cid 不去重，
+	 * 后到者覆盖先到者），统计只在块末汇总一次；每块提交后对每个变更对象
+	 * 派发 casMetadataSave（与单条 merge 语义一致，didChange 才派发）。
 	 */
-	async mergeBatch(
+	private async executeMergeBatch(
 		objs: CASMetadataObject[],
-		signal: AbortSignal,
-	): Promise<{ didCreate: number; didChange: number }> {
-		let didCreate = 0;
-		let didChange = 0;
-		for (
-			let start = 0;
-			start < objs.length;
-			start += MERGE_BATCH_CHUNK_SIZE
-		) {
-			signal.throwIfAborted();
-			const chunk = objs.slice(start, start + MERGE_BATCH_CHUNK_SIZE);
-			const { created, changedObjs } = await this.tx(
-				"readwrite",
-				async ({ store, recordChange }) => {
-					console.log("will get exitingList");
-					// 块内一次性取回全部既有记录（事务保持活跃，顺序 get）
-					const existingList = await Promise.all(
-						chunk.map((obj) =>
-							executeIDBRequest(
-								store.get(obj.cid.toString()) as IDBRequest<
-									PO | undefined
-								>,
-								signal,
-							),
-						),
+	): Promise<{ didCreate: boolean }[]> {
+		const results = await this.tx(
+			"readwrite",
+			async ({ store, recordChange }) => {
+				const batchResults: {
+					didCreate: boolean;
+					didChange: boolean;
+					after: PO;
+				}[] = [];
+				for (const obj of objs) {
+					const cidStr = obj.cid.toString();
+					const existing = await executeIDBRequest(
+						store.get(cidStr) as IDBRequest<PO | undefined>,
+						this.batchController.signal,
 					);
-					console.log("got exitingList", existingList);
-					const changedObjs: CASMetadataObject[] = [];
-					let created = 0;
-					for (const [i, obj] of chunk.entries()) {
-						const existingPO = existingList[i]
-							? normalizePOForStaleV1(existingList[i])
-							: undefined;
-						const po = buildMergedPO(this.encode(obj), existingPO);
-						if (existingPO && po.copies !== undefined) {
-							const existingNorm = {
-								...existingPO,
-								copies: po.copies,
-							};
-							if (isEqual(existingNorm, po)) {
-								continue;
-							}
+					// 兼容 v1 遗留：无 copies 但有 trashedAt 时按占位副本处理，
+					// 保证回收站状态可读出；正常读取（decode）亦做同样归一化
+					const existingPO = existing
+						? normalizePOForStaleV1(existing)
+						: undefined;
+					const po = buildMergedPO(this.encode(obj), existingPO);
+					if (existingPO && po.copies !== undefined) {
+						// 归一化后旧对象可能含 trashedAt，需与 po 对齐才能正确判定无变更且收敛旧数据
+						const existingNorm = {
+							...existingPO,
+							copies: po.copies,
+						};
+						if (isEqual(existingNorm, po)) {
+							batchResults.push({
+								didCreate: false,
+								didChange: false,
+								after: existingPO,
+							});
+							continue;
 						}
-						recordChange(po, existingPO);
-						await executeIDBRequest(store.put(po), signal);
-						created += existingPO ? 0 : 1;
-						changedObjs.push(this.decode(po));
 					}
-					return { created, changedObjs };
-				},
-				signal,
-			);
-			didCreate += created;
-			didChange += changedObjs.length;
-			if (changedObjs.length > 0) {
-				casMetadataBatchSave.dispatch({ detail: changedObjs });
+					recordChange(po, existingPO);
+					await executeIDBRequest(
+						store.put(po),
+						this.batchController.signal,
+					);
+					batchResults.push({
+						didCreate: !existingPO,
+						didChange: true,
+						after: po,
+					});
+				}
+				return batchResults;
+			},
+			this.batchController.signal,
+		);
+		for (const result of results) {
+			if (result.didChange) {
+				casMetadataSave.dispatch({
+					detail: this.decode(result.after),
+				});
 			}
 		}
-		return { didCreate, didChange };
+		return results.map(({ didCreate }) => ({ didCreate }));
 	}
 
 	async delete(cid: CID, signal?: AbortSignal): Promise<void> {

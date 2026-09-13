@@ -12,16 +12,17 @@ export interface RebuildIndexOptions {
 	signal: AbortSignal;
 }
 
-/** 批量合并块大小：每块一个读写事务，降低事务数与中断损坏窗口 */
+/** 内部合并批块大小：块内并行 merge 在同一个微任务链入队，自动合并为一个内部批 */
 export const DEFAULT_MERGE_BATCH_SIZE = 1000;
 
 /**
  * 重建索引并执行磁盘对账（流式，不把全部对象加载进内存）。
  *
  * 分两阶段，基于时间戳标记实现：
- * 1. 扫描磁盘存在的副本，累积成块调用 mergeBatch 把该 CID 记为
+ * 1. 扫描磁盘存在的副本，累积成块调用 merge（块内并行）把该 CID 记为
  *    lastVisitedAt = scannedAt，并以其在磁盘上的副本实例集合为准覆盖
- *    copies（含清理回收站标记）。
+ *    copies（含清理回收站标记）。块内并发 merge 在存储层内部自动合并为
+ *    单个读写事务（见 CASMetadataImpl 内部缓冲），无需调用方分块感知。
  * 2. 流式遍历元数据，凡 lastVisitedAt 早于 scannedAt（即本次扫描未覆盖、
  *    磁盘上已无该 CID 的任何副本）的记录执行清理：
  *    - 仍被引用：保留记录与 filename/format，仅清空副本状态并打上 lastVisitedAt，
@@ -35,28 +36,27 @@ export default async function rebuildIndex(
 	onProgress: ((index: number, cidStr: string) => void) | undefined,
 	options: RebuildIndexOptions,
 ): Promise<RebuildIndexResult> {
-	// signal 必填：mergeBatch 契约要求显式中止能力，未传由类型层拒绝
+	// signal 必填：调用方信号在 merge 收集阶段生效（入队前 throwIfAborted）
 	const { signal } = options;
 	const scannedAt = new Date();
 
-	// 阶段 1：扫描磁盘，刷新仍存在副本的元数据（按块批量合并）
+	// 阶段 1：扫描磁盘，刷新仍存在副本的元数据（按块并行合并）
 	let scanned = 0;
 	let pending: CASMetadataObject[] = [];
 	const flush = async () => {
 		if (pending.length === 0) {
 			return;
 		}
-		await casMetadata.mergeBatch(pending, signal);
+		// 块内并行 merge：同一微任务链入队，存储层内部自动合并为一个事务
+		await Promise.all(pending.map((obj) => casMetadata.merge(obj, signal)));
 		scanned += pending.length;
 		onProgress?.(scanned, pending[pending.length - 1].cid.toString());
 		pending = [];
 	};
 	for await (const obj of cas.objects()) {
 		signal.throwIfAborted();
-		console.log("got obj", obj);
 		pending.push({ ...obj, lastVisitedAt: scannedAt });
 		if (pending.length >= DEFAULT_MERGE_BATCH_SIZE) {
-			console.log("will flush", pending.length);
 			await flush();
 		}
 	}

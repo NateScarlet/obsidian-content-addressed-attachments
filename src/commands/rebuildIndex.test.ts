@@ -7,31 +7,22 @@ import rebuildIndex, { DEFAULT_MERGE_BATCH_SIZE } from "./rebuildIndex";
 import type { CAS } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 
-/** 内存元数据，merge 为整条覆盖，mergeBatch 分块委托 merge 并记录调用 */
+/** 内存元数据，merge 为整条覆盖并记录每次调用（含信号） */
 class MemMeta implements CASMetadata {
 	map = new Map<string, CASMetadataObject>();
-	mergeBatchCalls: {
-		objs: CASMetadataObject[];
-		signal: AbortSignal;
+	mergeCalls: {
+		obj: CASMetadataObject;
+		signal: AbortSignal | undefined;
 	}[] = [];
 
 	async get(cid: CID) {
 		return this.map.get(cid.toString());
 	}
-	async merge(obj: CASMetadataObject) {
+	async merge(obj: CASMetadataObject, signal?: AbortSignal) {
+		this.mergeCalls.push({ obj, signal });
 		const didCreate = !this.map.has(obj.cid.toString());
 		this.map.set(obj.cid.toString(), obj);
 		return { didCreate };
-	}
-	async mergeBatch(objs: CASMetadataObject[], signal: AbortSignal) {
-		this.mergeBatchCalls.push({ objs: [...objs], signal });
-		let didCreate = 0;
-		for (const obj of objs) {
-			const created = !(obj.cid.toString() in this.map);
-			if (created) didCreate++;
-			await this.merge(obj);
-		}
-		return { didCreate, didChange: objs.length };
 	}
 	async delete(cid: CID) {
 		this.map.delete(cid.toString());
@@ -87,7 +78,7 @@ async function makeObjects(n: number) {
 }
 
 describe("rebuildIndex 批量写入", () => {
-	it("磁盘对象分块调用 mergeBatch，默认块大小分块", async () => {
+	it("磁盘对象块内并行 merge，默认块大小分块", async () => {
 		const onDisk = await makeObjects(DEFAULT_MERGE_BATCH_SIZE + 1);
 		const meta = new MemMeta();
 		const rm = refManager(new Set());
@@ -101,19 +92,15 @@ describe("rebuildIndex 批量写入", () => {
 		);
 
 		expect(scanned).toBe(DEFAULT_MERGE_BATCH_SIZE + 1);
-		// 每块一次调用，共 ceil(n / batchSize) 次
-		expect(meta.mergeBatchCalls).toHaveLength(2);
-		expect(meta.mergeBatchCalls[0].objs).toHaveLength(
-			DEFAULT_MERGE_BATCH_SIZE,
-		);
-		expect(meta.mergeBatchCalls[1].objs).toHaveLength(1);
+		// 逐条 merge 调用，共 n 次（块内并行；块边界由进度回调覆盖断言）
+		expect(meta.mergeCalls).toHaveLength(DEFAULT_MERGE_BATCH_SIZE + 1);
 		// 全部记录写入元数据
 		for (const obj of onDisk) {
 			expect(await meta.get(obj.cid)).toBeDefined();
 		}
 	});
 
-	it("mergeBatch 收到的 signal 与传入重建命令的是同一个", async () => {
+	it("逐条 merge 均收到与传入重建命令相同的 signal", async () => {
 		const onDisk = await makeObjects(3);
 		const meta = new MemMeta();
 		const rm = refManager(new Set());
@@ -123,8 +110,8 @@ describe("rebuildIndex 批量写入", () => {
 			signal: controller.signal,
 		});
 
-		expect(meta.mergeBatchCalls.length).toBeGreaterThan(0);
-		for (const call of meta.mergeBatchCalls) {
+		expect(meta.mergeCalls.length).toBeGreaterThan(0);
+		for (const call of meta.mergeCalls) {
 			expect(call.signal).toBe(controller.signal);
 		}
 	});
@@ -153,7 +140,7 @@ describe("rebuildIndex 批量写入", () => {
 		);
 	});
 
-	it("信号已中止时抛出 AbortError 且不再调用 mergeBatch", async () => {
+	it("信号已中止时抛出 AbortError 且不再调用 merge", async () => {
 		const onDisk = await makeObjects(3);
 		const meta = new MemMeta();
 		const rm = refManager(new Set());
@@ -165,7 +152,7 @@ describe("rebuildIndex 批量写入", () => {
 				signal: controller.signal,
 			}),
 		).rejects.toThrow();
-		expect(meta.mergeBatchCalls).toHaveLength(0);
+		expect(meta.mergeCalls).toHaveLength(0);
 	});
 });
 

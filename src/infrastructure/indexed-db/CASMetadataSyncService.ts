@@ -42,7 +42,8 @@ export class CASMetadataSyncService {
 
 	/**
 	 * 排空当前 pending 的失效信号：对每个 CID 按磁盘真相重建副本状态；
-	 * 有副本则 merge，无副本则 delete。同批到达的多个 CID 折叠为一次 mergeBatch。
+	 * 有副本则 merge，无副本则 delete。同批到达的多个 CID 并行逐条 merge，
+	 * 在同一微任务链入队，存储层内部自动合并为一个事务。
 	 * flush 期间新到达的信号并入下一批，天然批量。
 	 */
 	private async drain(): Promise<void> {
@@ -96,7 +97,10 @@ export class CASMetadataSyncService {
 		}
 
 		if (merges.length > 0) {
-			await this.meta.mergeBatch(merges, this.signal);
+			// 并行逐条 merge：同一微任务链入队，存储层内部自动合并为一个事务
+			await Promise.all(
+				merges.map((obj) => this.meta.merge(obj, this.signal)),
+			);
 		}
 		for (const cid of deletes) {
 			await this.meta.delete(cid, this.signal);

@@ -42,21 +42,16 @@ export interface CASMetadataObjectFilters {
 
 export interface CASMetadata {
 	get(cid: CID): Promise<CASMetadataObject | undefined>;
+	/**
+	 * 单条合并（存储层内部自动合并）：并发到达的 merge 在同一注册窗口内
+	 * 合并为单个读写事务（go 参照 runInBatch+loop 收集循环），调用方无需
+	 * 感知「逐条 vs 批量」、无需自行分块。信号只在收集阶段生效（已 aborted
+	 * 不入队），执行阶段由存储层后台信号控制（插件卸载时中止在飞事务）。
+	 */
 	merge(
 		obj: CASMetadataObject,
 		signal?: AbortSignal,
 	): Promise<{ didCreate: boolean }>;
-	/**
-	 * 批量合并：整块共用少量 IndexedDB 读写事务，供大规模批量写入（重建索引等）使用，
-	 * 避免逐条 merge 时每条一个事务的性能与中断损坏窗口问题。
-	 * 与 merge 语义一致（partial 字段保留既有值、副本以传入为准），每块提交后
-	 * 派发一次聚合的批量保存事件而非逐条派发；界面更新频率由订阅方限流。
-	 * signal 必填：插件卸载等场景必须能中止进行中的写入，避免多版本竞争写入。
-	 */
-	mergeBatch(
-		objs: CASMetadataObject[],
-		signal: AbortSignal,
-	): Promise<{ didCreate: number; didChange: number }>;
 	delete(cid: CID, signal?: AbortSignal): Promise<void>;
 	/** 固定使用索引时间降序排列，不支持其他排序 */
 	find(options: {
