@@ -4,6 +4,7 @@ import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
 import findIPFSLinks from "./utils/findIPFSLinks";
 import IPFSLink from "./utils/IPFSLink";
+import isAbortError from "./utils/isAbortError";
 import { Notice, TFile } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "#src/lib/IncrementalScanProgress.svelte";
@@ -69,6 +70,8 @@ export default class ReferenceManager {
 	private readonly incrementalScanReporter: IncrementalScanReporter;
 	/** 本类默认构建的引用缓存（注入的缓存不记录，由注入者负责清理） */
 	private readonly builtCache: ReferenceManagerCacheImpl | undefined;
+	/** 后台索引任务（增量扫描等）共享的中止信号：构建时创建，dispose（卸载/热重载）时 abort 取消 */
+	private readonly scanController = new AbortController();
 
 	constructor(
 		private plugin: ContentAddressedAttachmentPlugin,
@@ -88,10 +91,11 @@ export default class ReferenceManager {
 	}
 
 	/**
-	 * 构建者负责清理：只关闭本类默认构建的引用缓存连接；
+	 * 构建者负责清理：先取消后台索引任务，再关闭本类默认构建的引用缓存连接；
 	 * 注入的 cache 由注入者清理，不在此处理。
 	 */
 	[Symbol.dispose](): void {
+		this.scanController.abort();
 		this.builtCache?.[Symbol.dispose]();
 	}
 
@@ -230,33 +234,47 @@ export default class ReferenceManager {
 	}
 
 	private async doIncrementalScan() {
-		const cutoffAt = await this.cache.cutoffAt(undefined);
-		const { vault } = this.plugin.app;
-		const startAt = new Date();
-		const newFiles = vault
-			.getMarkdownFiles()
-			.filter((file) => file.stat.mtime >= cutoffAt.getTime());
-		if (newFiles.length === 0) {
-			return;
-		}
-		const progress = this.incrementalScanReporter.begin(newFiles.length);
+		// 共享构建时的后台中止信号：dispose（卸载/热重载）时 abort 取消扫描，
+		// 停止启动新任务、中止在飞写入、关闭进度条。
+		const signal = this.scanController.signal;
 		try {
-			const jobs: Promise<void>[] = [];
-			let nextIndex = 1;
-			for (const file of newFiles) {
-				jobs.push(
-					this.loadFile(file.path).then(() => {
-						const index = nextIndex;
-						nextIndex += 1;
-						progress.update(index, file.path);
-					}),
-				);
+			signal.throwIfAborted();
+			const cutoffAt = await this.cache.cutoffAt(signal);
+			const { vault } = this.plugin.app;
+			const startAt = new Date();
+			const newFiles = vault
+				.getMarkdownFiles()
+				.filter((file) => file.stat.mtime >= cutoffAt.getTime());
+			if (newFiles.length === 0) {
+				return;
 			}
-			await Promise.all(jobs);
-		} finally {
-			progress.finish();
+			const progress = this.incrementalScanReporter.begin(
+				newFiles.length,
+			);
+			try {
+				const jobs: Promise<void>[] = [];
+				let nextIndex = 1;
+				for (const file of newFiles) {
+					signal.throwIfAborted();
+					jobs.push(
+						this.loadFile(file.path).then(() => {
+							const index = nextIndex;
+							nextIndex += 1;
+							progress.update(index, file.path);
+						}),
+					);
+				}
+				await Promise.all(jobs);
+			} finally {
+				progress.finish();
+			}
+			await this.cache.setCutoffAt(startAt, signal);
+		} catch (error) {
+			// 取消（卸载/热重载）为正常终止：静默返回，进度条已在 finally 关闭，不写 cutoff。
+			if (!isAbortError(error)) {
+				throw error;
+			}
 		}
-		await this.cache.setCutoffAt(startAt, undefined);
 	}
 
 	async loadFile(normalizedPath: string) {
@@ -270,9 +288,11 @@ export default class ReferenceManager {
 			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
 		// 索引以磁盘为唯一可信源（vault.read），不以 cachedRead / 编辑器缓冲为准，
 		// 避免过时缓存让被引用附件被误判为未引用（见 CONTEXT.md「磁盘为唯一可信源」）。
+		// 共享后台中止信号：卸载时取消在飞索引写入。
 		await this.loadFileContent(
 			normalizedPath,
 			file instanceof TFile ? await this.plugin.app.vault.read(file) : "",
+			this.scanController.signal,
 		);
 	}
 
