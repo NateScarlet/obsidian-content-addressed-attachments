@@ -176,6 +176,19 @@ export function getDefaultSettings(): Settings {
 	};
 }
 
+/**
+ * 下载目录列表：主下载目录与各网关专属下载目录（去重、忽略空值）。
+ * 恢复仅锁定引用的文件时只允许落盘这些目录。
+ */
+export function getDownloadDirs(settings: Settings): string[] {
+	return [
+		...new Set([
+			settings.downloadDir,
+			...settings.gateways.map((g) => g.downloadDir ?? ""),
+		]),
+	].filter(Boolean);
+}
+
 //#region 国际化字符串
 const { t } = defineLocales({
 	en: {

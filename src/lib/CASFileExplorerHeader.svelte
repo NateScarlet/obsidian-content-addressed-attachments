@@ -36,6 +36,8 @@
 		query,
 		mode,
 		metadataWriteSignal,
+		getPrimaryDir,
+		getDownloadDirs,
 	} = getContext();
 
 	let loading = $state(false);
@@ -95,9 +97,18 @@
 		loading = true;
 		const notice = showProgress(t("emptyTrash"));
 		try {
-			await emptyTrashCmd(cas, casMetadata, (i, cidStr) => {
-				notice.update(i, cidStr);
-			});
+			await emptyTrashCmd(
+				cas,
+				casMetadata,
+				{
+					referenceManager,
+					primaryDir: getPrimaryDir(),
+					downloadDirs: getDownloadDirs(),
+				},
+				(i, cidStr) => {
+					notice.update(i, cidStr);
+				},
+			);
 		} finally {
 			loading = false;
 			notice.hide();

@@ -304,7 +304,10 @@ export class CASImpl implements CAS {
 		return join(dir, this.formatRelPath(cid));
 	}
 
-	async restoreIfTrashed(cid: CID): Promise<boolean> {
+	async restoreIfTrashed(
+		cid: CID,
+		restoreAllowedDirs?: string[],
+	): Promise<boolean> {
 		let didRestore = false;
 		const copies: { dir: string; trashedAt?: Date }[] = [];
 		for await (const match of this.lookup(cid)) {
@@ -312,15 +315,19 @@ export class CASImpl implements CAS {
 				// 界面按 CID 粒度操作，恢复所有目录的回收站副本
 				const src = match.path;
 				const relPath = this.formatRelPath(cid);
-				const dst = this.getFilePath(match.dir, relPath);
-
-				await makeDirs(this.app.vault, dirname(dst));
-				// 目标目录可能已存在同 CID 正常副本，冲突时按 moveReplacingFile 去重/坏标
-				await this.moveReplacingFile(src, dst, cid);
+				// 副本所在目录不在允许恢复目录列表内时迁移到列表第一个目录
+				const targetDir = this.resolveRestoreDir(
+					match.dir,
+					restoreAllowedDirs,
+				);
+				await this.restoreTrashedCopy(src, targetDir, relPath, cid);
 				didRestore = true;
+				// 迁移场景按实际目标目录记录，不残留源目录副本
+				copies.push({ dir: targetDir, trashedAt: undefined });
+			} else {
+				// 正常副本保持原位，不做迁移
+				copies.push({ dir: match.dir, trashedAt: undefined });
 			}
-			// 该 CID 在所有目录的副本都恢复为正常状态
-			copies.push({ dir: match.dir, trashedAt: undefined });
 		}
 		if (copies.length > 0) {
 			const existing = await this.meta.get(cid);
@@ -335,16 +342,20 @@ export class CASImpl implements CAS {
 
 	async load(
 		cid: CID,
+		restoreAllowedDirs?: string[],
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined> {
 		let didRestore = false;
 		let firstNormalPath: string | undefined;
 		const copies: { dir: string; trashedAt?: Date }[] = [];
 		for await (const match of this.lookup(cid)) {
 			if (match.isTrashed) {
-				// 尝试从回收站恢复（所有副本统一操作）
+				// 尝试从回收站恢复（所有副本统一操作，迁移按允许恢复目录列表）
 				const src = match.path;
 				const relPath = this.formatRelPath(cid);
-				const dst = this.getFilePath(match.dir, relPath);
+				const targetDir = this.resolveRestoreDir(
+					match.dir,
+					restoreAllowedDirs,
+				);
 				const content = await this.app.vault.adapter.readBinary(src);
 				if (!cid.equals(await this.generateCID(content))) {
 					// 检查文件完整性
@@ -356,9 +367,13 @@ export class CASImpl implements CAS {
 					continue;
 				}
 
-				await makeDirs(this.app.vault, dirname(dst));
-				await this.app.vault.adapter.rename(src, dst);
-				copies.push({ dir: match.dir, trashedAt: undefined });
+				const dst = await this.restoreTrashedCopy(
+					src,
+					targetDir,
+					relPath,
+					cid,
+				);
+				copies.push({ dir: targetDir, trashedAt: undefined });
 				firstNormalPath ??= dst;
 				didRestore = true;
 			} else {
@@ -493,6 +508,41 @@ export class CASImpl implements CAS {
 
 	private getTrashPath(dir: string, relPath: string): string {
 		return join(dir, this.trashRelPath, relPath);
+	}
+
+	/**
+	 * 恢复目标目录：副本所在目录在允许列表内（或列表为空/未提供）时原位恢复，
+	 * 否则迁移到列表第一个目录。仅对回收站副本生效，正常副本不做迁移。
+	 */
+	private resolveRestoreDir(
+		matchDir: string,
+		allowedDirs?: string[],
+	): string {
+		if (
+			allowedDirs == null ||
+			allowedDirs.length === 0 ||
+			allowedDirs.includes(matchDir)
+		) {
+			return matchDir;
+		}
+		return allowedDirs[0];
+	}
+
+	/**
+	 * 把单个回收站副本恢复/迁移到目标目录（restoreIfTrashed 与 load 共用）。
+	 * 目标目录可能已存在同 CID 正常副本，冲突时按 moveReplacingFile 去重/坏标。
+	 * 返回恢复后的正常路径。
+	 */
+	private async restoreTrashedCopy(
+		src: string,
+		targetDir: string,
+		relPath: string,
+		cid: CID,
+	): Promise<string> {
+		const dst = this.getFilePath(targetDir, relPath);
+		await makeDirs(this.app.vault, dirname(dst));
+		await this.moveReplacingFile(src, dst, cid);
+		return dst;
 	}
 
 	/**

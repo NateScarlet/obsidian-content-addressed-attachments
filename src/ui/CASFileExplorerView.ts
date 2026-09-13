@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import CASFileExplorer from "#src/lib/CASFileExplorer.svelte";
+import { getDownloadDirs } from "#src/settings";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
 
@@ -39,6 +40,8 @@ export class CASFileExplorerView extends ItemView {
 				referenceManager: this.plugin.referenceManager,
 				encryptionService: this.plugin.encryptionService,
 				metadataWriteSignal: this.plugin.metadataWriteController.signal,
+				getPrimaryDir: () => this.plugin.settings.primaryDir,
+				getDownloadDirs: () => getDownloadDirs(this.plugin.settings),
 			},
 		});
 		return Promise.resolve();

@@ -75,6 +75,7 @@ async function encryptSingleLink(
 		ctx.cas,
 		ctx.urlResolver,
 		linkText,
+		dir,
 	);
 	if (!buffer) return undefined;
 
@@ -157,6 +158,7 @@ export async function decryptLink(
 		ctx.cas,
 		ctx.urlResolver,
 		linkText,
+		dir,
 	);
 	if (!buffer) {
 		new Notice("File not found");

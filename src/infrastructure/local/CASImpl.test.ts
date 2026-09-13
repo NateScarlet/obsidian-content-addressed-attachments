@@ -538,6 +538,126 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		expect(obj?.copies?.every((c) => c.trashedAt === undefined)).toBe(true);
 	});
 
+	it("restoreIfTrashed 副本所在目录不在允许列表内时迁移到列表第一个目录", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid, bytes } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/.trash/${relPath}`, bytes);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA", trashedAt: new Date() }],
+		});
+
+		const didRestore = await cas.restoreIfTrashed(cid, ["dirB"]);
+
+		expect(didRestore).toBe(true);
+		// 迁移到列表第一个目录 dirB，源目录不留任何副本
+		expect(fs.exists(`dirB/${relPath}`)).toBe(true);
+		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
+		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
+		const obj = await meta.get(cid);
+		expect(obj?.copies).toEqual([{ dir: "dirB", trashedAt: undefined }]);
+	});
+
+	it("restoreIfTrashed 副本所在目录在允许列表内时原位恢复", async () => {
+		const { cas, meta, fs } = setup(["dirA"]);
+		const { cid, bytes } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/.trash/${relPath}`, bytes);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA", trashedAt: new Date() }],
+		});
+
+		await cas.restoreIfTrashed(cid, ["dirA"]);
+
+		expect(fs.exists(`dirA/${relPath}`)).toBe(true);
+		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
+	});
+
+	it("restoreIfTrashed 允许列表为空时原位恢复（回归现状）", async () => {
+		const { cas, meta, fs } = setup(["dirA"]);
+		const { cid, bytes } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/.trash/${relPath}`, bytes);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA", trashedAt: new Date() }],
+		});
+
+		await cas.restoreIfTrashed(cid, []);
+
+		expect(fs.exists(`dirA/${relPath}`)).toBe(true);
+		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
+	});
+
+	it("restoreIfTrashed 迁移后元数据只记录实际目标目录，不残留源目录", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid, bytes } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		// dirA 有正常副本；dirB 有回收站副本；允许列表 [dirA]
+		fs.write(`dirA/${relPath}`, bytes);
+		fs.write(`dirB/.trash/${relPath}`, bytes);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA" }, { dir: "dirB", trashedAt: new Date() }],
+		});
+
+		const didRestore = await cas.restoreIfTrashed(cid, ["dirA"]);
+
+		expect(didRestore).toBe(true);
+		// dirB 回收站副本迁入 dirA；dirA 已有同内容正常副本 → 去重删除源
+		expect(fs.exists(`dirB/.trash/${relPath}`)).toBe(false);
+		expect(fs.exists(`dirB/${relPath}`)).toBe(false);
+		expect(fs.exists(`dirA/${relPath}`)).toBe(true);
+		const obj = await meta.get(cid);
+		expect(obj?.copies).toEqual([{ dir: "dirA", trashedAt: undefined }]);
+	});
+
+	it("load 副本所在目录不在允许列表内时迁移到列表第一个目录", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid, bytes } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/.trash/${relPath}`, bytes);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA", trashedAt: new Date() }],
+		});
+
+		const result = await cas.load(cid, ["dirB"]);
+
+		expect(result?.didRestore).toBe(true);
+		expect(result?.normalizedPath).toBe(`dirB/${relPath}`);
+		expect(fs.exists(`dirB/${relPath}`)).toBe(true);
+		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
+		const obj = await meta.get(cid);
+		expect(obj?.copies).toEqual([{ dir: "dirB", trashedAt: undefined }]);
+	});
+
+	it("load 副本所在目录在允许列表内时原位恢复", async () => {
+		const { cas, meta, fs } = setup(["dirA"]);
+		const { cid, bytes } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/.trash/${relPath}`, bytes);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA", trashedAt: new Date() }],
+		});
+
+		const result = await cas.load(cid, ["dirA"]);
+
+		expect(result?.didRestore).toBe(true);
+		expect(result?.normalizedPath).toBe(`dirA/${relPath}`);
+		expect(fs.exists(`dirA/${relPath}`)).toBe(true);
+		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
+	});
+
 	it("copies 记录未删除的多目录副本信息（代表有外部写入）", async () => {
 		const { cas, meta } = setup(["dirA", "dirB"]);
 		const { cid, bytes } = await makeObject("abc");

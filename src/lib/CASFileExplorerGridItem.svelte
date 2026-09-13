@@ -72,9 +72,17 @@
 		firstTrashedAt,
 		isCASObjectTrashed,
 	} from "#src/utils/casCopies";
+	import allowedDirsForRestore from "#src/utils/allowedDirsForRestore";
 	import type { Attachment } from "svelte/attachments";
 
-	const { cas, app, referenceManager, encryptionService } = getContext();
+	const {
+		cas,
+		app,
+		referenceManager,
+		encryptionService,
+		getPrimaryDir,
+		getDownloadDirs,
+	} = getContext();
 
 	let {
 		file,
@@ -83,7 +91,13 @@
 	} = $props();
 
 	async function restoreFile() {
-		const result = await cas.load(file.cid);
+		// 恢复目标由引用类型决定：存在 ipfs:// 引用 → 主存储目录；仅锁定引用 → 下载目录
+		const allowedDirs = allowedDirsForRestore(
+			await referenceManager.hasIPFSReference(file.cid),
+			getPrimaryDir(),
+			getDownloadDirs(),
+		);
+		const result = await cas.load(file.cid, allowedDirs);
 		if (!result) {
 			new Notice(t("canNotRestoreFromGateway"));
 		}

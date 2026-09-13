@@ -39,6 +39,8 @@
 		casMetadata,
 		encryptionService,
 		metadataWriteSignal,
+		getPrimaryDir,
+		getDownloadDirs,
 	}: {
 		app: App;
 		referenceManager: ReferenceManager;
@@ -46,6 +48,8 @@
 		casMetadata: CASMetadata;
 		encryptionService: EncryptionService;
 		metadataWriteSignal: AbortSignal;
+		getPrimaryDir: () => string;
+		getDownloadDirs: () => string[];
 	} = $props();
 
 	// 状态
@@ -131,7 +135,8 @@
 	let hasNextPage = $state(false);
 
 	// 提供 context
-	// 依赖服务实例（referenceManager/app/encryptionService）为稳定引用，仅在初始化时读取
+	// 依赖服务实例（referenceManager/app/encryptionService）为稳定引用，仅在初始化时读取；
+	// getPrimaryDir/getDownloadDirs 为设置读取函数，调用时实时取当前设置
 	setContext(
 		untrack(() => ({
 			cas,
@@ -140,6 +145,8 @@
 			app,
 			encryptionService,
 			metadataWriteSignal,
+			getPrimaryDir,
+			getDownloadDirs,
 			mode: {
 				get value() {
 					return mode;

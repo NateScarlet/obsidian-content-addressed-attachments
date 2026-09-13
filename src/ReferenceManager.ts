@@ -3,9 +3,11 @@ import type ContentAddressedAttachmentPlugin from "./main";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
 import findIPFSLinks from "./utils/findIPFSLinks";
+import IPFSLink from "./utils/IPFSLink";
 import { Notice, TFile } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "#src/lib/IncrementalScanProgress.svelte";
+import { getDownloadDirs } from "#src/settings";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import pruneDeletedPaths from "./ReferenceManager/pruneDeletedPaths";
 import {
@@ -261,8 +263,13 @@ export default class ReferenceManager {
 		const startAt = new Date();
 		const jobs: Promise<void>[] = [];
 		const cids: CID[] = [];
+		// 触发笔记中以 ipfs:// 形式引用的 cid：恢复时短路判定，无需再查全库
+		const knownIPFSCids = new Set<string>();
 		for (const { url, title } of findIPFSLinks(markdown)) {
 			cids.push(url.cid);
+			if (url instanceof IPFSLink) {
+				knownIPFSCids.add(url.cid.toString());
+			}
 			jobs.push(
 				this.cache.add(url.cid, normalizedPath, signal),
 				this.plugin.cas.index({
@@ -281,7 +288,13 @@ export default class ReferenceManager {
 			await restoreReferencedFiles(
 				this.plugin.cas,
 				this.plugin.casMetadata,
-				cids,
+				{
+					referenceManager: this,
+					primaryDir: this.plugin.settings.primaryDir,
+					downloadDirs: getDownloadDirs(this.plugin.settings),
+					cids,
+					knownIPFSCids,
+				},
 			);
 		}
 	}
@@ -311,6 +324,19 @@ export default class ReferenceManager {
 				}
 			}
 		}
+	}
+
+	/**
+	 * 是否存在 ipfs:// 形式引用（全库、基于已验证引用）。
+	 * 仅 internal.ipfs-locked: 锁定引用时返回 false。
+	 */
+	async hasIPFSReference(cid: CID): Promise<boolean> {
+		for await (const { url } of this.findReference(cid)) {
+			if (url instanceof IPFSLink) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
 

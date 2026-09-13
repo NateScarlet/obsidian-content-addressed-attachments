@@ -5,6 +5,7 @@ import defineLocales from "./utils/defineLocales";
 import { URLResolver } from "./URLResolver";
 import {
 	getDefaultSettings,
+	getDownloadDirs,
 	settingsFromInput,
 	type Settings,
 	type SettingsInput,
@@ -116,10 +117,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.cas = new CASImpl(this.app, this.casMetadata, () => {
 			return uniq([
 				this.settings.primaryDir,
-				this.settings.downloadDir,
-				...this.settings.gateways
-					.map((i) => i.downloadDir ?? "")
-					.filter((i) => !!i),
+				...getDownloadDirs(this.settings),
 			]);
 		});
 		// eslint-disable-next-line obsidianmd/no-unsupported-api
@@ -426,7 +424,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			id: "restore-referenced-files",
 			name: t("restoreReferencedFiles"),
 			callback: () => {
-				restoreReferencedFiles(this.cas, this.casMetadata)
+				restoreReferencedFiles(this.cas, this.casMetadata, {
+					referenceManager: this.referenceManager,
+					primaryDir: this.settings.primaryDir,
+					downloadDirs: getDownloadDirs(this.settings),
+				})
 					.then((count) => {
 						if (count === 0) {
 							new Notice(t("noReferencedFilesToRestore"));

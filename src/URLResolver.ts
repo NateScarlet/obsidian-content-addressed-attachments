@@ -311,7 +311,10 @@ export class URLResolver {
 	private async doResolveURL(
 		data: TemplateData,
 	): Promise<ResolveURLResult | undefined> {
-		const match = await this.cas.load(data.cid);
+		// 该路径只处理 ipfs:// 链接，恢复目标固定为主存储目录
+		const match = await this.cas.load(data.cid, [
+			this.settings().primaryDir,
+		]);
 		if (match) {
 			if (data.format() === ENCRYPTED_FORMAT) {
 				return this.resolveEncryptedFile(

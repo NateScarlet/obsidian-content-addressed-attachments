@@ -117,6 +117,7 @@ async function reprocessSingleLink(
 		ctx.cas,
 		ctx.urlResolver,
 		linkText,
+		ctx.dir,
 	);
 	if (!buffer) return undefined;
 
