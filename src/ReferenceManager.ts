@@ -363,7 +363,9 @@ export default class ReferenceManager {
 /** 生产默认增量扫描报告器：Notice + svelte 进度组件 */
 const defaultIncrementalScanReporter: IncrementalScanReporter = {
 	begin(total) {
-		const notice = new Notice(new DocumentFragment());
+		// 超时 0：进度条在扫描期间保持显示，直到 finish 手动 hide；
+		// 默认超时（5s）会让扫描未完成时进度条就自动消失。
+		const notice = new Notice(new DocumentFragment(), 0);
 		const progress = mount(IncrementalScanProgress, {
 			// eslint-disable-next-line @typescript-eslint/no-deprecated, obsidianmd/no-unsupported-api
 			target: notice.containerEl ?? notice.noticeEl,
