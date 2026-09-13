@@ -24,6 +24,12 @@ export interface CASFileExplorerContext {
 	mode: { value: Mode };
 	query: { value: string };
 
+	/**
+	 * 元数据写入专用中止信号：插件卸载时中止进行中的批量写入，
+	 * 避免插件多版本竞争写入同一 IndexedDB
+	 */
+	metadataWriteSignal: AbortSignal;
+
 	fetchMore: (signal?: AbortSignal) => Promise<void>;
 }
 

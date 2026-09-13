@@ -62,6 +62,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
 	public cas!: CAS;
 	public casMetadata!: CASMetadata;
+	/**
+	 * 元数据写入专用中止信号：插件卸载（含热重载/升级）时中止进行中的批量写入，
+	 * 避免插件多版本同时竞争写入同一 IndexedDB。
+	 */
+	public metadataWriteController = new AbortController();
 	public urlResolver!: URLResolver;
 	public referenceManager = new ReferenceManager(this);
 	public keyManager!: KeyManager;
@@ -626,6 +631,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	}
 
 	onunload() {
+		// 先中止进行中的元数据写入，再释放其余资源
+		this.metadataWriteController.abort();
 		// 先释放管线持有的挂起日志定时器，再统一回收其余资源；
 		// onload 未完成即被卸载时 pipeline 可能未赋值
 		this.pipeline?.dispose();

@@ -3,13 +3,17 @@ import { describe, it, expect, vi } from "vitest";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
-import rebuildIndex from "./rebuildIndex";
+import rebuildIndex, { DEFAULT_MERGE_BATCH_SIZE } from "./rebuildIndex";
 import type { CAS } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 
-/** 内存元数据，merge 为整条覆盖 */
+/** 内存元数据，merge 为整条覆盖，mergeBatch 分块委托 merge 并记录调用 */
 class MemMeta implements CASMetadata {
 	map = new Map<string, CASMetadataObject>();
+	mergeBatchCalls: {
+		objs: CASMetadataObject[];
+		signal: AbortSignal;
+	}[] = [];
 
 	async get(cid: CID) {
 		return this.map.get(cid.toString());
@@ -18,6 +22,16 @@ class MemMeta implements CASMetadata {
 		const didCreate = !this.map.has(obj.cid.toString());
 		this.map.set(obj.cid.toString(), obj);
 		return { didCreate };
+	}
+	async mergeBatch(objs: CASMetadataObject[], signal: AbortSignal) {
+		this.mergeBatchCalls.push({ objs: [...objs], signal });
+		let didCreate = 0;
+		for (const obj of objs) {
+			const created = !(obj.cid.toString() in this.map);
+			if (created) didCreate++;
+			await this.merge(obj);
+		}
+		return { didCreate, didChange: objs.length };
 	}
 	async delete(cid: CID) {
 		this.map.delete(cid.toString());
@@ -62,6 +76,99 @@ function fakeCas(onDisk: CASMetadataObject[]): CAS {
 	} as unknown as CAS;
 }
 
+/** 生成 n 个不同内容（不同 CID）的磁盘对象 */
+async function makeObjects(n: number) {
+	const objects: CASMetadataObject[] = [];
+	for (let i = 0; i < n; i++) {
+		const { obj } = await makeObject(`content-${i}`, []);
+		objects.push(obj);
+	}
+	return objects;
+}
+
+describe("rebuildIndex 批量写入", () => {
+	it("磁盘对象分块调用 mergeBatch，默认块大小分块", async () => {
+		const onDisk = await makeObjects(DEFAULT_MERGE_BATCH_SIZE + 1);
+		const meta = new MemMeta();
+		const rm = refManager(new Set());
+
+		const { scanned } = await rebuildIndex(
+			fakeCas(onDisk),
+			meta,
+			rm as never,
+			undefined,
+			{ signal: new AbortController().signal },
+		);
+
+		expect(scanned).toBe(DEFAULT_MERGE_BATCH_SIZE + 1);
+		// 每块一次调用，共 ceil(n / batchSize) 次
+		expect(meta.mergeBatchCalls).toHaveLength(2);
+		expect(meta.mergeBatchCalls[0].objs).toHaveLength(
+			DEFAULT_MERGE_BATCH_SIZE,
+		);
+		expect(meta.mergeBatchCalls[1].objs).toHaveLength(1);
+		// 全部记录写入元数据
+		for (const obj of onDisk) {
+			expect(await meta.get(obj.cid)).toBeDefined();
+		}
+	});
+
+	it("mergeBatch 收到的 signal 与传入重建命令的是同一个", async () => {
+		const onDisk = await makeObjects(3);
+		const meta = new MemMeta();
+		const rm = refManager(new Set());
+		const controller = new AbortController();
+
+		await rebuildIndex(fakeCas(onDisk), meta, rm as never, undefined, {
+			signal: controller.signal,
+		});
+
+		expect(meta.mergeBatchCalls.length).toBeGreaterThan(0);
+		for (const call of meta.mergeBatchCalls) {
+			expect(call.signal).toBe(controller.signal);
+		}
+	});
+
+	it("进度按块推进：每写完一块回调一次，值为已处理累计数", async () => {
+		const onDisk = await makeObjects(DEFAULT_MERGE_BATCH_SIZE + 2);
+		const meta = new MemMeta();
+		const rm = refManager(new Set());
+		const onProgress = vi.fn();
+
+		await rebuildIndex(fakeCas(onDisk), meta, rm as never, onProgress, {
+			signal: new AbortController().signal,
+		});
+
+		// 每块一次回调，值为该块末尾的累计数
+		expect(onProgress).toHaveBeenCalledTimes(2);
+		expect(onProgress).toHaveBeenNthCalledWith(
+			1,
+			DEFAULT_MERGE_BATCH_SIZE,
+			expect.any(String),
+		);
+		expect(onProgress).toHaveBeenNthCalledWith(
+			2,
+			DEFAULT_MERGE_BATCH_SIZE + 2,
+			expect.any(String),
+		);
+	});
+
+	it("信号已中止时抛出 AbortError 且不再调用 mergeBatch", async () => {
+		const onDisk = await makeObjects(3);
+		const meta = new MemMeta();
+		const rm = refManager(new Set());
+		const controller = new AbortController();
+		controller.abort();
+
+		await expect(
+			rebuildIndex(fakeCas(onDisk), meta, rm as never, undefined, {
+				signal: controller.signal,
+			}),
+		).rejects.toThrow();
+		expect(meta.mergeBatchCalls).toHaveLength(0);
+	});
+});
+
 describe("rebuildIndex 对账清理", () => {
 	it("扫描覆盖的记录保留并标记 lastVisitedAt，不误删", async () => {
 		const { cid, obj } = await makeObject("abc", [
@@ -71,7 +178,9 @@ describe("rebuildIndex 对账清理", () => {
 		await meta.merge({ cid, indexedAt: new Date(), copies: [] });
 		const rm = refManager(new Set());
 
-		await rebuildIndex(fakeCas([obj]), meta, rm as never);
+		await rebuildIndex(fakeCas([obj]), meta, rm as never, undefined, {
+			signal: new AbortController().signal,
+		});
 
 		const node = await meta.get(cid);
 		expect(node).toBeDefined();
@@ -93,7 +202,9 @@ describe("rebuildIndex 对账清理", () => {
 		});
 		const rm = refManager(new Set());
 
-		await rebuildIndex(fakeCas([]), meta, rm as never);
+		await rebuildIndex(fakeCas([]), meta, rm as never, undefined, {
+			signal: new AbortController().signal,
+		});
 
 		expect(await meta.get(cid)).toBeUndefined();
 	});
@@ -112,7 +223,9 @@ describe("rebuildIndex 对账清理", () => {
 		});
 		const rm = refManager(new Set([cid.toString()]));
 
-		await rebuildIndex(fakeCas([]), meta, rm as never);
+		await rebuildIndex(fakeCas([]), meta, rm as never, undefined, {
+			signal: new AbortController().signal,
+		});
 
 		const node = await meta.get(cid);
 		expect(node).toBeDefined();
@@ -135,7 +248,9 @@ describe("rebuildIndex 对账清理", () => {
 		});
 		const rm = refManager(new Set());
 
-		await rebuildIndex(fakeCas([obj]), meta, rm as never);
+		await rebuildIndex(fakeCas([obj]), meta, rm as never, undefined, {
+			signal: new AbortController().signal,
+		});
 
 		const node = await meta.get(cid);
 		expect(node).toBeDefined();

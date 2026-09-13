@@ -7,7 +7,11 @@ import type {
 import type CASMetadataObjectFilterBuilder from "#src/CASMetadataObjectFilterBuilder";
 import executeIDBRequest from "#src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "#src/utils/iterateIDBObjectStore";
-import { casMetadataDelete, casMetadataSave } from "#src/events";
+import {
+	casMetadataDelete,
+	casMetadataSave,
+	casMetadataBatchSave,
+} from "#src/events";
 import { isEqual, uniqBy } from "es-toolkit";
 
 const DB_NAME = "CASMetadata_50c8334bab1a";
@@ -15,6 +19,9 @@ const DB_VERSION = 2;
 const OBJECTS_STORE_NAME = "objects";
 const STATS_STORE_NAME = "stats";
 const STATS_KEY = "summary";
+
+/** mergeBatch 每块的事务大小：块越大单事务越长，1000 兼顾事务时长与事务总数 */
+const MERGE_BATCH_CHUNK_SIZE = 1000;
 
 export class CASMetadataImpl implements CASMetadata {
 	private db: Promise<IDBDatabase>;
@@ -233,6 +240,73 @@ export class CASMetadataImpl implements CASMetadata {
 			casMetadataSave.dispatch({ detail: this.decode(result.after) });
 		}
 		return result;
+	}
+
+	/**
+	 * 批量合并：按块共用一个读写事务，块内取回全部既有记录、经既有合并纯函数
+	 * 合成新记录后批量写回；统计（字节数）每块只在块末汇总更新一次。
+	 * 3 万文件场景下事务数从 3 万降到 ~30，同时缩小进程被杀时的损坏窗口。
+	 * 每块提交后立即派发一次聚合批量事件；界面更新频率由订阅方限流。
+	 */
+	async mergeBatch(
+		objs: CASMetadataObject[],
+		signal: AbortSignal,
+	): Promise<{ didCreate: number; didChange: number }> {
+		let didCreate = 0;
+		let didChange = 0;
+		for (
+			let start = 0;
+			start < objs.length;
+			start += MERGE_BATCH_CHUNK_SIZE
+		) {
+			signal.throwIfAborted();
+			const chunk = objs.slice(start, start + MERGE_BATCH_CHUNK_SIZE);
+			const { created, changedObjs } = await this.tx(
+				"readwrite",
+				async ({ store, recordChange }) => {
+					// 块内一次性取回全部既有记录（事务保持活跃，顺序 get）
+					const existingList = await Promise.all(
+						chunk.map((obj) =>
+							executeIDBRequest(
+								store.get(obj.cid.toString()) as IDBRequest<
+									PO | undefined
+								>,
+								signal,
+							),
+						),
+					);
+					const changedObjs: CASMetadataObject[] = [];
+					let created = 0;
+					for (const [i, obj] of chunk.entries()) {
+						const existingPO = existingList[i]
+							? normalizePOForStaleV1(existingList[i])
+							: undefined;
+						const po = buildMergedPO(this.encode(obj), existingPO);
+						if (existingPO && po.copies !== undefined) {
+							const existingNorm = {
+								...existingPO,
+								copies: po.copies,
+							};
+							if (isEqual(existingNorm, po)) {
+								continue;
+							}
+						}
+						recordChange(po, existingPO);
+						await executeIDBRequest(store.put(po), signal);
+						created += existingPO ? 0 : 1;
+						changedObjs.push(this.decode(po));
+					}
+					return { created, changedObjs };
+				},
+				signal,
+			);
+			didCreate += created;
+			didChange += changedObjs.length;
+			if (changedObjs.length > 0) {
+				casMetadataBatchSave.dispatch({ detail: changedObjs });
+			}
+		}
+		return { didCreate, didChange };
 	}
 
 	async delete(cid: CID, signal?: AbortSignal): Promise<void> {

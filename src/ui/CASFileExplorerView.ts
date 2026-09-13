@@ -38,6 +38,7 @@ export class CASFileExplorerView extends ItemView {
 				casMetadata: this.plugin.casMetadata,
 				referenceManager: this.plugin.referenceManager,
 				encryptionService: this.plugin.encryptionService,
+				metadataWriteSignal: this.plugin.metadataWriteController.signal,
 			},
 		});
 		return Promise.resolve();

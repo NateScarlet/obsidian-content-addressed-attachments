@@ -107,6 +107,16 @@ class MemMeta implements CASMetadata {
 		return { didCreate };
 	}
 
+	async mergeBatch(objs: CASMetadataObject[], signal: AbortSignal) {
+		signal.throwIfAborted();
+		let didCreate = 0;
+		for (const obj of objs) {
+			const created = await this.merge(obj);
+			if (created.didCreate) didCreate++;
+		}
+		return { didCreate, didChange: objs.length };
+	}
+
 	async delete(cid: CID) {
 		this.map.delete(cid.toString());
 	}

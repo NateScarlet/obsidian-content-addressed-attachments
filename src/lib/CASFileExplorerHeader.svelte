@@ -24,7 +24,14 @@
 	import emptyTrashCmd from "#src/commands/emptyTrash";
 	import rebuildIndexCmd from "#src/commands/rebuildIndex";
 
-	const { cas, casMetadata, referenceManager, query, mode } = getContext();
+	const {
+		cas,
+		casMetadata,
+		referenceManager,
+		query,
+		mode,
+		metadataWriteSignal,
+	} = getContext();
 
 	let loading = $state(false);
 
@@ -55,9 +62,13 @@
 		loading = true;
 		const notice = showProgress(t("rebuildIndex"));
 		try {
-			await rebuildIndexCmd(cas, casMetadata, referenceManager, (i, cidStr) => {
-				notice.update(i, cidStr);
-			});
+			await rebuildIndexCmd(
+				cas,
+				casMetadata,
+				referenceManager,
+				(i, cidStr) => notice.update(i, cidStr),
+				{ signal: metadataWriteSignal },
+			);
 		} finally {
 			loading = false;
 			notice.hide();

@@ -1,6 +1,8 @@
 <script module lang="ts">
 	const PAGE_SIZE = 50;
 	const SKELETON_ITEMS = Array.from({ length: PAGE_SIZE }, (_, i) => i);
+	/** 批量保存事件的应用最小间隔（毫秒），限制列表重渲染频率 */
+	const BATCH_APPLY_INTERVAL_MS = 1000;
 </script>
 
 <script lang="ts">
@@ -17,7 +19,11 @@
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerTabs.svelte";
 	import CASFileExplorerGrid from "./CASFileExplorerGrid.svelte";
-	import { casMetadataDelete, casMetadataSave } from "#src/events";
+	import {
+		casMetadataDelete,
+		casMetadataSave,
+		casMetadataBatchSave,
+	} from "#src/events";
 	import replaceArrayItemBy from "#src/utils/replaceArrayItemBy";
 	import useActiveNoteContent from "./stores/useActiveNoteContent.svelte";
 	import findIPFSLinks from "#src/utils/findIPFSLinks";
@@ -32,12 +38,14 @@
 		cas,
 		casMetadata,
 		encryptionService,
+		metadataWriteSignal,
 	}: {
 		app: App;
 		referenceManager: ReferenceManager;
 		cas: CAS;
 		casMetadata: CASMetadata;
 		encryptionService: EncryptionService;
+		metadataWriteSignal: AbortSignal;
 	} = $props();
 
 	// 状态
@@ -131,6 +139,7 @@
 			referenceManager,
 			app,
 			encryptionService,
+			metadataWriteSignal,
 			mode: {
 				get value() {
 					return mode;
@@ -151,6 +160,7 @@
 		})),
 	);
 
+	// 单条保存事件：立即应用（保存/回收等低频写入路径，与批量事件并存互不替代）
 	$effect(() => {
 		return casMetadataSave.subscribe((e) => {
 			if (!$files) {
@@ -166,6 +176,36 @@
 					{ whenNoMatch: "ignore" },
 				),
 			};
+		});
+	});
+
+	// 批量保存事件（重建索引等批量写入路径）：按 1 秒最小间隔应用聚合变更，
+	// 避免逐事件整表替换重渲染把主线程渲染帧饿死（进度条不刷新的根因）
+	$effect(() => {
+		let pending: CASMetadataObject[] | undefined;
+		let timer: number | undefined;
+		const apply = () => {
+			timer = undefined;
+			if (!pending || !$files) {
+				return;
+			}
+			const changes = pending;
+			pending = undefined;
+			const { nodes, ...rest } = $files;
+			let next = nodes;
+			for (const detail of changes) {
+				next = replaceArrayItemBy(
+					next,
+					(i) => i.cid.equals(detail.cid),
+					detail,
+					{ whenNoMatch: "ignore" },
+				);
+			}
+			$files = { ...rest, nodes: next };
+		};
+		return casMetadataBatchSave.subscribe((e) => {
+			pending = [...(pending ?? []), ...e.detail];
+			timer ??= window.setTimeout(apply, BATCH_APPLY_INTERVAL_MS);
 		});
 	});
 	$effect(() => {
