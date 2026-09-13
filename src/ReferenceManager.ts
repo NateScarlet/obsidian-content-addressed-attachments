@@ -54,12 +54,31 @@ export interface ReferenceCountOptions {
 	skipVerify?: boolean;
 }
 
+/** 增量扫描进度的可注入报告器：生产用 Notice+svelte，测试注入空实现即可避免依赖 DOM */
+export interface IncrementalScanReporter {
+	begin(total: number): IncrementalScanReporterHandle;
+}
+export interface IncrementalScanReporterHandle {
+	update(index: number, file: string): void;
+	finish(): void;
+}
+
 export default class ReferenceManager {
 	cache: ReferenceManagerCache;
 	flight = new SingleFlightGroup();
+	private readonly incrementalScanReporter: IncrementalScanReporter;
 
-	constructor(private plugin: ContentAddressedAttachmentPlugin) {
-		this.cache = new ReferenceManagerCacheImpl();
+	constructor(
+		private plugin: ContentAddressedAttachmentPlugin,
+		/** 可注入依赖：cache 供测试用内存实现；incrementalScanReporter 供测试注入空实现避免 DOM */
+		options: {
+			cache?: ReferenceManagerCache;
+			incrementalScanReporter?: IncrementalScanReporter;
+		} = {},
+	) {
+		this.cache = options.cache ?? new ReferenceManagerCacheImpl();
+		this.incrementalScanReporter =
+			options.incrementalScanReporter ?? defaultIncrementalScanReporter;
 	}
 
 	async count(
@@ -143,10 +162,8 @@ export default class ReferenceManager {
 						prefix2,
 					))
 				) {
-					// 缓存过时了，后台进行重建
-					this.loadFile(normalizedPath).catch((err) => {
-						console.error(`load latest file to cache failed`, err);
-					});
+					// 缓存过时了，后台进行重建（fire-and-forget，不面向调用者结果）
+					void this.loadFile(normalizedPath).catch(() => {});
 					continue;
 				}
 			}
@@ -164,7 +181,8 @@ export default class ReferenceManager {
 		if (!(file instanceof TFile)) {
 			return false;
 		}
-		const content = await this.plugin.app.vault.cachedRead(file);
+		// 引用判定以磁盘为唯一可信源（vault.read），不以 cachedRead 为准（见 CONTEXT.md）
+		const content = await this.plugin.app.vault.read(file);
 		return content.includes(prefix) || content.includes(prefix2);
 	}
 
@@ -207,34 +225,23 @@ export default class ReferenceManager {
 		if (newFiles.length === 0) {
 			return;
 		}
-		using stack = new DisposableStack();
-		const notice = stack.adopt(new Notice(new DocumentFragment()), (i) =>
-			i.hide(),
-		);
-		const progress = stack.adopt(
-			mount(IncrementalScanProgress, {
-				// eslint-disable-next-line @typescript-eslint/no-deprecated, obsidianmd/no-unsupported-api
-				target: notice.containerEl ?? notice.noticeEl,
-				props: {
-					totalFiles: newFiles.length,
-				},
-			}),
-			(i) => void unmount(i),
-		);
-
-		const jobs: Promise<void>[] = [];
-		let nextIndex = 1;
-		for (const file of newFiles) {
-			jobs.push(
-				this.loadFile(file.path).then(() => {
-					const index = nextIndex;
-					nextIndex += 1;
-					progress.currentIndex = index;
-					progress.currentFile = file.path;
-				}),
-			);
+		const progress = this.incrementalScanReporter.begin(newFiles.length);
+		try {
+			const jobs: Promise<void>[] = [];
+			let nextIndex = 1;
+			for (const file of newFiles) {
+				jobs.push(
+					this.loadFile(file.path).then(() => {
+						const index = nextIndex;
+						nextIndex += 1;
+						progress.update(index, file.path);
+					}),
+				);
+			}
+			await Promise.all(jobs);
+		} finally {
+			progress.finish();
 		}
-		await Promise.all(jobs);
 		await this.cache.setCutoffAt(startAt, undefined);
 	}
 
@@ -247,11 +254,11 @@ export default class ReferenceManager {
 	private async doLoadFile(normalizedPath: string) {
 		const file =
 			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+		// 索引以磁盘为唯一可信源（vault.read），不以 cachedRead / 编辑器缓冲为准，
+		// 避免过时缓存让被引用附件被误判为未引用（见 CONTEXT.md「磁盘为唯一可信源」）。
 		await this.loadFileContent(
 			normalizedPath,
-			file instanceof TFile
-				? await this.plugin.app.vault.cachedRead(file)
-				: "",
+			file instanceof TFile ? await this.plugin.app.vault.read(file) : "",
 		);
 	}
 
@@ -309,9 +316,8 @@ export default class ReferenceManager {
 		for await (const normalizedPath of this.cache.find(cid, signal)) {
 			const file = vault.getAbstractFileByPath(normalizedPath);
 			if (!(file instanceof TFile)) {
-				this.loadFile(normalizedPath).catch((err) => {
-					console.error(`load latest file to cache failed`, err);
-				});
+				// fire-and-forget，不面向调用者结果
+				void this.loadFile(normalizedPath).catch(() => {});
 				continue;
 			}
 			const markdown = await vault.cachedRead(file);
@@ -339,6 +345,30 @@ export default class ReferenceManager {
 		return false;
 	}
 }
+
+/** 生产默认增量扫描报告器：Notice + svelte 进度组件 */
+const defaultIncrementalScanReporter: IncrementalScanReporter = {
+	begin(total) {
+		const notice = new Notice(new DocumentFragment());
+		const progress = mount(IncrementalScanProgress, {
+			// eslint-disable-next-line @typescript-eslint/no-deprecated, obsidianmd/no-unsupported-api
+			target: notice.containerEl ?? notice.noticeEl,
+			props: {
+				totalFiles: total,
+			},
+		});
+		return {
+			update: (index, file) => {
+				progress.currentIndex = index;
+				progress.currentFile = file;
+			},
+			finish: () => {
+				void unmount(progress);
+				notice.hide();
+			},
+		};
+	},
+};
 
 /**
  * 引用查询合并批：收集注册窗口内到达的 cid，一个只读事务批量取回后分发。

@@ -5,11 +5,22 @@ import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import cleanUnreferenced from "./cleanUnreferenced";
 import type { CAS } from "#src/types/CAS";
-import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
+import type {
+	CASMetadata,
+	CASMetadataObject,
+	CASMetadataObjectFilters,
+} from "#src/types/CASMetadata";
+import { isCASObjectTrashed } from "#src/utils/casCopies";
 
-/** 内存元数据：find 产出全部记录，引用判定由 mock 的 referenceManager 承担 */
+/**
+ * 内存元数据：find 依 filterBy 产出。命令级 seam 迁移后，命令不再直接持有
+ * referenceManager 做引用判定——"hasReference:false" 筛选由数据层（casMetadata.find）
+ * 消费侧负责，这里用一个 unreferenced 集合模拟其筛选结果，仅对外部行为（回收与进度）断言。
+ */
 class MemMeta implements CASMetadata {
 	nodes: CASMetadataObject[] = [];
+	/** find(hasReference:false) 应产出的 cid 集合（模拟数据层引用筛选结果） */
+	unreferenced = new Set<string>();
 
 	async get(cid: CID) {
 		return this.nodes.find((i) => i.cid.equals(cid));
@@ -38,8 +49,20 @@ class MemMeta implements CASMetadata {
 			this.nodes.splice(index, 1);
 		}
 	}
-	async *find() {
+	async *find(options: { filterBy?: CASMetadataObjectFilters } = {}) {
+		const filterBy = options.filterBy ?? {};
 		for (const node of this.nodes) {
+			if (filterBy.isTrashed != null) {
+				if (isCASObjectTrashed(node) !== filterBy.isTrashed) {
+					continue;
+				}
+			}
+			if (filterBy.hasReference === false) {
+				if (this.unreferenced.has(node.cid.toString())) {
+					yield { node, cursor: node.cid.toString() };
+				}
+				continue;
+			}
 			yield { node, cursor: node.cid.toString() };
 		}
 	}
@@ -74,178 +97,96 @@ function fakeCas(trashBehavior?: (cid: CID) => Promise<number>) {
 	};
 }
 
-function refManager(referenced: Set<string>) {
-	return {
-		/** 与实现契约一致：count 记录 skipVerify 传参，供命令级断言 */
-		count: vi.fn(
-			async (
-				cid: CID,
-				_limit: number,
-				_signal: unknown,
-				options?: unknown,
-			) => {
-				void options;
-				return referenced.has(cid.toString()) ? 1 : 0;
-			},
-		),
-		ensureFresh: vi.fn(async () => {}),
-	};
-}
-
 describe("cleanUnreferenced 清理未引用文件", () => {
-	it("仅回收未引用文件，被引用文件不动", async () => {
+	it("仅回收 find(hasReference:false) 选出的未引用文件，被引用文件不动", async () => {
 		const a = await makeObject("a");
 		const b = await makeObject("b");
 		const meta = new MemMeta();
 		meta.nodes = [a.obj, b.obj];
+		// 模拟数据层引用筛选：只有 a 未引用
+		meta.unreferenced = new Set([a.cid.toString()]);
 		const { cas, trashed, trash } = fakeCas();
-		const rm = refManager(new Set([b.cid.toString()]));
 
-		const { scanned, cleaned } = await cleanUnreferenced(
-			cas,
-			meta,
-			rm as never,
-			undefined,
-			{ signal: new AbortController().signal },
-		);
+		const { cleaned } = await cleanUnreferenced(cas, meta, undefined, {
+			signal: new AbortController().signal,
+		});
 
-		expect(scanned).toBe(2);
 		expect(cleaned).toBe(1);
 		expect(trashed).toEqual([a.cid.toString()]);
 		expect(trash).not.toHaveBeenCalledWith(b.cid);
 	});
 
-	it("引用检查经 skipVerify 路径（命令已前置缓存保证）", async () => {
+	it("已回收且未引用的条目不在清理范围（isTrashed:false 口径）", async () => {
 		const a = await makeObject("a");
+		a.obj.copies = [{ dir: "CAS", trashedAt: new Date() }];
 		const meta = new MemMeta();
 		meta.nodes = [a.obj];
-		const { cas } = fakeCas();
-		const rm = refManager(new Set());
+		meta.unreferenced = new Set([a.cid.toString()]);
+		const { cas, trash } = fakeCas();
 
-		await cleanUnreferenced(cas, meta, rm as never, undefined, {
+		const { cleaned } = await cleanUnreferenced(cas, meta, undefined, {
 			signal: new AbortController().signal,
 		});
 
-		const countMock = rm.count as unknown as ReturnType<typeof vi.fn>;
-		expect(countMock).toHaveBeenCalledWith(
-			a.cid,
-			1,
-			expect.any(AbortSignal),
-			{ skipVerify: true },
-		);
-		// skipVerify 契约：判定前必须先完成缓存保证（ensureFresh）
-		expect(rm.ensureFresh).toHaveBeenCalledTimes(1);
+		expect(cleaned).toBe(0);
+		expect(trash).not.toHaveBeenCalled();
 	});
 
-	it("进度覆盖检查与回收两阶段（并行序：按集合+阶段断言）", async () => {
+	it("进度仅清理阶段：每移入一个文件回调一次", async () => {
 		const objs = await Promise.all(
 			["x", "y", "z"].map((i) => makeObject(i)),
 		);
 		const meta = new MemMeta();
 		meta.nodes = objs.map((i) => i.obj);
-		const { cas } = fakeCas();
-		const rm = refManager(new Set([objs[1].cid.toString()]));
+		// 未引用：x, y（z 被引用，不应产出）
+		meta.unreferenced = new Set([
+			objs[0].cid.toString(),
+			objs[1].cid.toString(),
+		]);
+		const { cas, trashed } = fakeCas();
 		const onProgress = vi.fn();
 
-		await cleanUnreferenced(cas, meta, rm as never, onProgress, {
+		await cleanUnreferenced(cas, meta, onProgress, {
 			signal: new AbortController().signal,
 		});
 
-		// 检查阶段：每条元数据一次（3 条）；回收阶段：每回收一条一次（2 条）
-		expect(onProgress).toHaveBeenCalledTimes(5);
-		const calls = onProgress.mock.calls as [
-			number,
-			string,
-			"scanning" | "cleaning",
-		][];
-		// 集合断言：不依赖并行下的精确全局顺序
-		const scanningCids = calls
-			.filter(([, , phase]) => phase === "scanning")
-			.map(([, cidStr]) => cidStr);
-		expect(new Set(scanningCids)).toEqual(
-			new Set(objs.map((o) => o.cid.toString())),
-		);
-		const cleaningCalls = calls.filter(
-			([, , phase]) => phase === "cleaning",
-		);
-		expect(cleaningCalls).toHaveLength(2);
-		// 回收阶段 cid 均为未引用项
-		expect(new Set(cleaningCalls.map(([, cidStr]) => cidStr))).toEqual(
-			new Set([objs[0].cid.toString(), objs[2].cid.toString()]),
-		);
-	});
-
-	it("各阶段计数语义正确：扫描条显示已检查数，清理条显示已移动数", async () => {
-		const objs = await Promise.all(
-			["x", "y", "z"].map((i) => makeObject(i)),
-		);
-		const meta = new MemMeta();
-		meta.nodes = objs.map((i) => i.obj);
-		const { cas } = fakeCas();
-		const rm = refManager(new Set([objs[1].cid.toString()]));
-		const onProgress = vi.fn();
-
-		await cleanUnreferenced(cas, meta, rm as never, onProgress, {
-			signal: new AbortController().signal,
-		});
-
-		const calls = onProgress.mock.calls as [
-			number,
-			string,
-			"scanning" | "cleaning",
-		][];
-		// scanning 计数 = 已检查条数（1..3，与元数据总数一致）
-		const scanningIndexes = calls
-			.filter(([, , phase]) => phase === "scanning")
-			.map(([index]) => index)
-			.sort((a, b) => a - b);
-		expect(scanningIndexes).toEqual([1, 2, 3]);
-		// cleaning 计数 = 已真实移动的文件数（1..2）——
-		// 绝不能把扫描计数灌进「移入回收站」的数字（会把几千条检查显示成移动了几千个文件）
-		const cleaningCalls = calls.filter(
-			([, , phase]) => phase === "cleaning",
-		);
-		expect(cleaningCalls.map(([index]) => index)).toEqual([1, 2]);
+		expect(trashed).toHaveLength(2);
+		expect(onProgress).toHaveBeenCalledTimes(2);
+		const calls = onProgress.mock.calls as [number, string, "cleaning"][];
+		// 清理计数 = 已真实移动的文件数（1..2）
+		expect(calls.map(([index]) => index)).toEqual([1, 2]);
+		expect(calls.every(([, , phase]) => phase === "cleaning")).toBe(true);
 	});
 
 	it("计数以实际移动为准：trash 返回 0（无副本/已在回收站）不计入且不推进清理进度", async () => {
 		const a = await makeObject("a");
-		const b = await makeObject("b");
 		const meta = new MemMeta();
-		meta.nodes = [a.obj, b.obj];
+		meta.nodes = [a.obj];
+		meta.unreferenced = new Set([a.cid.toString()]);
 		// 模拟第二轮清理：对象已被处理过，trash 无实际移动（返回 0）
 		const { cas, trash } = fakeCas(async () => 0);
-		const rm = refManager(new Set());
 		const onProgress = vi.fn();
 
-		const { cleaned } = await cleanUnreferenced(
-			cas,
-			meta,
-			rm as never,
-			onProgress,
-			{ signal: new AbortController().signal },
-		);
+		const { cleaned } = await cleanUnreferenced(cas, meta, onProgress, {
+			signal: new AbortController().signal,
+		});
 
-		expect(trash).toHaveBeenCalledTimes(2);
+		expect(trash).toHaveBeenCalledTimes(1);
 		expect(cleaned).toBe(0);
-		// cleaning 回调从未触发（无真实移动，「移入回收站」进度条不出现）
-		const cleaningCalls = (
-			onProgress.mock.calls as [number, string, "scanning" | "cleaning"][]
-		).filter(([, , phase]) => phase === "cleaning");
-		expect(cleaningCalls).toHaveLength(0);
+		expect(onProgress).toHaveBeenCalledTimes(0);
 	});
 
 	it("信号已中止时立即抛出，不回收任何文件", async () => {
 		const a = await makeObject("a");
 		const meta = new MemMeta();
 		meta.nodes = [a.obj];
+		meta.unreferenced = new Set([a.cid.toString()]);
 		const { cas, trash } = fakeCas();
-		const rm = refManager(new Set());
 		const controller = new AbortController();
 		controller.abort();
 
 		await expect(
-			cleanUnreferenced(cas, meta, rm as never, undefined, {
+			cleanUnreferenced(cas, meta, undefined, {
 				signal: controller.signal,
 			}),
 		).rejects.toThrow();

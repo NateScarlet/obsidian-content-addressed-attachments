@@ -2,11 +2,21 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
 import { fileURLToPath } from "node:url";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { sveltePreprocess } from "svelte-preprocess";
 
 // --configLoader native 下配置以原生 ESM 加载，不存在 __dirname，改由 import.meta.url 推导
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+	plugins: [
+		// 让能以纯 node 加载 svelte 组件（ReferenceManager 接缝测试 import 的 .svelte）
+		svelte({
+			configFile: false,
+			preprocess: sveltePreprocess(),
+			compilerOptions: { runes: true },
+		}),
+	],
 	resolve: {
 		alias: {
 			"#src": path.resolve(dirname, "./src"),

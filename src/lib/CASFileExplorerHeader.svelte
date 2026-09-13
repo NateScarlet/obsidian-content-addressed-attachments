@@ -45,21 +45,14 @@
 	async function cleanUnreferenced() {
 		if (loading) return;
 		loading = true;
-		// 扫描与清理各自独立的进度条（允许同时显示）：
-		// 扫描遍历全部元数据耗时长，用「检查引用状态」文案避免误认为在删文件；
-		// 清理仅在真正移入回收站时出现
+		// 引用判定（含 ensureFresh）在数据层 hasReference 筛选内完成；此进度条表达"检查引用状态"进行中
 		const scanNotice = showProgress(t("cleanUnreferencedScan"));
 		let cleanNotice: ReturnType<typeof showProgress> | undefined;
 		try {
 			await cleanUnreferencedCmd(
 				cas,
 				casMetadata,
-				referenceManager,
-				(i, cidStr, phase) => {
-					if (phase === "scanning") {
-						scanNotice.update(i, cidStr);
-						return;
-					}
+				(i, cidStr) => {
 					cleanNotice ??= showProgress(
 						t("cleanUnreferencedClean"),
 					);

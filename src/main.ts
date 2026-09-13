@@ -244,13 +244,11 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			}),
 		);
 		this.registerEvent(
-			this.app.workspace.on("editor-change", (editor, view) => {
+			this.app.workspace.on("editor-change", (_editor, view) => {
 				if (view.file && view.file.extension === "md") {
+					// 仅用于刷新界面的当前笔记内容；引用索引统一由 modify→loadFile 以磁盘内容重建，
+					// 不以编辑器缓冲喂索引，避免未保存的临时状态影响引用判定（见 CODING_STANDARDS #9 与 #41）
 					markdownChange.dispatch({ detail: view.file });
-					void this.referenceManager.loadFileContent(
-						view.file.path,
-						editor.getValue(),
-					);
 				}
 			}),
 		);
