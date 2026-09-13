@@ -114,9 +114,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			(i) => URL.revokeObjectURL(i),
 		);
 
-		this.casMetadata = new CASMetadataImpl(
-			new CASMetadataObjectFilterBuilder(this.referenceManager),
+		this.casMetadata = this.stack.use(
+			new CASMetadataImpl(
+				new CASMetadataObjectFilterBuilder(this.referenceManager),
+			),
 		);
+		// 构建者负责清理：referenceManager 默认构建 ReferenceManagerCacheImpl，
+		// 卸载时随 stack 关闭其 IndexedDB 连接（热重载不残留连接阻塞后续打开）
+		this.stack.use(this.referenceManager);
 		this.cas = new CASImpl(
 			this.app,
 			this.casMetadata,

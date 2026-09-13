@@ -78,6 +78,16 @@ export class CASMetadataImpl implements CASMetadata {
 		})();
 	}
 
+	/**
+	 * 关闭 IndexedDB 连接。插件卸载时必须调用，否则热重载/重启用例下
+	 * 旧连接残留，后续打开（尤其需要版本变更升级时）会被旧连接阻塞而永久 pending，
+	 * 表现为所有查询挂起、库目录被占用、进程无法退出。
+	 * fire-and-forget：open 尚未 resolve 时在 resolve 后立即关闭。
+	 */
+	[Symbol.dispose](): void {
+		void this.db.then((db) => db.close());
+	}
+
 	async estimateStorage(signal?: AbortSignal): Promise<{
 		normalBytes: number;
 		trashBytes: number;
@@ -271,6 +281,7 @@ export class CASMetadataImpl implements CASMetadata {
 			const { created, changedObjs } = await this.tx(
 				"readwrite",
 				async ({ store, recordChange }) => {
+					console.log("will get exitingList");
 					// 块内一次性取回全部既有记录（事务保持活跃，顺序 get）
 					const existingList = await Promise.all(
 						chunk.map((obj) =>
@@ -282,6 +293,7 @@ export class CASMetadataImpl implements CASMetadata {
 							),
 						),
 					);
+					console.log("got exitingList", existingList);
 					const changedObjs: CASMetadataObject[] = [];
 					let created = 0;
 					for (const [i, obj] of chunk.entries()) {

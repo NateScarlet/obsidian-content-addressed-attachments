@@ -53,8 +53,10 @@ export default async function rebuildIndex(
 	};
 	for await (const obj of cas.objects()) {
 		signal.throwIfAborted();
+		console.log("got obj", obj);
 		pending.push({ ...obj, lastVisitedAt: scannedAt });
 		if (pending.length >= DEFAULT_MERGE_BATCH_SIZE) {
+			console.log("will flush", pending.length);
 			await flush();
 		}
 	}

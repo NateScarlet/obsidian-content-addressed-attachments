@@ -42,6 +42,15 @@ export class ReferenceManagerCacheImpl implements ReferenceManagerCache {
 		})();
 	}
 
+	/**
+	 * 关闭 IndexedDB 连接（具体实现方法，接口不要求所有实现提供）。
+	 * 由构建者（默认路径下为 ReferenceManager）负责调用；注入的替换实现由注入者清理。
+	 * fire-and-forget：open 尚未 resolve 时在 resolve 后立即关闭。
+	 */
+	[Symbol.dispose](): void {
+		void this.db.then((db) => db.close());
+	}
+
 	private async tx<T>(
 		mode: IDBTransactionMode,
 		storeNames: string[],

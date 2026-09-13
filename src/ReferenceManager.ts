@@ -67,6 +67,8 @@ export default class ReferenceManager {
 	cache: ReferenceManagerCache;
 	flight = new SingleFlightGroup();
 	private readonly incrementalScanReporter: IncrementalScanReporter;
+	/** 本类默认构建的引用缓存（注入的缓存不记录，由注入者负责清理） */
+	private readonly builtCache: ReferenceManagerCacheImpl | undefined;
 
 	constructor(
 		private plugin: ContentAddressedAttachmentPlugin,
@@ -76,9 +78,21 @@ export default class ReferenceManager {
 			incrementalScanReporter?: IncrementalScanReporter;
 		} = {},
 	) {
-		this.cache = options.cache ?? new ReferenceManagerCacheImpl();
+		if (options.cache) {
+			this.cache = options.cache;
+		} else {
+			this.cache = this.builtCache = new ReferenceManagerCacheImpl();
+		}
 		this.incrementalScanReporter =
 			options.incrementalScanReporter ?? defaultIncrementalScanReporter;
+	}
+
+	/**
+	 * 构建者负责清理：只关闭本类默认构建的引用缓存连接；
+	 * 注入的 cache 由注入者清理，不在此处理。
+	 */
+	[Symbol.dispose](): void {
+		this.builtCache?.[Symbol.dispose]();
 	}
 
 	async count(
