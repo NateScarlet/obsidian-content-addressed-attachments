@@ -28,6 +28,7 @@
 	import useActiveNoteContent from "./stores/useActiveNoteContent.svelte";
 	import findIPFSLinks from "#src/utils/findIPFSLinks";
 	import staleWithRevalidate from "./stores/staleWhileRevalidate.svelte";
+	import pageState from "./stores/pageState";
 
 	import type EncryptionService from "./encryption/EncryptionService";
 
@@ -78,8 +79,9 @@
 			case Mode.UNREFERENCED:
 				return {
 					query,
-					hasReference: false,
 					isTrashed: false,
+					// 未引用页加速取舍：独立的引用状态筛选，跳过新鲜性保障、信任缓存判定
+					unverifiedHasReference: false,
 				};
 			case Mode.RECYCLE_BIN:
 				return {
@@ -94,6 +96,9 @@
 		void filterBy;
 		return loadPage(getAbortSignal());
 	});
+
+	// 根据页结果的模式标签判定当前是否加载中（切 tab 时显示骨架而非旧 tab 内容）
+	const currentPage = $derived.by(() => pageState(mode, $files));
 
 	async function loadPage(signal?: AbortSignal, after?: string) {
 		let matchCount = 0;
@@ -116,6 +121,7 @@
 			nodes,
 			endCursor,
 			hasNextPage,
+			mode,
 		};
 	}
 
@@ -232,8 +238,8 @@
 <div class="h-full flex flex-col gap-1 @container">
 	<CASFileExplorerHeader />
 	<CASFileExplorerViewTabs />
-	{#if $files}
-		<CASFileExplorerGrid files={$files} />
+	{#if !currentPage.loading}
+		<CASFileExplorerGrid files={currentPage.page} />
 	{:else}
 		<div
 			class="grid grid-cols-[repeat(auto-fill,minmax(min(16rem,100%),1fr))] gap-px gap-y-2 p-px @sm:gap-1 @sm:p-1 @md:gap-2 @md:p-2"

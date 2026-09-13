@@ -31,6 +31,12 @@ export interface CASMetadataObjectFilters {
 	cid?: CID[];
 	query?: string;
 	hasReference?: boolean;
+	/**
+	 * 独立的引用状态筛选开关，不依赖 hasReference：命中时（false 表示无引用）直接信任
+	 * 引用缓存做存在性判定，跳过保证缓存最新的 ensureFresh。这是「未引用」页加载加速的取舍——
+	 * 缓存未刷新前结果可能短暂不准确。与 hasReference 各自独立叠加。
+	 */
+	unverifiedHasReference?: boolean;
 	isTrashed?: boolean;
 }
 

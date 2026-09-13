@@ -30,12 +30,25 @@ export default class CASMetadataObjectFilterBuilder {
 		}
 		if (filterBy.hasReference != null) {
 			const m = filterBy.hasReference;
-			// 构建时（惰性，仅当筛选关心引用状态）先确保缓存最新，
-			// 之后信任缓存条目判定，不再逐条读笔记内容验证；
-			// 失败自然传播（引用判定无法安全继续）
+			// 默认保障缓存最新后再信任缓存条目判定（skipVerify），避免缓存过时时列表不准。
 			const ensureFresh = this.referenceManager.ensureFresh(this.signal);
 			b.add(async (i) => {
 				await ensureFresh;
+				const n = await this.referenceManager.count(
+					i.cid,
+					1,
+					this.signal,
+					{ skipVerify: true },
+				);
+				return m === n > 0;
+			});
+		}
+		if (filterBy.unverifiedHasReference != null) {
+			const m = filterBy.unverifiedHasReference;
+			// 独立的引用状态筛选，不依赖 hasReference：跳过 ensureFresh，直接信任缓存
+			// 做存在性判定，作为「未引用」页加载加速的取舍（缓存未刷新前结果可能短暂不准确）。
+			// 与 hasReference 各自独立叠加；两者语义相悖时结果为空集，此类查询无实际用途。
+			b.add(async (i) => {
 				const n = await this.referenceManager.count(
 					i.cid,
 					1,

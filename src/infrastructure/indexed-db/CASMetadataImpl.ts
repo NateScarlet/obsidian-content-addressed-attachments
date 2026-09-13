@@ -7,6 +7,7 @@ import type {
 import type CASMetadataObjectFilterBuilder from "#src/CASMetadataObjectFilterBuilder";
 import executeIDBRequest from "#src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "#src/utils/iterateIDBObjectStore";
+import orderedParallelFilter from "#src/utils/orderedParallelFilter";
 import {
 	casMetadataDelete,
 	casMetadataSave,
@@ -22,6 +23,12 @@ const STATS_KEY = "summary";
 
 /** mergeBatch 每块的事务大小：块越大单事务越长，1000 兼顾事务时长与事务总数 */
 const MERGE_BATCH_CHUNK_SIZE = 1000;
+
+/**
+ * 非主键路径过滤的并发上限：一批元素同步启动谓词，使引用计数等异步谓词并发到达、
+ * 合并为单个 IndexedDB 事务（避免逐元素 size-1 事务）；上限控制并发的只读事务数。
+ */
+const PARALLEL_FILTER_LIMIT = 1024;
 
 export class CASMetadataImpl implements CASMetadata {
 	private db: Promise<IDBDatabase>;
@@ -372,47 +379,50 @@ export class CASMetadataImpl implements CASMetadata {
 			return;
 		}
 
-		for await (const edge of iterateIDBObjectStore({
-			signal,
-			after,
-			open: async (afterCursor) => {
-				const tx = db.transaction(OBJECTS_STORE_NAME, "readonly");
-				const store = tx.objectStore(OBJECTS_STORE_NAME);
-				const after = afterCursor
-					? this.parseCursor(afterCursor)
-					: undefined;
-				const index = store.index("indexedAt");
-				const cursor = await executeIDBRequest(
-					index.openCursor(
-						after
-							? IDBKeyRange.upperBound(
-									[after.indexedAt, after.cid],
-									true,
-								)
-							: null,
-						"prev",
-					),
-					signal,
-				);
-				return {
-					cursor,
-					close: () => {
-						tx.abort();
-					},
-				};
-			},
-			decode: (data: PO) => {
-				const node = this.decode(data);
-				const cursor = this.createCursor(node.indexedAt, node.cid);
-				return {
-					node,
-					cursor,
-				};
-			},
-		})) {
-			if (await filter(edge.node)) {
-				yield edge;
-			}
+		for await (const edge of orderedParallelFilter(
+			iterateIDBObjectStore({
+				signal,
+				after,
+				open: async (afterCursor) => {
+					const tx = db.transaction(OBJECTS_STORE_NAME, "readonly");
+					const store = tx.objectStore(OBJECTS_STORE_NAME);
+					const after = afterCursor
+						? this.parseCursor(afterCursor)
+						: undefined;
+					const index = store.index("indexedAt");
+					const cursor = await executeIDBRequest(
+						index.openCursor(
+							after
+								? IDBKeyRange.upperBound(
+										[after.indexedAt, after.cid],
+										true,
+									)
+								: null,
+							"prev",
+						),
+						signal,
+					);
+					return {
+						cursor,
+						close: () => {
+							tx.abort();
+						},
+					};
+				},
+				decode: (data: PO) => {
+					const node = this.decode(data);
+					const cursor = this.createCursor(node.indexedAt, node.cid);
+					return {
+						node,
+						cursor,
+					};
+				},
+			}),
+			// 保序并发过滤：谓词并行执行但按源顺序产出，触发引用计数批合并
+			async (edge) => filter(edge.node),
+			{ signal, limit: PARALLEL_FILTER_LIMIT },
+		)) {
+			yield edge;
 		}
 	}
 
