@@ -16,6 +16,11 @@ export interface CAS {
 		cid: CID,
 		restoreAllowedDirs?: string[],
 	): Promise<{ normalizedPath: string; didRestore: boolean } | undefined>;
+	/**
+	 * 收集某 CID 在所有目录的副本状态（含回收站副本）。
+	 * 供后台索引追平按磁盘真相重建副本状态；这是磁盘探测，不依赖元数据库。
+	 */
+	collectCopies(cid: CID): Promise<{ dir: string; trashedAt?: Date }[]>;
 	save(dir: string, file: File): Promise<{ cid: CID; didCreate: boolean }>;
 	deleteIfTrashed(cid: CID): Promise<number>;
 	objects(): AsyncIterableIterator<CASMetadataObject>;

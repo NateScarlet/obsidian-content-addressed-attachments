@@ -12,6 +12,7 @@ import type {
 	CASMetadataCopy,
 	CASMetadataObject,
 } from "#src/types/CASMetadata";
+import type { CASMetadataSync } from "#src/types/CASMetadataSync";
 
 export class CASImpl implements CAS {
 	private trashRelPath = ".trash";
@@ -20,6 +21,7 @@ export class CASImpl implements CAS {
 		private app: App,
 		private meta: CASMetadata,
 		private dirs: () => Iterable<string>,
+		private sync: CASMetadataSync,
 	) {}
 
 	// #region 副本探测
@@ -98,8 +100,11 @@ export class CASImpl implements CAS {
 		await this.meta.merge({ ...meta, copies });
 	}
 
-	/** 收集某 CID 在所有目录的副本状态（含回收站副本） */
-	private async collectCopies(
+	/**
+	 * 收集某 CID 在所有目录的副本状态（含回收站副本）。
+	 * 公开供后台索引追平（写侧同步消费者）按磁盘真相重建副本状态使用。
+	 */
+	async collectCopies(
 		cid: CID,
 	): Promise<{ dir: string; trashedAt?: Date }[]> {
 		const copies: { dir: string; trashedAt?: Date }[] = [];
@@ -382,15 +387,10 @@ export class CASImpl implements CAS {
 			}
 		}
 		if (copies.length === 0) {
-			await this.meta.delete(cid);
+			this.sync.notifyChanged({ cid });
 			return undefined;
 		}
-		const existing = await this.meta.get(cid);
-		await this.meta.merge({
-			...(existing ?? { cid, indexedAt: new Date() }),
-			copies: mergeCopies(undefined, copies),
-			size: existing?.size,
-		});
+		this.sync.notifyChanged({ cid });
 		return {
 			normalizedPath: firstNormalPath!,
 			didRestore,
@@ -457,17 +457,12 @@ export class CASImpl implements CAS {
 		await makeDirs(this.app.vault, dirname(filePath));
 		await this.app.vault.adapter.writeBinary(filePath, arrayBuffer);
 
-		// 更新元数据：本目录新增正常副本，其他目录的副本状态（含回收站）保留，不扫描磁盘
-		const existing = await this.meta.get(cid);
-		await this.meta.merge({
+		// 落盘成功后仅发布失效信号，由后台消费者按磁盘真相追平索引（不阻塞本调用）
+		this.sync.notifyChanged({
 			cid,
-			indexedAt: new Date(),
 			filename: file.name,
 			format: file.type,
 			size: file.size,
-			copies: mergeCopies(existing?.copies, [
-				{ dir, trashedAt: undefined },
-			]),
 		});
 
 		console.debug("save", {

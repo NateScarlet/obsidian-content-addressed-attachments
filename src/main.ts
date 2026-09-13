@@ -22,7 +22,8 @@ import type { CAS } from "./types/CAS";
 import ReferenceManager from "./ReferenceManager";
 import CASMetadataObjectFilterBuilder from "./CASMetadataObjectFilterBuilder";
 import showError from "./utils/showError";
-import { markdownChange } from "./events";
+import { markdownChange, casMetadataChanged } from "./events";
+import { CASMetadataSyncService } from "./infrastructure/indexed-db/CASMetadataSyncService";
 import createIPFSLinkClickExtension from "./createIPFSLinkClickExtension";
 import insertAttachment, {
 	processFileAndInsertLink,
@@ -63,6 +64,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
 	public cas!: CAS;
 	public casMetadata!: CASMetadata;
+	/** 后台索引追平服务：消费写侧失效信号，按磁盘真相批量落地元数据 */
+	public metadataSyncService!: CASMetadataSyncService;
 	/**
 	 * 元数据写入专用中止信号：插件卸载（含热重载/升级）时中止进行中的批量写入，
 	 * 避免插件多版本同时竞争写入同一 IndexedDB。
@@ -114,12 +117,28 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.casMetadata = new CASMetadataImpl(
 			new CASMetadataObjectFilterBuilder(this.referenceManager),
 		);
-		this.cas = new CASImpl(this.app, this.casMetadata, () => {
-			return uniq([
-				this.settings.primaryDir,
-				...getDownloadDirs(this.settings),
-			]);
-		});
+		this.cas = new CASImpl(
+			this.app,
+			this.casMetadata,
+			() => {
+				return uniq([
+					this.settings.primaryDir,
+					...getDownloadDirs(this.settings),
+				]);
+			},
+			{
+				// CAS 落盘事实后仅发布失效信号，后台由 CASMetadataSyncService 消费追平。
+				// CASImpl 不直接 await 元数据同步，避免 IndexedDB 忙时阻塞图片解析。
+				notifyChanged: (signal) =>
+					casMetadataChanged.dispatch({ detail: signal }),
+			},
+		);
+		this.metadataSyncService = new CASMetadataSyncService(
+			this.cas,
+			this.casMetadata,
+			this.metadataWriteController.signal,
+		);
+		this.stack.use(this.metadataSyncService);
 		// eslint-disable-next-line obsidianmd/no-unsupported-api
 		const secretStorage = this.app.secretStorage;
 		const storage: KeyStorage = secretStorage ?? {

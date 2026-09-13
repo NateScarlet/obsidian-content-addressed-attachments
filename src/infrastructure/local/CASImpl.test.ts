@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/require-await -- 测试 mock 为同步内存实现 */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
@@ -167,8 +167,11 @@ function setup(dirs: string[]) {
 	};
 	const app = { vault };
 	const meta = new MemMeta();
-	const cas = new CASImpl(app as unknown as App, meta, () => dirs);
-	return { cas, meta, fs };
+	const sync = {
+		notifyChanged: vi.fn(),
+	};
+	const cas = new CASImpl(app as unknown as App, meta, () => dirs, sync);
+	return { cas, meta, fs, sync };
 }
 
 async function makeObject(content: string) {
@@ -412,8 +415,8 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		).toBeInstanceOf(Date);
 	});
 
-	it("save 新增正常副本时保留其他目录回收站状态", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+	it("save 新增正常副本时只发布失效信号（保留其他目录回收站状态由后台按磁盘重建）", async () => {
+		const { cas, meta, fs, sync } = setup(["dirA", "dirB"]);
 		const { cid, bytes } = await makeObject("abc");
 		const relPath = cas.formatRelPath(cid);
 		// dirB 已在回收站
@@ -427,13 +430,14 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		const file = new File([bytes], "a.png", { type: "image/png" });
 		await cas.save("dirA", file);
 
-		const obj = await meta.get(cid);
-		expect(
-			obj?.copies?.find((c) => c.dir === "dirA")?.trashedAt,
-		).toBeUndefined();
-		expect(
-			obj?.copies?.find((c) => c.dir === "dirB")?.trashedAt,
-		).toBeInstanceOf(Date);
+		// save 只发布失效信号，不直接写元数据；副本状态（含回收站）由后台消费者
+		// 基于磁盘探测重建（seam 迁移：该不变量迁至 CASMetadataSyncService seam）
+		expect(sync.notifyChanged).toHaveBeenCalledWith({
+			cid,
+			filename: "a.png",
+			format: "image/png",
+			size: bytes.length,
+		});
 	});
 
 	it("trash 把所有目录副本移入回收站并更新 copies", async () => {
@@ -482,7 +486,7 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 	});
 
 	it("load 恢复所有目录的回收站副本", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cas, meta, fs, sync } = setup(["dirA", "dirB"]);
 		const { cid, bytes } = await makeObject("abc");
 		const relPath = cas.formatRelPath(cid);
 		// 两个目录都在回收站（无正常副本）
@@ -504,8 +508,8 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		expect(fs.exists(`dirB/${relPath}`)).toBe(true);
 		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
 		expect(fs.exists(`dirB/.trash/${relPath}`)).toBe(false);
-		const obj = await meta.get(cid);
-		expect(obj?.copies?.every((c) => c.trashedAt === undefined)).toBe(true);
+		// load 只发布失效信号，副本状态按磁盘真相由后台消费者重建（seam 迁移）
+		expect(sync.notifyChanged).toHaveBeenCalledWith({ cid });
 	});
 
 	it("restoreIfTrashed 目标目录已有同 CID 正常副本时不抛错并去重", async () => {
@@ -619,7 +623,7 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 	});
 
 	it("load 副本所在目录不在允许列表内时迁移到列表第一个目录", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cas, meta, fs, sync } = setup(["dirA", "dirB"]);
 		const { cid, bytes } = await makeObject("abc");
 		const relPath = cas.formatRelPath(cid);
 		fs.write(`dirA/.trash/${relPath}`, bytes);
@@ -635,8 +639,8 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		expect(result?.normalizedPath).toBe(`dirB/${relPath}`);
 		expect(fs.exists(`dirB/${relPath}`)).toBe(true);
 		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
-		const obj = await meta.get(cid);
-		expect(obj?.copies).toEqual([{ dir: "dirB", trashedAt: undefined }]);
+		// load 只发布失效信号，副本状态按磁盘真相由后台消费者重建（seam 迁移）
+		expect(sync.notifyChanged).toHaveBeenCalledWith({ cid });
 	});
 
 	it("load 副本所在目录在允许列表内时原位恢复", async () => {
@@ -658,8 +662,8 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
 	});
 
-	it("copies 记录未删除的多目录副本信息（代表有外部写入）", async () => {
-		const { cas, meta } = setup(["dirA", "dirB"]);
+	it("save 新增副本后只发布失效信号，副本状态由后台消费者按磁盘重建", async () => {
+		const { cas, meta, sync } = setup(["dirA", "dirB"]);
 		const { cid, bytes } = await makeObject("abc");
 
 		await cas.save(
@@ -671,9 +675,21 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 			new File([bytes], "b.png", { type: "image/png" }),
 		);
 
-		const obj = await meta.get(cid);
-		expect(obj?.copies).toHaveLength(2);
-		expect(obj?.copies?.map((c) => c.dir).sort()).toEqual(["dirA", "dirB"]);
-		expect(obj?.copies?.every((c) => c.trashedAt === undefined)).toBe(true);
+		// save 落盘成功后只发布失效信号，不同步写入元数据
+		expect(sync.notifyChanged).toHaveBeenCalledTimes(2);
+		expect(sync.notifyChanged).toHaveBeenNthCalledWith(1, {
+			cid,
+			filename: "a.png",
+			format: "image/png",
+			size: bytes.length,
+		});
+		expect(sync.notifyChanged).toHaveBeenNthCalledWith(2, {
+			cid,
+			filename: "b.png",
+			format: "image/png",
+			size: bytes.length,
+		});
+		// 元数据同步由后台消费者（按磁盘真相重建）负责，此处不再同步反映
+		await expect(meta.get(cid)).resolves.toBeUndefined();
 	});
 });
