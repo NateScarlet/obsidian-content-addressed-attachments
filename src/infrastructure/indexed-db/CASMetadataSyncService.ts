@@ -3,6 +3,11 @@ import type { CAS } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 import type { CASMetadataDirty } from "#src/types/CASMetadataSync";
 import { casMetadataChanged } from "#src/events";
+import orderedParallelMap, {
+	EMPTY_PROJECTION,
+	drain,
+} from "#src/utils/orderedParallelMap";
+import { COALESCING_BATCH_MAX_SIZE } from "./CASMetadataImpl";
 
 /**
  * 后台索引追平服务：订阅写侧失效信号，按磁盘真相重建副本状态后批量落地索引。
@@ -97,11 +102,21 @@ export class CASMetadataSyncService {
 		}
 
 		if (merges.length > 0) {
-			// 并行逐条 merge：同一微任务链入队，存储层内部自动合并为一个事务
-			await Promise.all(
-				merges.map((obj) => this.meta.merge(obj, this.signal)),
+			// 并行逐条 merge：同一微任务链入队，存储层内部自动合并为一个事务。
+			// 并发上限取存储层合并批宽，使一批 merges 恰好合并为一个事务。
+			await drain(
+				orderedParallelMap(
+					merges,
+					async (obj) => {
+						await this.meta.merge(obj, this.signal);
+						return EMPTY_PROJECTION;
+					},
+					{ limit: COALESCING_BATCH_MAX_SIZE },
+				),
 			);
 		}
+		// TODO: deletes 仍是逐条串行 await（无并发爆炸风险，但批量删除可更快），
+		// 需要时可并入上面的有序并发原语。
 		for (const cid of deletes) {
 			await this.meta.delete(cid, this.signal);
 		}

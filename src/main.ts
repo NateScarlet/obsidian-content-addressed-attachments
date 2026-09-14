@@ -59,6 +59,16 @@ import TransformPipeline from "./preprocess/TransformPipeline";
 import DefaultScriptLoader from "./preprocess/ScriptLoader";
 import type { ScriptLoader } from "./preprocess/types";
 import createScriptLoaderOptions from "./preprocess/createScriptLoaderOptions";
+import orderedParallelMap, {
+	DEFAULT_PARALLEL_LIMIT,
+	EMPTY_PROJECTION,
+	drain,
+	type OrderedParallelProjection,
+} from "./utils/orderedParallelMap";
+import CoalescedNotice from "./utils/CoalescedNotice";
+
+/** 页面补丁失败提示的合并窗口（毫秒） */
+const PATCH_FAILURE_NOTICE_WINDOW_MS = 500;
 
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
@@ -84,6 +94,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
+	/** 页面链接补丁失败提示：按 DOM 变动高频触发，合并为窗口内累计一条 */
+	private readonly patchFailureNotice = this.stack.use(
+		new CoalescedNotice(
+			(count) => new Notice(t("patchFailed")(count)),
+			PATCH_FAILURE_NOTICE_WINDOW_MS,
+		),
+	);
 	public migrationManager!: MigrationManager;
 	public lockManager!: LockManager;
 	public pipeline!: TransformPipeline;
@@ -617,14 +634,38 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			'[style*="http:///ipfs://"], [style*="http:///internal.ipfs-locked:"]',
 		);
 
-		const jobs: Promise<void>[] = [];
+		// 有界并发：一次 mutation 可命中大量元素，元素内解析还会触发远程请求，
+		// 无上限并发会把页面渲染与网络都打满
+		const patches: (() => Promise<void>)[] = [];
 		match.forEach((element) => {
-			jobs.push(this.processElementURL(element));
+			patches.push(() => this.processElementURL(element));
 		});
 		backgroundMatch.forEach((element) => {
-			jobs.push(this.processElementBackgroundImage(element));
+			patches.push(() => this.processElementBackgroundImage(element));
 		});
-		await Promise.allSettled(jobs);
+
+		let failures = 0;
+		await drain(
+			orderedParallelMap(
+				patches,
+				async (patch): Promise<OrderedParallelProjection<never>> => {
+					try {
+						await patch();
+					} catch (error) {
+						// 元素级隔离：各元素相互独立，一个元素解析失败不应让同批其余元素
+						// 停止补丁；失败汇总后以单条防抖 Notice 反馈（日志在构建中被剥离，
+						// 不是调用者可见的反馈）
+						failures += 1;
+						console.error("补丁元素 URL 失败", error);
+					}
+					return EMPTY_PROJECTION;
+				},
+				{ limit: DEFAULT_PARALLEL_LIMIT },
+			),
+		);
+		if (failures > 0) {
+			this.patchFailureNotice.report(failures);
+		}
 	}
 
 	async loadSettings() {
@@ -677,6 +718,8 @@ const { t } = defineLocales({
 		loading: "Loading",
 		fileNotFound: "File not found",
 		openCASExplorer: "Open CAS file explorer",
+		patchFailed: (count: number) =>
+			`Failed to resolve ${count} IPFS link(s) on this page.`,
 		restoreReferencedFiles: "Restore referenced files from recycle bin",
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
@@ -699,6 +742,8 @@ const { t } = defineLocales({
 		loading: "正在加载",
 		fileNotFound: "未找到文件",
 		openCASExplorer: "打开 CAS 文件管理器",
+		patchFailed: (count: number) =>
+			`页面上有 ${count} 个 IPFS 链接解析失败。`,
 		restoreReferencedFiles: "从回收站恢复被引用的文件",
 		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
 		...reprocessSharedMessages.zh,

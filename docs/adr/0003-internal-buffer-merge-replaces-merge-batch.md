@@ -4,6 +4,10 @@
 
 改为把「批量」从调用方责任移回机制内部：从 `CASMetadata` 接口移除 `mergeBatch`，`merge` 单条调用入队合并批（`src/utils/CoalescingBatch.ts`，go 参照 `runInBatch`+`loop` 收集循环），同一注册窗口（同步块）内并发到达的请求自动合并为一个读写事务；达到批上限（1000，与旧块大小一致）才切新批，无积压时单条零等待（maxWait 而非 minWait）。调用方只需并行调用单条 `merge`（重建索引按块 `Promise.all`、写侧同步服务同批 `Promise.all`）。`casMetadataBatchSave` 事件删除，内部批对每个变更对象派发 `casMetadataSave`，UI 只监听该事件并 1 秒节流。
 
+> 后续变更：调用方的「并行调用」已由有界保序并发原语 `orderedParallelMap` 承担，
+> 见 [ADR-0004](./0004-bounded-ordered-concurrency-replaces-promise-all.md)。
+> 该原语的并发上限同时是合并批宽，故上述「同一注册窗口」的前提依然成立。
+
 `CoalescingBatch` 是通用合并批机制，写入侧与查询侧共用一套：写入侧每个请求独立条目、逐项结果；查询侧（`ReferenceManager.mergedEntryCount`）通过合并键（`keyOf = cid`）把同 cid 请求去重合并为一个执行条目、多 waiter 共享一次查询结果，并按验证语义（skipVerify/verify）分队列（`batchKeyOf` 内联于 ReferenceManager）。原先查询批自带的 `ReferenceLookupBatch` 容器类与策略纯函数（`mergeBatchPolicy`）不再需要，删除。
 
 合并策略为 go 形态：收割时把队列中所有可执行请求拉入同一批（`abort = len(batch) == maxBatchSize`），不存在「`pending<=1` 即提前收割」的语义——探针验证该语义会把同一同步块的突发请求拆成逐个独立批（每请求一个事务），合并完全失效。

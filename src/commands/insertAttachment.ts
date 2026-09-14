@@ -146,6 +146,8 @@ export default async function insertAttachment(
 		id: "insert-attachment-ee03d94fe3c6",
 		multiple: true,
 	});
+	// 有意不限并发：句柄数由用户在文件选择器中的选择决定，天然受限，
+	// 不值得引入并发上限（读取本身也很廉价）
 	const files = await Promise.all(handles.map((h) => h.getFile()));
 	const editor = view.editor;
 	const notePath = view.file?.path ?? "";

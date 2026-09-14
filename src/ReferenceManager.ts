@@ -2,9 +2,15 @@ import { CID } from "multiformats";
 import type ContentAddressedAttachmentPlugin from "./main";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
-import findIPFSLinks from "./utils/findIPFSLinks";
+import findIPFSLinks, { type IPFSLinkMatch } from "./utils/findIPFSLinks";
 import IPFSLink from "./utils/IPFSLink";
 import isAbortError from "./utils/isAbortError";
+import orderedParallelMap, {
+	DEFAULT_PARALLEL_LIMIT,
+	EMPTY_PROJECTION,
+	drain,
+	type OrderedParallelProjection,
+} from "./utils/orderedParallelMap";
 import { Notice, TFile } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "#src/lib/IncrementalScanProgress.svelte";
@@ -23,6 +29,13 @@ const COALESCING_BATCH_MAX_SIZE = 64;
 function batchKeyOf(skipVerify: boolean): string {
 	return skipVerify ? "skipVerify" : "verify";
 }
+
+/**
+ * 增量扫描的并发上限：同时是合并批宽。取值须显著大于普通并发上限，
+ * 使同批到达的元数据写入能合并为少量读写事务（万级文件时保持事务数远小于文件数）；
+ * 又不能大到一次性启动过多读取任务打满内存与 IO。
+ */
+const INCREMENTAL_SCAN_LIMIT = 64;
 
 export interface ReferenceManagerCache {
 	add(
@@ -171,6 +184,8 @@ export default class ReferenceManager {
 	): AsyncIterableIterator<string> {
 		const prefix = `ipfs://${cid.toString()}`;
 		const prefix2 = `internal.ipfs-locked:${cid.toString()},`;
+		// TODO: 逐条串行 await 验证（无并发爆炸风险，但全库验证是隐藏的耗时大头），
+		// 需要时可改为有界并发的有序原语
 		for await (const normalizedPath of this.cache.find(cid, signal)) {
 			if (!options?.skipVerify) {
 				if (
@@ -252,19 +267,19 @@ export default class ReferenceManager {
 				newFiles.length,
 			);
 			try {
-				const jobs: Promise<void>[] = [];
-				let nextIndex = 1;
-				for (const file of newFiles) {
-					signal.throwIfAborted();
-					jobs.push(
-						this.loadFile(file.path).then(() => {
-							const index = nextIndex;
-							nextIndex += 1;
-							progress.update(index, file.path);
-						}),
-					);
+				// 有界并发：新装插件的库可能上万新文件，一次性启动等量任务会打满 IO 与内存。
+				// 64 同时是并发上限与合并批宽——批宽足够大，同批到达的元数据写入才能被
+				// 合并为少量读写事务；取更小值会让写入退回逐条事务量级。
+				let index = 0;
+				for await (const path of orderedParallelMap(
+					newFiles,
+					(file) => this.projectFileIndexed(file.path),
+					{ limit: INCREMENTAL_SCAN_LIMIT, signal },
+				)) {
+					// 进度按源顺序推进：序号与文件名一一对应（并发完成序会让两者错位）
+					index += 1;
+					progress.update(index, path);
 				}
-				await Promise.all(jobs);
 			} finally {
 				progress.finish();
 			}
@@ -275,6 +290,17 @@ export default class ReferenceManager {
 				throw error;
 			}
 		}
+	}
+
+	/**
+	 * 增量扫描的投影：索引单个文件后产出其路径，供消费点按源顺序报告进度
+	 * （进度序号与文件名必须对应，故由产出顺序而非完成顺序驱动）。
+	 */
+	private async *projectFileIndexed(
+		normalizedPath: string,
+	): AsyncGenerator<string> {
+		await this.loadFile(normalizedPath);
+		yield normalizedPath;
 	}
 
 	async loadFile(normalizedPath: string) {
@@ -296,32 +322,53 @@ export default class ReferenceManager {
 		);
 	}
 
+	/**
+	 * 单个链接的索引投影：引用缓存写入 + 元数据索引（两个任务并发入队，
+	 * 使它们落入同一注册窗口被合并批合并）。无产出（纯副作用）。
+	 */
+	private async projectLinkIndex(
+		{ url, title }: IPFSLinkMatch,
+		normalizedPath: string,
+		signal: AbortSignal | undefined,
+	): Promise<OrderedParallelProjection<never>> {
+		await Promise.all([
+			this.cache.add(url.cid, normalizedPath, signal),
+			this.plugin.cas.index({
+				cid: url.cid,
+				indexedAt: new Date(),
+				filename: url.filename || title || undefined,
+				format: url.format || undefined,
+			}),
+		]);
+		return EMPTY_PROJECTION;
+	}
+
 	async loadFileContent(
 		normalizedPath: string,
 		markdown: string,
 		signal?: AbortSignal,
 	) {
 		const startAt = new Date();
-		const jobs: Promise<void>[] = [];
 		const cids: CID[] = [];
 		// 触发笔记中以 ipfs:// 形式引用的 cid：恢复时短路判定，无需再查全库
 		const knownIPFSCids = new Set<string>();
-		for (const { url, title } of findIPFSLinks(markdown)) {
+		const links = [...findIPFSLinks(markdown)];
+		for (const { url } of links) {
 			cids.push(url.cid);
 			if (url instanceof IPFSLink) {
 				knownIPFSCids.add(url.cid.toString());
 			}
-			jobs.push(
-				this.cache.add(url.cid, normalizedPath, signal),
-				this.plugin.cas.index({
-					cid: url.cid,
-					indexedAt: new Date(),
-					filename: url.filename || title || undefined,
-					format: url.format || undefined,
-				}),
-			);
 		}
-		await Promise.all(jobs);
+		// 有界并发：单条笔记可解析出大量链接，一次性全部启动会让巨型笔记卡住界面。
+		// 每个链接的投影同时发起引用缓存写入与元数据索引两个任务，故在飞写入
+		// 至多为 2 × DEFAULT_PARALLEL_LIMIT。
+		await drain(
+			orderedParallelMap(
+				links,
+				(link) => this.projectLinkIndex(link, normalizedPath, signal),
+				{ limit: DEFAULT_PARALLEL_LIMIT, signal },
+			),
+		);
 		await this.cache.expireByPath(normalizedPath, startAt, signal);
 
 		if (cids.length > 0) {

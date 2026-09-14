@@ -7,7 +7,7 @@ import type {
 import type CASMetadataObjectFilterBuilder from "#src/CASMetadataObjectFilterBuilder";
 import executeIDBRequest from "#src/utils/executeIDBRequest";
 import iterateIDBObjectStore from "#src/utils/iterateIDBObjectStore";
-import orderedParallelFilter from "#src/utils/orderedParallelFilter";
+import orderedParallelMap from "#src/utils/orderedParallelMap";
 import { casMetadataDelete, casMetadataSave } from "#src/events";
 import CoalescingBatch from "#src/utils/CoalescingBatch";
 import { isEqual, uniqBy } from "es-toolkit";
@@ -18,12 +18,17 @@ const OBJECTS_STORE_NAME = "objects";
 const STATS_STORE_NAME = "stats";
 const STATS_KEY = "summary";
 
-/** 合并批的事务大小：批越大单事务越长，1000 兼顾事务时长与事务总数（go 参照 maxBatchSize） */
-const COALESCING_BATCH_MAX_SIZE = 1000;
+/**
+ * 合并批的事务大小：批越大单事务越长，1000 兼顾事务时长与事务总数（go 参照 maxBatchSize）。
+ * 写入侧并行调用 `merge` 的调用方应以此为并发上限，使一批调用恰好合并为一个事务。
+ */
+export const COALESCING_BATCH_MAX_SIZE = 1000;
 
 /**
  * 非主键路径过滤的并发上限：一批元素同步启动谓词，使引用计数等异步谓词并发到达、
  * 合并为单个 IndexedDB 事务（避免逐元素 size-1 事务）；上限控制并发的只读事务数。
+ * 取值远大于常规并发上限：这里限制的是「合并批宽」，宽批才能让同批引用计数
+ * 请求合并成少数只读事务（未引用页提速的来源），并非无界启动独立任务。
  */
 const PARALLEL_FILTER_LIMIT = 1024;
 
@@ -371,7 +376,7 @@ export class CASMetadataImpl implements CASMetadata {
 			return;
 		}
 
-		for await (const edge of orderedParallelFilter(
+		for await (const edge of orderedParallelMap(
 			iterateIDBObjectStore({
 				signal,
 				after,
@@ -410,8 +415,13 @@ export class CASMetadataImpl implements CASMetadata {
 					};
 				},
 			}),
-			// 保序并发过滤：谓词并行执行但按源顺序产出，触发引用计数批合并
-			async (edge) => filter(edge.node),
+			// 保序并发过滤：谓词并发执行但按源顺序产出；同批同步启动是引用计数
+			// 请求被合并为单个只读事务（skipVerify/未引用页提速）的前提。
+			async function* (edge) {
+				if (await filter(edge.node)) {
+					yield edge;
+				}
+			},
 			{ signal, limit: PARALLEL_FILTER_LIMIT },
 		)) {
 			yield edge;

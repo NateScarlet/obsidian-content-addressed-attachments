@@ -25,7 +25,7 @@ export interface CleanUnreferencedOptions {
  * 前置缓存保证由 hasReference 筛选内部的 ensureFresh 完成——增量扫描 + 外部删除对账后
  * 缓存条目即真相，引用判定才可信任缓存（skipVerify）。判定与回收对同一 cid 保持原子。
  *
- * 并发由数据层 orderedParallelFilter 承担（保序 + 引用计数批合并），命令层不再自研 worker 池。
+ * 并发由数据层 orderedParallelMap 承担（保序 + 引用计数批合并），命令层不自研 worker 池。
  *
  * 进度：回收阶段每移入一个文件回调一次（cleaning）。
  */
@@ -47,6 +47,8 @@ export default async function cleanUnreferenced(
 		signal.throwIfAborted();
 		// 计数以 trash 的实际移动数为准：磁盘无副本（trash 只删元数据记录）
 		// 或仅有回收站副本（无物理移动）时返回 0，不计入「已移动」
+		// TODO: 逐条串行回收（无并发爆炸风险，但批量回收可更快），
+		// 需要时可改为有界并发的有序原语
 		const moved = await cas.trash(node.cid);
 		cleaned += moved;
 		if (moved > 0) {

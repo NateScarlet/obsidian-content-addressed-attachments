@@ -395,7 +395,10 @@ export class URLResolver {
 			return new Promise((resolve) => probedWaiters.push(resolve));
 		};
 
-		// 探测失败只收集到 errors，不阻塞其他来源的消费
+		// 探测失败只收集到 errors，不阻塞其他来源的消费。
+		// 有意不限并发：来源数 = 配置的网关 + 源站 extraURLs（个位数），且「全部来源
+		// 并发探测、按 settle 顺序串行 GET 回退」是 ADR-0001 / issue #33 的有意设计，
+		// 限制并发会改变交付顺序语义。
 		void Promise.all(
 			sources.map(async (source) => {
 				try {

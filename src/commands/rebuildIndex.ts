@@ -1,6 +1,7 @@
 import type { CAS } from "#src/types/CAS";
-import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
+import type { CASMetadata } from "#src/types/CASMetadata";
 import type ReferenceManager from "#src/ReferenceManager";
+import orderedParallelMap from "#src/utils/orderedParallelMap";
 
 export interface RebuildIndexResult {
 	scanned: number;
@@ -12,16 +13,21 @@ export interface RebuildIndexOptions {
 	signal: AbortSignal;
 }
 
-/** 内部合并批块大小：块内并行 merge 在同一个微任务链入队，自动合并为一个内部批 */
-export const DEFAULT_MERGE_BATCH_SIZE = 1000;
+/**
+ * 扫描阶段的并发上限：取存储层合并批的事务大小（CASMetadataImpl 的
+ * COALESCING_BATCH_MAX_SIZE，当前 1000），使每批并发的 merge 恰好落入同一个
+ * 读写事务，同时限制在飞任务数（不随附件数增长）。进度回调也按该批宽推进（每批一次）。
+ * 二者只需为同一量级即可保持「一批一事务」；命令层不为此依赖存储层实现，故就地声明。
+ */
+export const MERGE_LIMIT = 1000;
 
 /**
  * 重建索引并执行磁盘对账（流式，不把全部对象加载进内存）。
  *
  * 分两阶段，基于时间戳标记实现：
- * 1. 扫描磁盘存在的副本，累积成块调用 merge（块内并行）把该 CID 记为
+ * 1. 扫描磁盘存在的副本，以有界并发（≤ MERGE_LIMIT）调用 merge，把该 CID 记为
  *    lastVisitedAt = scannedAt，并以其在磁盘上的副本实例集合为准覆盖
- *    copies（含清理回收站标记）。块内并发 merge 在存储层内部自动合并为
+ *    copies（含清理回收站标记）。每批并发的 merge 在存储层内部自动合并为
  *    单个读写事务（见 CASMetadataImpl 内部缓冲），无需调用方分块感知。
  * 2. 流式遍历元数据，凡 lastVisitedAt 早于 scannedAt（即本次扫描未覆盖、
  *    磁盘上已无该 CID 的任何副本）的记录执行清理：
@@ -40,27 +46,31 @@ export default async function rebuildIndex(
 	const { signal } = options;
 	const scannedAt = new Date();
 
-	// 阶段 1：扫描磁盘，刷新仍存在副本的元数据（按块并行合并）
+	// 阶段 1：扫描磁盘，刷新仍存在副本的元数据（有界并发，每批一次进度回调）
 	let scanned = 0;
-	let pending: CASMetadataObject[] = [];
-	const flush = async () => {
-		if (pending.length === 0) {
-			return;
-		}
-		// 块内并行 merge：同一微任务链入队，存储层内部自动合并为一个事务
-		await Promise.all(pending.map((obj) => casMetadata.merge(obj, signal)));
-		scanned += pending.length;
-		onProgress?.(scanned, pending[pending.length - 1].cid.toString());
-		pending = [];
-	};
-	for await (const obj of cas.objects()) {
-		signal.throwIfAborted();
-		pending.push({ ...obj, lastVisitedAt: scannedAt });
-		if (pending.length >= DEFAULT_MERGE_BATCH_SIZE) {
-			await flush();
+	let lastCidStr = "";
+	for await (const cidStr of orderedParallelMap(
+		cas.objects(),
+		async function* (obj): AsyncGenerator<string> {
+			await casMetadata.merge(
+				{ ...obj, lastVisitedAt: scannedAt },
+				signal,
+			);
+			yield obj.cid.toString();
+		},
+		{ limit: MERGE_LIMIT, signal },
+	)) {
+		scanned += 1;
+		lastCidStr = cidStr;
+		// 进度按批推进：每满一批回调一次，值为已处理累计数
+		if (scanned % MERGE_LIMIT === 0) {
+			onProgress?.(scanned, cidStr);
 		}
 	}
-	await flush();
+	// 收尾：不足一批的剩余部分也要报告一次
+	if (scanned % MERGE_LIMIT !== 0) {
+		onProgress?.(scanned, lastCidStr);
+	}
 
 	// 阶段 2：对账清理磁盘上已无副本的残留
 	let pruned = 0;

@@ -6,6 +6,10 @@ import { isCASObjectTrashed } from "#src/utils/casCopies";
 import allowedDirsForRestore from "#src/utils/allowedDirsForRestore";
 import { Notice } from "obsidian";
 import defineLocales from "../utils/defineLocales";
+import CoalescedNotice from "#src/utils/CoalescedNotice";
+
+/** 恢复提示的合并窗口（毫秒） */
+const RESTORE_NOTICE_WINDOW_MS = 500;
 
 // 定义提示消息的国际化
 const { t } = defineLocales({
@@ -19,28 +23,14 @@ const { t } = defineLocales({
 	},
 });
 
-// 模块级变量，用于防抖合并弹出的 Notice 通知
-let pendingRestoredCount = 0;
-let noticeTimeout: number | null = null;
-
 /**
- * 触发防抖 Notice 提示
- *
- * @param count 新恢复的文件数
+ * 恢复提示的合并通知器：模块级共享实例，使并发到达的多次恢复调用合并为一条提示
+ * （引用索引阶段会因后台扫描而高频触发恢复，见 CODING_STANDARDS「防抖聚合通知」）。
  */
-function queueNotice(count: number) {
-	pendingRestoredCount += count;
-	if (noticeTimeout !== null) {
-		window.clearTimeout(noticeTimeout);
-	}
-	noticeTimeout = window.setTimeout(() => {
-		if (pendingRestoredCount > 0) {
-			new Notice(t("autoRestoredMsg")(pendingRestoredCount));
-			pendingRestoredCount = 0;
-		}
-		noticeTimeout = null;
-	}, 500);
-}
+const restoreNotice = new CoalescedNotice(
+	(count) => new Notice(t("autoRestoredMsg")(count)),
+	RESTORE_NOTICE_WINDOW_MS,
+);
 
 export interface RestoreReferencedFilesOptions {
 	/** 引用类型判定：存在 ipfs:// 引用的 cid 恢复到主存储目录 */
@@ -84,6 +74,7 @@ export default async function restoreReferencedFiles(
 
 	if (cids && cids.length > 0) {
 		// 局部恢复：在解析出新链接的索引阶段，检查这一批 CID
+		// TODO: 逐条串行（无并发爆炸风险，但批量恢复可更快），需要时可改为有界并发的有序原语
 		for (const cid of cids) {
 			const meta = await casMetadata.get(cid);
 			// 只有该文件之前在元数据中标记为被删时才执行物理恢复
@@ -99,6 +90,7 @@ export default async function restoreReferencedFiles(
 		}
 	} else {
 		// 全量恢复：在用户手动命令触发，或者清空垃圾箱之前触发
+		// TODO: 逐条串行（无并发爆炸风险，但批量恢复可更快），需要时可改为有界并发的有序原语
 		for await (const { node } of casMetadata.find({
 			filterBy: {
 				isTrashed: true,
@@ -118,7 +110,7 @@ export default async function restoreReferencedFiles(
 
 	// 合并提示
 	if (count > 0) {
-		queueNotice(count);
+		restoreNotice.report(count);
 	}
 
 	return count;

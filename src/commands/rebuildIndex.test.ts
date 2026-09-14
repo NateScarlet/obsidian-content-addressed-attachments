@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
-import rebuildIndex, { DEFAULT_MERGE_BATCH_SIZE } from "./rebuildIndex";
+import rebuildIndex, { MERGE_LIMIT } from "./rebuildIndex";
 import type { CAS } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 
@@ -78,8 +78,9 @@ async function makeObjects(n: number) {
 }
 
 describe("rebuildIndex 批量写入", () => {
-	it("磁盘对象块内并行 merge，默认块大小分块", async () => {
-		const onDisk = await makeObjects(DEFAULT_MERGE_BATCH_SIZE + 1);
+	it("磁盘对象逐条 merge，全部落库", async () => {
+		const count = MERGE_LIMIT + 1;
+		const onDisk = await makeObjects(count);
 		const meta = new MemMeta();
 		const rm = refManager(new Set());
 
@@ -91,13 +92,38 @@ describe("rebuildIndex 批量写入", () => {
 			{ signal: new AbortController().signal },
 		);
 
-		expect(scanned).toBe(DEFAULT_MERGE_BATCH_SIZE + 1);
-		// 逐条 merge 调用，共 n 次（块内并行；块边界由进度回调覆盖断言）
-		expect(meta.mergeCalls).toHaveLength(DEFAULT_MERGE_BATCH_SIZE + 1);
+		expect(scanned).toBe(count);
+		// 逐条 merge 调用，共 n 次
+		expect(meta.mergeCalls).toHaveLength(count);
 		// 全部记录写入元数据
 		for (const obj of onDisk) {
 			expect(await meta.get(obj.cid)).toBeDefined();
 		}
+	});
+
+	it("并发有界：同时在飞的 merge 数不超过合并批宽", async () => {
+		const count = MERGE_LIMIT * 2 + 1;
+		const onDisk = await makeObjects(count);
+		let active = 0;
+		let maxActive = 0;
+		const meta = new MemMeta();
+		const originalMerge = meta.merge.bind(meta);
+		meta.merge = async (obj, signal) => {
+			active++;
+			maxActive = Math.max(maxActive, active);
+			await Promise.resolve();
+			const result = await originalMerge(obj, signal);
+			active--;
+			return result;
+		};
+		const rm = refManager(new Set());
+
+		await rebuildIndex(fakeCas(onDisk), meta, rm as never, undefined, {
+			signal: new AbortController().signal,
+		});
+
+		expect(maxActive).toBeGreaterThan(1);
+		expect(maxActive).toBeLessThanOrEqual(MERGE_LIMIT);
 	});
 
 	it("逐条 merge 均收到与传入重建命令相同的 signal", async () => {
@@ -116,8 +142,8 @@ describe("rebuildIndex 批量写入", () => {
 		}
 	});
 
-	it("进度按块推进：每写完一块回调一次，值为已处理累计数", async () => {
-		const onDisk = await makeObjects(DEFAULT_MERGE_BATCH_SIZE + 2);
+	it("进度按批推进：每写完一批回调一次，值为已处理累计数", async () => {
+		const onDisk = await makeObjects(MERGE_LIMIT + 2);
 		const meta = new MemMeta();
 		const rm = refManager(new Set());
 		const onProgress = vi.fn();
@@ -126,16 +152,16 @@ describe("rebuildIndex 批量写入", () => {
 			signal: new AbortController().signal,
 		});
 
-		// 每块一次回调，值为该块末尾的累计数
+		// 每批一次回调，值为该批末尾的累计数
 		expect(onProgress).toHaveBeenCalledTimes(2);
 		expect(onProgress).toHaveBeenNthCalledWith(
 			1,
-			DEFAULT_MERGE_BATCH_SIZE,
+			MERGE_LIMIT,
 			expect.any(String),
 		);
 		expect(onProgress).toHaveBeenNthCalledWith(
 			2,
-			DEFAULT_MERGE_BATCH_SIZE + 2,
+			MERGE_LIMIT + 2,
 			expect.any(String),
 		);
 	});
