@@ -118,7 +118,6 @@
 
 	const { result: detail } = staleWithRevalidate(async () => {
 		const signal = getAbortSignal();
-		console.debug("load", file.cid.toString());
 		for await (const match of cas.lookup(file.cid)) {
 			signal.throwIfAborted();
 

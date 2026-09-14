@@ -81,9 +81,12 @@ export interface IncrementalScanReporterHandle {
 	finish(): void;
 }
 
+let nextID = 0;
+
 export default class ReferenceManager {
 	cache: ReferenceManagerCache;
 	flight = new SingleFlightGroup();
+
 	private readonly incrementalScanReporter: IncrementalScanReporter;
 	/** 本类默认构建的引用缓存（注入的缓存不记录，由注入者负责清理） */
 	private readonly builtCache: ReferenceManagerCacheImpl | undefined;
@@ -263,6 +266,10 @@ export default class ReferenceManager {
 			if (newFiles.length === 0) {
 				return;
 			}
+			console.debug("[incremental-scan] begin", {
+				newFilesCount: newFiles.length,
+				cutoffAt,
+			});
 			const progress = this.incrementalScanReporter.begin(
 				newFiles.length,
 			);
@@ -279,11 +286,18 @@ export default class ReferenceManager {
 					// 进度按源顺序推进：序号与文件名一一对应（并发完成序会让两者错位）
 					index += 1;
 					progress.update(index, path);
+					console.debug("[incremental-scan] did update progress", {
+						index,
+						total: newFiles.length,
+					});
 				}
 			} finally {
 				progress.finish();
 			}
 			await this.cache.setCutoffAt(startAt, signal);
+			console.debug("[incremental-scan] did set cutoff", {
+				value: startAt,
+			});
 		} catch (error) {
 			// 取消（卸载/热重载）为正常终止：静默返回，进度条已在 finally 关闭，不写 cutoff。
 			if (!isAbortError(error)) {
@@ -348,6 +362,9 @@ export default class ReferenceManager {
 		markdown: string,
 		signal?: AbortSignal,
 	) {
+		const id = `load-${nextID}`;
+		nextID++;
+
 		const startAt = new Date();
 		const cids: CID[] = [];
 		// 触发笔记中以 ipfs:// 形式引用的 cid：恢复时短路判定，无需再查全库
@@ -362,6 +379,10 @@ export default class ReferenceManager {
 		// 有界并发：单条笔记可解析出大量链接，一次性全部启动会让巨型笔记卡住界面。
 		// 每个链接的投影同时发起引用缓存写入与元数据索引两个任务，故在飞写入
 		// 至多为 2 × DEFAULT_PARALLEL_LIMIT。
+		console.debug("[incremental-scan] will index", {
+			id,
+			linkCount: links.length,
+		});
 		await drain(
 			orderedParallelMap(
 				links,
@@ -369,9 +390,14 @@ export default class ReferenceManager {
 				{ limit: DEFAULT_PARALLEL_LIMIT, signal },
 			),
 		);
+		console.debug("[incremental-scan] will expire by path", { id });
 		await this.cache.expireByPath(normalizedPath, startAt, signal);
 
 		if (cids.length > 0) {
+			console.debug("[incremental-scan] restore referenced files", {
+				id,
+				cidCount: cids.length,
+			});
 			// 在解析出新链接后，自动检查并恢复仍在垃圾箱里的被引用文件
 			await restoreReferencedFiles(
 				this.plugin.cas,
@@ -385,6 +411,10 @@ export default class ReferenceManager {
 				},
 			);
 		}
+		console.debug("[incremental-scan] restore referenced files", {
+			id,
+			cidCount: cids.length,
+		});
 	}
 
 	async clearCache(signal?: AbortSignal) {
