@@ -18,6 +18,8 @@ import { getDownloadDirs } from "#src/settings";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import pruneDeletedPaths from "./ReferenceManager/pruneDeletedPaths";
 import CoalescingBatch from "#src/utils/CoalescingBatch";
+import RestoreQueue from "./ReferenceManager/RestoreQueue";
+import RestoreFailureNotice from "./ReferenceManager/RestoreFailureNotice";
 
 /** 请求合并的批上限：防积压场景下批无限膨胀与早到请求等待过久（max 非 min） */
 const COALESCING_BATCH_MAX_SIZE = 64;
@@ -81,6 +83,13 @@ export interface IncrementalScanReporterHandle {
 	finish(): void;
 }
 
+/**
+ * 后台恢复失败的可注入上报函数：生产用合并提示（可见反馈），测试注入空实现。
+ * 用裸函数类型而非单方法接口，使实现天然具备 `this: void` 语义，
+ * 转交时无需绑定即可安全传递。
+ */
+export type RestoreErrorReporter = (error: unknown) => void;
+
 let nextID = 0;
 
 export default class ReferenceManager {
@@ -88,17 +97,28 @@ export default class ReferenceManager {
 	flight = new SingleFlightGroup();
 
 	private readonly incrementalScanReporter: IncrementalScanReporter;
+	private readonly restoreErrorReporter: RestoreErrorReporter;
 	/** 本类默认构建的引用缓存（注入的缓存不记录，由注入者负责清理） */
 	private readonly builtCache: ReferenceManagerCacheImpl | undefined;
-	/** 后台索引任务（增量扫描等）共享的中止信号：构建时创建，dispose（卸载/热重载）时 abort 取消 */
-	private readonly scanController = new AbortController();
+	/** 本类默认构建的失败提示（注入的上报器不记录，由注入者负责清理） */
+	private readonly builtRestoreFailureNotice:
+		| RestoreFailureNotice
+		| undefined;
+	/**
+	 * 本类全部后台任务共享的中止信号（增量扫描、引用缓存新鲜性、恢复队列）：
+	 * 构建时创建，dispose（卸载/热重载）时 abort 取消。
+	 */
+	private readonly bgController = new AbortController();
+	/** 后台恢复队列：扫描只入队，不等待恢复完成（见 RestoreQueue） */
+	private readonly restoreQueue: RestoreQueue;
 
 	constructor(
 		private plugin: ContentAddressedAttachmentPlugin,
-		/** 可注入依赖：cache 供测试用内存实现；incrementalScanReporter 供测试注入空实现避免 DOM */
+		/** 可注入依赖：cache 供测试用内存实现；报告器供测试注入空实现避免 DOM */
 		options: {
 			cache?: ReferenceManagerCache;
 			incrementalScanReporter?: IncrementalScanReporter;
+			restoreErrorReporter?: RestoreErrorReporter;
 		} = {},
 	) {
 		if (options.cache) {
@@ -108,15 +128,49 @@ export default class ReferenceManager {
 		}
 		this.incrementalScanReporter =
 			options.incrementalScanReporter ?? defaultIncrementalScanReporter;
+		if (options.restoreErrorReporter) {
+			this.restoreErrorReporter = options.restoreErrorReporter;
+		} else {
+			const notice = (this.builtRestoreFailureNotice =
+				new RestoreFailureNotice());
+			this.restoreErrorReporter = (error) => notice.report(error);
+		}
+		this.restoreQueue = new RestoreQueue({
+			signal: this.bgController.signal,
+			reportError: this.restoreErrorReporter,
+			// 批宽与扫描并发上限同源：一批索引任务恰好对应一批恢复
+			batchSize: INCREMENTAL_SCAN_LIMIT,
+			restoreBatch: (cids, knownIPFSCids) =>
+				this.restoreBatch(cids, knownIPFSCids),
+		});
 	}
 
 	/**
-	 * 构建者负责清理：先取消后台索引任务，再关闭本类默认构建的引用缓存连接；
-	 * 注入的 cache 由注入者清理，不在此处理。
+	 * 构建者负责清理：先取消后台任务（含恢复队列），再关闭本类默认构建的
+	 * 引用缓存连接与失败提示定时器；注入的依赖由注入者清理，不在此处理。
 	 */
 	[Symbol.dispose](): void {
-		this.scanController.abort();
+		this.bgController.abort();
 		this.builtCache?.[Symbol.dispose]();
+		this.builtRestoreFailureNotice?.[Symbol.dispose]();
+	}
+
+	/**
+	 * 后台恢复一批 cid。目录设置在使用时求值（不在此捕获），使设置改动即时生效；
+	 * 取消信号由恢复队列的后台信号承担，中止后不再启动新批。
+	 */
+	private async restoreBatch(
+		cids: CID[],
+		knownIPFSCids: ReadonlySet<string>,
+	): Promise<void> {
+		await restoreReferencedFiles(this.plugin.cas, this.plugin.casMetadata, {
+			referenceManager: this,
+			primaryDir: this.plugin.settings.primaryDir,
+			downloadDirs: getDownloadDirs(this.plugin.settings),
+			cids,
+			knownIPFSCids,
+			signal: this.bgController.signal,
+		});
 	}
 
 	async count(
@@ -163,7 +217,7 @@ export default class ReferenceManager {
 			batch = new CoalescingBatch<CID, number>(
 				(cids, sig) => this.queryEntryCounts(cids, sig),
 				COALESCING_BATCH_MAX_SIZE,
-				this.scanController.signal,
+				this.bgController.signal,
 				{ keyOf: (c) => c.toString() },
 			);
 			this.pendingBatches.set(key, batch);
@@ -254,7 +308,7 @@ export default class ReferenceManager {
 	private async doIncrementalScan() {
 		// 共享构建时的后台中止信号：dispose（卸载/热重载）时 abort 取消扫描，
 		// 停止启动新任务、中止在飞写入、关闭进度条。
-		const signal = this.scanController.signal;
+		const signal = this.bgController.signal;
 		try {
 			signal.throwIfAborted();
 			const cutoffAt = await this.cache.cutoffAt(signal);
@@ -332,7 +386,7 @@ export default class ReferenceManager {
 		await this.loadFileContent(
 			normalizedPath,
 			file instanceof TFile ? await this.plugin.app.vault.read(file) : "",
-			this.scanController.signal,
+			this.bgController.signal,
 		);
 	}
 
@@ -394,27 +448,10 @@ export default class ReferenceManager {
 		await this.cache.expireByPath(normalizedPath, startAt, signal);
 
 		if (cids.length > 0) {
-			console.debug("[incremental-scan] restore referenced files", {
-				id,
-				cidCount: cids.length,
-			});
-			// 在解析出新链接后，自动检查并恢复仍在垃圾箱里的被引用文件
-			await restoreReferencedFiles(
-				this.plugin.cas,
-				this.plugin.casMetadata,
-				{
-					referenceManager: this,
-					primaryDir: this.plugin.settings.primaryDir,
-					downloadDirs: getDownloadDirs(this.plugin.settings),
-					cids,
-					knownIPFSCids,
-				},
-			);
+			// 后台入队，不等待恢复完成：恢复内部的引用查询会重入本类的增量扫描
+			// 单飞任务，扫描中直接 await 会让扫描永久挂起（见 RestoreQueue）。
+			this.restoreQueue.enqueue(cids, knownIPFSCids);
 		}
-		console.debug("[incremental-scan] restore referenced files", {
-			id,
-			cidCount: cids.length,
-		});
 	}
 
 	async clearCache(signal?: AbortSignal) {
@@ -447,8 +484,8 @@ export default class ReferenceManager {
 	 * 是否存在 ipfs:// 形式引用（全库、基于已验证引用）。
 	 * 仅 internal.ipfs-locked: 锁定引用时返回 false。
 	 */
-	async hasIPFSReference(cid: CID): Promise<boolean> {
-		for await (const { url } of this.findReference(cid)) {
+	async hasIPFSReference(cid: CID, signal?: AbortSignal): Promise<boolean> {
+		for await (const { url } of this.findReference(cid, signal)) {
 			if (url instanceof IPFSLink) {
 				return true;
 			}

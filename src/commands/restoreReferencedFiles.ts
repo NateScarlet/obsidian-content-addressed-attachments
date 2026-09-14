@@ -42,7 +42,14 @@ export interface RestoreReferencedFilesOptions {
 	/** 可选，指定要检查的 CID 列表。如果不指定，则对所有标记为已删除的文件进行全量扫描。 */
 	cids?: CID[];
 	/** 可选，触发笔记中以 ipfs:// 形式引用的 cid（短路判定，跳过全库查询） */
-	knownIPFSCids?: Set<string>;
+	knownIPFSCids?: ReadonlySet<string>;
+	/**
+	 * 可选中止信号，透传到引用查询（`hasIPFSReference`）。
+	 * 恢复本身不可中途取消（`casMetadata.get` / `cas.restoreIfTrashed` 不接受信号），
+	 * 故中止只会在下一次引用查询处生效：该批剩余的 cid 被留在待恢复状态，
+	 * 由后续扫描或手动「恢复引用文件」命令重试。中止只发生在插件卸载（dispose）。
+	 */
+	signal?: AbortSignal;
 }
 
 /**
@@ -62,11 +69,12 @@ export default async function restoreReferencedFiles(
 ): Promise<number> {
 	const { referenceManager, primaryDir, downloadDirs, cids, knownIPFSCids } =
 		options;
+	const { signal } = options;
 	/** 单个 cid 的允许恢复目录列表；触发笔记已知为 ipfs:// 引用时短路判定 */
 	const allowedDirsFor = async (cid: CID): Promise<string[] | undefined> => {
 		const hasIPFS = knownIPFSCids?.has(cid.toString())
 			? true
-			: await referenceManager.hasIPFSReference(cid);
+			: await referenceManager.hasIPFSReference(cid, signal);
 		return allowedDirsForRestore(hasIPFS, primaryDir, downloadDirs);
 	};
 
@@ -89,7 +97,8 @@ export default async function restoreReferencedFiles(
 			}
 		}
 	} else {
-		// 全量恢复：在用户手动命令触发，或者清空垃圾箱之前触发
+		// 全量恢复：在用户手动命令触发，或者清空垃圾箱之前触发。
+		// 该路径由用户直接发起且需要完整结果，不接受中止信号。
 		// TODO: 逐条串行（无并发爆炸风险，但批量恢复可更快），需要时可改为有界并发的有序原语
 		for await (const { node } of casMetadata.find({
 			filterBy: {
