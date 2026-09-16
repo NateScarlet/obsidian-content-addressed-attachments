@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import patchElementURL, {
-	patchElementBackgroundImage,
-} from "./patchElementURLs";
+import patchElementURL from "./patchElementURLs";
+import patchElementBackgroundImage from "./patchElementBackgroundImage";
 import type { ResolveURLResult } from "../URLResolver";
 import { formatBackgroundImage } from "./wrappedBackgroundImage";
 
@@ -20,7 +19,13 @@ function createFakeElement(attrs: Record<string, string>) {
 
 /** 模拟 Base 卡片背景图元素的最小结构 */
 function createFakeBgElement(backgroundImage: string) {
-	return { style: { backgroundImage } };
+	const attrs = new Map<string, string>();
+	return {
+		style: { backgroundImage },
+		setAttribute: (name: string, value: string) =>
+			void attrs.set(name, value),
+		getAttribute: (name: string) => attrs.get(name) ?? null,
+	};
 }
 
 function resolvedURL(url: string): ResolveURLResult {
@@ -57,8 +62,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "src", resolve, {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("src")).toBe("app://local/a.png");
@@ -71,8 +76,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "src", vi.fn().mockResolvedValue(undefined), {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("src")).toBe(notFoundURL);
@@ -87,8 +92,8 @@ describe("patchElementURL", () => {
 			vi.fn().mockResolvedValue(undefined),
 			{
 				imageFallback: false,
-				placeholderImageURL: placeholderURL,
-				notFoundImageURL: notFoundURL,
+				placeholder: placeholderURL,
+				notFound: notFoundURL,
 			},
 		);
 
@@ -102,8 +107,8 @@ describe("patchElementURL", () => {
 		// 不 await，让异步解析进行到挂起状态
 		const pending = patchElementURL(el, "src", p.resolve, {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 		// 占位图已写入，说明已进入挂起
 		expect(el.getAttribute("src")).toBe(placeholderURL);
@@ -126,8 +131,8 @@ describe("patchElementURL", () => {
 
 		const pending = patchElementURL(el, "href", p.resolve, {
 			imageFallback: false,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 		// href 无占位图阶段，等待解析被调用进入挂起
 		await vi.waitFor(() => expect(p.resolve).toHaveBeenCalled());
@@ -150,8 +155,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "src", resolve, {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("src")).toBe("app://local/a.png");
@@ -169,8 +174,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "src", resolve, {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("src")).toBe("app://local/a.png");
@@ -186,8 +191,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "src", resolve, {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("src")).toBe(
@@ -201,8 +206,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "src", vi.fn().mockResolvedValue(undefined), {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("src")).toBe(notFoundURL);
@@ -214,8 +219,8 @@ describe("patchElementURL", () => {
 
 		const pending = patchElementURL(el, "src", p.resolve, {
 			imageFallback: true,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 		expect(el.getAttribute("src")).toBe(placeholderURL);
 
@@ -237,8 +242,8 @@ describe("patchElementURL", () => {
 
 		await patchElementURL(el, "href", resolve, {
 			imageFallback: false,
-			placeholderImageURL: placeholderURL,
-			notFoundImageURL: notFoundURL,
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
 		});
 
 		expect(el.getAttribute("href")).toBe("app://local/a.txt");
@@ -248,33 +253,69 @@ describe("patchElementURL", () => {
 });
 
 describe("patchElementBackgroundImage", () => {
-	it("解析成功后写入格式化背景图", async () => {
+	it("解析成功：显示占位图 -> 显示解析后的资源 URL", async () => {
 		const el = createFakeBgElement('url("http:///ipfs://x")');
 		const resolve = vi
 			.fn()
 			.mockResolvedValue(resolvedURL("app://local/bg.png"));
 
-		await patchElementBackgroundImage(el, resolve);
+		await patchElementBackgroundImage(el, resolve, {
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
+		});
 
-		expect(el.style.backgroundImage).toBe('url("app://local/bg.png")');
+		expect(el.style.backgroundImage).toBe(
+			formatBackgroundImage("app://local/bg.png"),
+		);
 	});
 
-	it("解析失败时保持原伪装背景图不变", async () => {
+	it("解析失败：显示占位图 -> 显示 notFound 图", async () => {
 		const el = createFakeBgElement('url("http:///ipfs://x")');
 
 		await patchElementBackgroundImage(
 			el,
 			vi.fn().mockResolvedValue(undefined),
+			{
+				placeholder: placeholderURL,
+				notFound: notFoundURL,
+			},
 		);
 
-		expect(el.style.backgroundImage).toBe('url("http:///ipfs://x")');
+		expect(el.style.backgroundImage).toBe(
+			formatBackgroundImage(notFoundURL),
+		);
+	});
+
+	it("解析期间显示占位图", async () => {
+		const el = createFakeBgElement('url("http:///ipfs://x")');
+		const p = pendingResolve();
+
+		const pending = patchElementBackgroundImage(el, p.resolve, {
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
+		});
+		// 占位图已写入，说明已进入挂起
+		await vi.waitFor(() => expect(p.resolve).toHaveBeenCalled());
+		expect(el.style.backgroundImage).toBe(
+			formatBackgroundImage(placeholderURL),
+		);
+
+		releaseResolved(p, "app://local/resolved.png");
+		await pending;
+
+		expect(el.style.backgroundImage).toBe(
+			formatBackgroundImage("app://local/resolved.png"),
+		);
 	});
 
 	it("异步解析期间背景图被组件改掉后，不覆盖组件修改", async () => {
 		const el = createFakeBgElement('url("http:///ipfs://x")');
 		const p = pendingResolve();
 
-		const pending = patchElementBackgroundImage(el, p.resolve);
+		const pending = patchElementBackgroundImage(el, p.resolve, {
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
+		});
 		await vi.waitFor(() => expect(p.resolve).toHaveBeenCalled());
 
 		// 组件在解析期间把背景图改成自己的内容
@@ -284,6 +325,28 @@ describe("patchElementBackgroundImage", () => {
 		releaseResolved(p, "app://local/resolved.png");
 		await pending;
 
+		expect(el.style.backgroundImage).toBe(userBgImage);
+	});
+
+	it("解析失败时竞态保护生效：组件修改了背景图则不写入 notFound", async () => {
+		const el = createFakeBgElement('url("http:///ipfs://x")');
+		const p = pendingResolve();
+
+		const pending = patchElementBackgroundImage(el, p.resolve, {
+			placeholder: placeholderURL,
+			notFound: notFoundURL,
+		});
+		await vi.waitFor(() => expect(p.resolve).toHaveBeenCalled());
+
+		// 组件在解析期间把背景图改成自己的内容
+		const userBgImage = formatBackgroundImage("app://local/user-bg.png");
+		el.style.backgroundImage = userBgImage;
+
+		// 释放失败结果
+		p.releaseResolve?.(undefined);
+		await pending;
+
+		// 应保持组件的修改，不写入 notFound
 		expect(el.style.backgroundImage).toBe(userBgImage);
 	});
 });

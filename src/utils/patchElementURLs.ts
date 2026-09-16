@@ -1,28 +1,19 @@
 import type { ResolveURLResult } from "../URLResolver";
-import {
-	extractWrappedBackgroundURL,
-	formatBackgroundImage,
-	stripWrappedPrefix,
-} from "./wrappedBackgroundImage";
+import { stripWrappedPrefix } from "./wrappedBackgroundImage";
 
 export interface PatchElementURLOptions {
 	/** 该属性是否使用占位图/notFound 图（img 元素且属性为 src） */
 	imageFallback: boolean;
 	/** img 解析期间的占位图 */
-	placeholderImageURL: string;
+	placeholder: string;
 	/** img 解析失败时的兜底图 */
-	notFoundImageURL: string;
+	notFound: string;
 }
 
 /** 属性补丁所需的最小元素接口，便于替换实现进行测试 */
 export interface PatchableElement {
 	getAttribute(name: string): string | null;
 	setAttribute(name: string, value: string): void;
-}
-
-/** 背景图补丁所需的最小元素接口 */
-export interface PatchableBackgroundElement {
-	style: { backgroundImage: string };
 }
 
 /**
@@ -50,9 +41,7 @@ export default async function patchElementURL(
 		return;
 	}
 	// img+src 先显示占位图；其余属性保持原值作为等待态
-	const waitingValue = options.imageFallback
-		? options.placeholderImageURL
-		: value;
+	const waitingValue = options.imageFallback ? options.placeholder : value;
 	if (options.imageFallback) {
 		el.setAttribute(attr, waitingValue);
 	}
@@ -68,31 +57,8 @@ export default async function patchElementURL(
 		return;
 	}
 	if (options.imageFallback) {
-		el.setAttribute(attr, options.notFoundImageURL);
+		el.setAttribute(attr, options.notFound);
 	} else {
 		el.setAttribute(attr, value);
-	}
-}
-
-/**
- * 把 Base 卡片封面 background-image 中的伪装前缀 IPFS 链接补丁为可访问的资源 URL。
- * 解析失败时保持原样；异步解析返回后仅当背景图仍是原伪装链接时才写回，
- * 避免覆盖等待期间组件自己对背景图的修改。
- */
-export async function patchElementBackgroundImage(
-	el: PatchableBackgroundElement,
-	resolveURL: (rawURL: string) => Promise<ResolveURLResult | undefined>,
-): Promise<void> {
-	const canonical = extractWrappedBackgroundURL(el.style.backgroundImage);
-	if (!canonical) {
-		return;
-	}
-	const resolvedURL = await resolveURL(canonical);
-	// 竞态保护：等待期间组件可能已改动背景图，仅当仍是原伪装链接时才写回
-	if (extractWrappedBackgroundURL(el.style.backgroundImage) !== canonical) {
-		return;
-	}
-	if (resolvedURL) {
-		el.style.backgroundImage = formatBackgroundImage(resolvedURL.url);
 	}
 }

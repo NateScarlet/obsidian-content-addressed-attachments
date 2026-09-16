@@ -47,9 +47,8 @@ import {
 } from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
-import patchElementURL, {
-	patchElementBackgroundImage,
-} from "./utils/patchElementURLs";
+import patchElementURL from "./utils/patchElementURLs";
+import patchElementBackgroundImage from "./utils/patchElementBackgroundImage";
 import { stripWrappedPrefix } from "./utils/wrappedBackgroundImage";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
@@ -578,8 +577,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		stack.defer(() => this.inProgressElements.delete(el));
 
 		const options = {
-			placeholderImageURL: this.placeholderImageURL,
-			notFoundImageURL: this.notFoundImageURL,
+			placeholder: this.placeholderImageURL,
+			notFound: this.notFoundImageURL,
 		};
 		for (const attr of ["src", "href"]) {
 			const value = el.getAttribute(attr);
@@ -619,8 +618,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.inProgressElements.add(el);
 		stack.defer(() => this.inProgressElements.delete(el));
 
-		await patchElementBackgroundImage(el, (rawURL) =>
-			this.urlResolver.resolveURL(rawURL),
+		await patchElementBackgroundImage(
+			el,
+			(rawURL) => this.urlResolver.resolveURL(rawURL),
+			{
+				placeholder: this.placeholderImageURL,
+				notFound: this.notFoundImageURL,
+			},
 		);
 	}
 
