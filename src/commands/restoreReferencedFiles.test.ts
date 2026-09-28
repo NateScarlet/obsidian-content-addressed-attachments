@@ -16,14 +16,18 @@ async function makeCid(content: string) {
 }
 
 function setup() {
-	const restoreIfTrashed = vi.fn().mockResolvedValue(true);
+	const restoreIfTrashed = vi
+		.fn<(cid: CID, restoreAllowedDirs?: string[]) => Promise<boolean>>()
+		.mockResolvedValue(true);
 	const cas = { restoreIfTrashed } as unknown as CAS;
 	const hasIPFSReference = vi.fn();
 	const referenceManager = {
 		hasIPFSReference,
 	} as unknown as ReferenceManager;
+	const metadataGet =
+		vi.fn<(cid: CID) => Promise<CASMetadataObject | undefined>>();
 	const metadata: CASMetadata = {
-		get: vi.fn(),
+		get: metadataGet,
 		find: async function* () {},
 	} as unknown as CASMetadata;
 	return {
@@ -32,6 +36,7 @@ function setup() {
 		hasIPFSReference,
 		referenceManager,
 		metadata,
+		metadataGet,
 	};
 }
 
@@ -61,6 +66,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			hasIPFSReference,
 			referenceManager,
 			metadata,
+			metadataGet,
 		} = setup();
 		const cid = await makeCid("a");
 		const meta: CASMetadataObject = {
@@ -68,7 +74,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			indexedAt: new Date(),
 			copies: [{ dir: "primary", trashedAt: new Date() }],
 		};
-		vi.mocked(metadata.get).mockResolvedValue(meta);
+		metadataGet.mockResolvedValue(meta);
 		hasIPFSReference.mockResolvedValue(true);
 
 		const count = await restoreReferencedFiles(cas, metadata, {
@@ -80,7 +86,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 
 		expect(count).toBe(1);
 		const [receivedCid, receivedDirs] = restoreIfTrashed.mock.calls[0];
-		expect((receivedCid as CID).equals(cid)).toBe(true);
+		expect(receivedCid.equals(cid)).toBe(true);
 		expect(receivedDirs).toEqual(["primary"]);
 	});
 
@@ -91,6 +97,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			hasIPFSReference,
 			referenceManager,
 			metadata,
+			metadataGet,
 		} = setup();
 		const cid = await makeCid("a");
 		const meta: CASMetadataObject = {
@@ -98,7 +105,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			indexedAt: new Date(),
 			copies: [{ dir: "download", trashedAt: new Date() }],
 		};
-		vi.mocked(metadata.get).mockResolvedValue(meta);
+		metadataGet.mockResolvedValue(meta);
 		hasIPFSReference.mockResolvedValue(false);
 
 		await restoreReferencedFiles(cas, metadata, {
@@ -119,6 +126,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			hasIPFSReference,
 			referenceManager,
 			metadata,
+			metadataGet,
 		} = setup();
 		const cid = await makeCid("a");
 		const meta: CASMetadataObject = {
@@ -126,7 +134,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			indexedAt: new Date(),
 			copies: [{ dir: "primary", trashedAt: new Date() }],
 		};
-		vi.mocked(metadata.get).mockResolvedValue(meta);
+		metadataGet.mockResolvedValue(meta);
 		hasIPFSReference.mockResolvedValue(false);
 
 		await restoreReferencedFiles(cas, metadata, {
@@ -147,6 +155,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			hasIPFSReference,
 			referenceManager,
 			metadata,
+			metadataGet,
 		} = setup();
 		const cid = await makeCid("a");
 		const meta: CASMetadataObject = {
@@ -154,7 +163,7 @@ describe("restoreReferencedFiles 局部恢复", () => {
 			indexedAt: new Date(),
 			copies: [{ dir: "primary", trashedAt: new Date() }],
 		};
-		vi.mocked(metadata.get).mockResolvedValue(meta);
+		metadataGet.mockResolvedValue(meta);
 
 		await restoreReferencedFiles(cas, metadata, {
 			referenceManager,
@@ -170,14 +179,20 @@ describe("restoreReferencedFiles 局部恢复", () => {
 	});
 
 	it("元数据未标记为已删除的 cid 不触发恢复", async () => {
-		const { cas, restoreIfTrashed, referenceManager, metadata } = setup();
+		const {
+			cas,
+			restoreIfTrashed,
+			referenceManager,
+			metadata,
+			metadataGet,
+		} = setup();
 		const cid = await makeCid("a");
 		const meta: CASMetadataObject = {
 			cid,
 			indexedAt: new Date(),
 			copies: [{ dir: "primary" }],
 		};
-		vi.mocked(metadata.get).mockResolvedValue(meta);
+		metadataGet.mockResolvedValue(meta);
 
 		await restoreReferencedFiles(cas, metadata, {
 			referenceManager,
@@ -229,10 +244,10 @@ describe("restoreReferencedFiles 全量恢复", () => {
 		expect(hasIPFSReference).toHaveBeenCalledTimes(2);
 		// cidA 有 ipfs:// 引用 → 主存储目录；cidB 仅锁定 → 下载目录
 		const [firstCid, firstDirs] = restoreIfTrashed.mock.calls[0];
-		expect((firstCid as CID).equals(cidA)).toBe(true);
+		expect(firstCid.equals(cidA)).toBe(true);
 		expect(firstDirs).toEqual(["primary"]);
 		const [secondCid, secondDirs] = restoreIfTrashed.mock.calls[1];
-		expect((secondCid as CID).equals(cidB)).toBe(true);
+		expect(secondCid.equals(cidB)).toBe(true);
 		expect(secondDirs).toEqual(["download"]);
 	});
 
