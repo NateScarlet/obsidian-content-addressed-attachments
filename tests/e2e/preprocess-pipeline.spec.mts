@@ -41,8 +41,7 @@ async function connectObsidian(): Promise<{ browser: Browser; page: Page }> {
 		for (const page of context.pages()) {
 			const hasPlugin = await page
 				.evaluate(
-					(pid) =>
-						!!(window as any)?.app?.plugins?.plugins?.[pid],
+					(pid) => !!(window as any)?.app?.plugins?.plugins?.[pid],
 					PLUGIN_ID,
 				)
 				.catch(() => false);
@@ -52,7 +51,7 @@ async function connectObsidian(): Promise<{ browser: Browser; page: Page }> {
 
 	await browser.close();
 	throw new Error(
-		`未在 CDP 端口 ${port} 找到加载了插件 ${PLUGIN_ID} 的 Obsidian 页面，请先用 debug-obsidian-plugin skill 启动实例`,
+		`未在 CDP 端口 ${port} 找到加载了插件 ${PLUGIN_ID} 的 Obsidian 页面；测试不负责启动环境，请先由桌面端 debug-obsidian-plugin skill 或 CI e2e workflow 启动实例`,
 	);
 }
 
@@ -125,15 +124,25 @@ async function insertFixture(
 	);
 }
 
-function parseLink(content: string): { cid: string; format: string; filename: string } {
-	const match = content.match(/!\[([^\]]*)\]\(ipfs:\/\/(bafk[a-z2-7]+)[^)]*\)/);
+function parseLink(content: string): {
+	cid: string;
+	format: string;
+	filename: string;
+} {
+	const match = content.match(
+		/!\[([^\]]*)\]\(ipfs:\/\/(bafk[a-z2-7]+)[^)]*\)/,
+	);
 	expect(match, `note 中应存在图片链接:\n${content}`).toBeTruthy();
 	const filename = match![1];
 	const cid = match![2];
 	const formatMatch = content.match(
 		new RegExp(`ipfs://${cid}\\?[^)]*format=([^&)]+)`),
 	);
-	return { cid, filename, format: decodeURIComponent(formatMatch?.[1] ?? "") };
+	return {
+		cid,
+		filename,
+		format: decodeURIComponent(formatMatch?.[1] ?? ""),
+	};
 }
 
 // 由 cid 派生 CAS 相对路径（与 src/infrastructure/local/CASImpl.ts formatRelPath 一致）
@@ -180,7 +189,9 @@ let page: Page;
 
 test.beforeAll(async () => {
 	({ browser, page } = await connectObsidian());
-	page.on("console", (msg) => console.log("BROWSER LOG:", msg.type(), msg.text()));
+	page.on("console", (msg) =>
+		console.log("BROWSER LOG:", msg.type(), msg.text()),
+	);
 });
 
 test.afterAll(async () => {

@@ -1,0 +1,62 @@
+name: e2e
+on:
+    pull_request:
+    push:
+        branches:
+            - master
+    workflow_dispatch:
+permissions:
+    contents: read
+env:
+    OBSIDIAN_CDP_PORT: "9222"
+    # 固定 Obsidian 版本与 AppImage 校验和：环境漂移不应产生不稳定结果
+    OBSIDIAN_VERSION: "1.13.7"
+    OBSIDIAN_APPIMAGE_SHA256: "e0d8e0a611624de8c9c7dcd8a9e648279fb0a0d552faa1312b7e4f3a5fa72663"
+jobs:
+    preprocess-e2e:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        steps:
+            - uses: actions/checkout@v5
+            - uses: pnpm/action-setup@v6
+              name: Install pnpm
+              with:
+                  run_install: false
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version-file: .node-version
+                  cache: pnpm
+            - name: Install dependencies
+              run: pnpm install
+            - name: Install Xvfb
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y xvfb xauth
+            - name: Build plugin and preprocess scripts
+              run: pnpm run build
+            - name: Download pinned Obsidian AppImage
+              run: |
+                  curl -sSL --retry 5 -o obsidian.AppImage "https://github.com/obsidianmd/obsidian-releases/releases/download/v${OBSIDIAN_VERSION}/Obsidian-${OBSIDIAN_VERSION}.AppImage"
+                  echo "${OBSIDIAN_APPIMAGE_SHA256}  obsidian.AppImage" | sha256sum -c -
+                  chmod +x obsidian.AppImage
+                  ./obsidian.AppImage --appimage-extract > /dev/null
+                  mv squashfs-root obsidian-app
+            - name: Provision vault
+              run: node scripts/e2e-provision.mjs --vault "$RUNNER_TEMP/e2e-vault" --user-data "$RUNNER_TEMP/e2e-user-data"
+            - name: Launch Obsidian
+              run: |
+                  xvfb-run --auto-servernum --server-args='-screen 0 1280x960x24' ./obsidian-app/AppRun --no-sandbox --disable-gpu --user-data-dir="$RUNNER_TEMP/e2e-user-data" --remote-debugging-port="$OBSIDIAN_CDP_PORT" > obsidian.log 2>&1 &
+            - name: Enable plugin
+              run: node scripts/e2e-enable-plugin.mjs
+            - name: Run preprocess E2E
+              run: pnpm run e2e
+            - name: Upload diagnostics
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: e2e-diagnostics
+                  path: |
+                      obsidian.log
+                      test-results/
+                  if-no-files-found: ignore
