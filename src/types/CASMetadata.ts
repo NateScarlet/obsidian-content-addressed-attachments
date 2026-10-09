@@ -38,6 +38,12 @@ export interface CASMetadataObjectFilters {
 	 */
 	unverifiedHasReference?: boolean;
 	isTrashed?: boolean;
+	/**
+	 * 目录归属筛选：命中「在任一给定目录存在正常副本」的对象。
+	 * 回收站副本不参与判定——`.trash` 由清空回收站命令处理，
+	 * 下载目录清理同样不触碰回收站副本。
+	 */
+	hasCopyInDirs?: string[];
 }
 
 export interface CASMetadata {
@@ -65,5 +71,11 @@ export interface CASMetadata {
 	estimateStorage(): Promise<{
 		normalBytes: number;
 		trashBytes: number;
+		/**
+		 * 各目录的占用字节（正常副本口径，随元数据增删增量维护，不做全量扫描）：
+		 * 同一 CID 在 N 个目录有正常副本即在每个目录各计一次，与磁盘占用一致；
+		 * 回收站副本不计入（由 trashBytes 单独统计）。
+		 */
+		dirBytes: Record<string, number>;
 	}>;
 }

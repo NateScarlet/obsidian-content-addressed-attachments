@@ -38,6 +38,8 @@ import {
 import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import { enforceDownloadQuota } from "./commands/cleanDownloadDir";
+import isCIDReferenced from "./utils/isCIDReferenced";
 import {
 	createReprocessContext,
 	reprocessCurrentNote,
@@ -69,6 +71,9 @@ import CoalescedNotice from "./utils/CoalescedNotice";
 /** 页面补丁失败提示的合并窗口（毫秒） */
 const PATCH_FAILURE_NOTICE_WINDOW_MS = 500;
 
+/** 下载配额超限提示的合并窗口（毫秒） */
+const QUOTA_NOTICE_WINDOW_MS = 500;
+
 export default class ContentAddressedAttachmentPlugin extends Plugin {
 	declare public settings: Settings;
 	public cas!: CAS;
@@ -98,6 +103,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		new CoalescedNotice(
 			(count) => new Notice(t("patchFailed")(count)),
 			PATCH_FAILURE_NOTICE_WINDOW_MS,
+		),
+	);
+	/** 下载配额超限提示：批量下载时高频触发，合并为窗口内一条 */
+	private readonly quotaExceededNotice = this.stack.use(
+		new CoalescedNotice(
+			(count) => new Notice(t("downloadQuotaExceeded")(count)),
+			QUOTA_NOTICE_WINDOW_MS,
 		),
 	);
 	public migrationManager!: MigrationManager;
@@ -152,6 +164,32 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				// CASImpl 不直接 await 元数据同步，避免 IndexedDB 忙时阻塞图片解析。
 				notifyChanged: (signal) =>
 					casMetadataChanged.dispatch({ detail: signal }),
+			},
+			// 写入策略：下载目录合计占用超配额时先清理再落盘。
+			// 依赖本实例的回调在调用时才求值，构造顺序无关。
+			async (dir, size) => {
+				const result = await enforceDownloadQuota(
+					this.cas,
+					this.casMetadata,
+					{
+						targetDir: dir,
+						downloadDirs: getDownloadDirs(this.settings),
+						quotaBytes: this.settings.downloadQuotaBytes,
+						incomingBytes: size,
+						retentionDays: this.settings.downloadRetentionDays,
+						isReferenced: (cid) =>
+							isCIDReferenced(
+								this.referenceManager,
+								cid,
+								this.metadataWriteController.signal,
+							),
+						signal: this.metadataWriteController.signal,
+					},
+				);
+				if (result.didExceedQuota) {
+					// 保留期内的副本不可清理：写入照常进行，合并提示用户配额超限
+					this.quotaExceededNotice.report(1);
+				}
 			},
 		);
 		this.metadataSyncService = new CASMetadataSyncService(
@@ -724,6 +762,8 @@ const { t } = defineLocales({
 		openCASExplorer: "Open CAS file explorer",
 		patchFailed: (count: number) =>
 			`Failed to resolve ${count} IPFS link(s) on this page.`,
+		downloadQuotaExceeded: (count: number) =>
+			`Download directories stayed over quota after cleanup (${count} write(s)); copies within the retention period cannot be cleaned.`,
 		restoreReferencedFiles: "Restore referenced files from recycle bin",
 		noReferencedFilesToRestore:
 			"No referenced files to restore from the recycle bin.",
@@ -748,6 +788,8 @@ const { t } = defineLocales({
 		openCASExplorer: "打开 CAS 文件管理器",
 		patchFailed: (count: number) =>
 			`页面上有 ${count} 个 IPFS 链接解析失败。`,
+		downloadQuotaExceeded: (count: number) =>
+			`下载目录清理后仍超过配额（${count} 次写入）：保留期内的副本无法清理。`,
 		restoreReferencedFiles: "从回收站恢复被引用的文件",
 		noReferencedFilesToRestore: "未发现回收站中有需要恢复的引用文件。",
 		...reprocessSharedMessages.zh,

@@ -91,3 +91,54 @@ describe("CASMetadataObjectFilterBuilder 引用状态筛选", () => {
 		expect(await filter(makeObject(await makeCid()))).toBe(true);
 	});
 });
+
+describe("CASMetadataObjectFilterBuilder 目录归属筛选", () => {
+	function makeObjectIn(
+		cid: CID,
+		copies: { dir: string; trashedAt?: Date }[],
+	): CASMetadataObject {
+		return { cid, indexedAt: new Date(), copies };
+	}
+
+	it("在任一给定目录有正常副本时通过", async () => {
+		const { builder } = makeBuilder();
+		const filter = builder.build({ hasCopyInDirs: ["dl", "gw"] });
+		expect(
+			await filter(makeObjectIn(await makeCid(), [{ dir: "gw" }])),
+		).toBe(true);
+	});
+
+	it("仅在其它目录有副本时不通过", async () => {
+		const { builder } = makeBuilder();
+		const filter = builder.build({ hasCopyInDirs: ["dl"] });
+		expect(
+			await filter(makeObjectIn(await makeCid(), [{ dir: "primary" }])),
+		).toBe(false);
+	});
+
+	it("无副本记录时不通过", async () => {
+		const { builder } = makeBuilder();
+		const filter = builder.build({ hasCopyInDirs: ["dl"] });
+		expect(await filter(makeObject(await makeCid()))).toBe(false);
+	});
+
+	it("只有回收站副本时不算命中（回收站不参与下载目录清理）", async () => {
+		const { builder } = makeBuilder();
+		const filter = builder.build({ hasCopyInDirs: ["dl"] });
+		expect(
+			await filter(
+				makeObjectIn(await makeCid(), [
+					{ dir: "dl", trashedAt: new Date() },
+				]),
+			),
+		).toBe(false);
+	});
+
+	it("目录列表为空时不命中任何对象", async () => {
+		const { builder } = makeBuilder();
+		const filter = builder.build({ hasCopyInDirs: [] });
+		expect(
+			await filter(makeObjectIn(await makeCid(), [{ dir: "dl" }])),
+		).toBe(false);
+	});
+});

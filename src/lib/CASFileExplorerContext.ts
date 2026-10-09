@@ -10,6 +10,7 @@ export enum Mode {
 	ACTIVE_NOTE,
 	UNREFERENCED,
 	RECYCLE_BIN,
+	DOWNLOADS,
 }
 
 export interface CASFileExplorerContext {
@@ -31,6 +32,10 @@ export interface CASFileExplorerContext {
 	getPrimaryDir: () => string;
 	/** 下载目录列表（仅锁定引用的文件恢复目标）。以函数形式提供，保证与当前设置实时一致。 */
 	getDownloadDirs: () => string[];
+	/** 下载目录副本保留期（天）。以函数形式提供，保证与当前设置实时一致。 */
+	getDownloadRetentionDays: () => number;
+	/** 更新下载目录副本保留期（天）并持久化 */
+	setDownloadRetentionDays: (days: number) => Promise<void>;
 
 	/**
 	 * 元数据写入专用中止信号：插件卸载时中止进行中的批量写入，

@@ -110,13 +110,15 @@
 </script>
 
 <div class="flex items-center gap-1 flex-wrap">
-	<!-- 搜索框 -->
-	<input
-		type="text"
-		class="flex-1 py-1 border border-border rounded text-sm bg-form-field text-normal"
-		placeholder={t("searchPlaceholder")}
-		bind:value={query.value}
-	/>
+	<!-- 搜索框（下载目录页按目录聚合展示，不按文件检索） -->
+	{#if mode.value !== Mode.DOWNLOADS}
+		<input
+			type="text"
+			class="flex-1 py-1 border border-border rounded text-sm bg-form-field text-normal"
+			placeholder={t("searchPlaceholder")}
+			bind:value={query.value}
+		/>
+	{/if}
 
 	<!-- 操作按钮 -->
 	{#if mode.value === Mode.LOCAL}

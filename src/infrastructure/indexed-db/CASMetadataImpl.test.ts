@@ -3,6 +3,7 @@ import {
 	removePlaceholderCopies,
 	normalizePOForStaleV1,
 	buildMergedPO,
+	applyDirBytesDeltas,
 } from "./CASMetadataImpl";
 
 describe("buildMergedPO 合并持久化对象", () => {
@@ -348,5 +349,86 @@ describe("removePlaceholderCopies 清理迁移占位副本（存储层）", () =
 			{ dir: "dirB", trashedAt: 2 },
 		];
 		expect(removePlaceholderCopies(copies)).toBe(copies);
+	});
+});
+
+describe("applyDirBytesDeltas 按目录增量维护占用", () => {
+	const po = (dir: string, size: number, trashedAt?: number) => ({
+		cid: "x",
+		indexedAt: 1,
+		size,
+		copies: [{ dir, trashedAt }],
+	});
+
+	it("新增正常副本时按其目录计入", () => {
+		expect(applyDirBytesDeltas({}, [{ newValue: po("dl", 100) }])).toEqual({
+			dl: 100,
+		});
+	});
+
+	it("同一 CID 在多个目录有正常副本时各计一次（磁盘口径）", () => {
+		const newValue = {
+			cid: "x",
+			indexedAt: 1,
+			size: 100,
+			copies: [{ dir: "primary" }, { dir: "dl" }],
+		};
+		expect(applyDirBytesDeltas({}, [{ newValue }])).toEqual({
+			primary: 100,
+			dl: 100,
+		});
+	});
+
+	it("回收站副本不计入目录占用（由 trashBytes 单独统计）", () => {
+		expect(
+			applyDirBytesDeltas({}, [{ newValue: po("dl", 100, 2) }]),
+		).toEqual({});
+	});
+
+	it("同一目录可同时存在正常与回收副本，只有正常副本计入", () => {
+		const newValue = {
+			cid: "x",
+			indexedAt: 1,
+			size: 100,
+			copies: [{ dir: "dl" }, { dir: "dl", trashedAt: 2 }],
+		};
+		expect(applyDirBytesDeltas({}, [{ newValue }])).toEqual({ dl: 100 });
+	});
+
+	it("副本被删除时从对应目录扣减", () => {
+		expect(
+			applyDirBytesDeltas({ dl: 100 }, [{ oldValue: po("dl", 100) }]),
+		).toEqual({ dl: 0 });
+	});
+
+	it("副本在目录间迁移时新旧目录各自增减", () => {
+		const before = po("dl", 100);
+		const after = po("gw", 100);
+		expect(
+			applyDirBytesDeltas({ dl: 100 }, [
+				{ oldValue: before, newValue: after },
+			]),
+		).toEqual({ dl: 0, gw: 100 });
+	});
+
+	it("缺失 size 时按 0 计，不产生 NaN", () => {
+		const newValue = { cid: "x", indexedAt: 1, copies: [{ dir: "dl" }] };
+		expect(applyDirBytesDeltas({}, [{ newValue }])).toEqual({ dl: 0 });
+	});
+
+	it("不会扣成负数", () => {
+		expect(applyDirBytesDeltas({}, [{ oldValue: po("dl", 100) }])).toEqual({
+			dl: 0,
+		});
+	});
+
+	it("在既有统计上累加多个变更", () => {
+		expect(
+			applyDirBytesDeltas({ dl: 10 }, [
+				{ newValue: po("dl", 5) },
+				{ newValue: po("gw", 7) },
+				{ newValue: po("dl", 3, 9) },
+			]),
+		).toEqual({ dl: 15, gw: 7 });
 	});
 });

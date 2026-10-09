@@ -109,6 +109,7 @@ export class CASMetadataImpl implements CASMetadata {
 	async estimateStorage(signal?: AbortSignal): Promise<{
 		normalBytes: number;
 		trashBytes: number;
+		dirBytes: Record<string, number>;
 	}> {
 		const db = await this.db;
 		const transaction = db.transaction([STATS_STORE_NAME], "readonly");
@@ -118,7 +119,11 @@ export class CASMetadataImpl implements CASMetadata {
 			store.get(STATS_KEY) as IDBRequest<Stats | undefined>,
 			signal,
 		);
-		return stats || { normalBytes: 0, trashBytes: 0 };
+		return {
+			normalBytes: stats?.normalBytes ?? 0,
+			trashBytes: stats?.trashBytes ?? 0,
+			dirBytes: stats?.dirBytes ?? {},
+		};
 	}
 
 	private async tx<T>(
@@ -171,7 +176,12 @@ export class CASMetadataImpl implements CASMetadata {
 		const currentStats = (await executeIDBRequest(
 			statsStore.get(STATS_KEY) as IDBRequest<Stats | undefined>,
 			signal,
-		)) || { id: STATS_KEY, normalBytes: 0, trashBytes: 0 };
+		)) || {
+			id: STATS_KEY,
+			normalBytes: 0,
+			trashBytes: 0,
+			dirBytes: {},
+		};
 
 		let normalBytesDelta = 0;
 		let trashBytesDelta = 0;
@@ -199,7 +209,18 @@ export class CASMetadataImpl implements CASMetadata {
 				}
 			}
 		}
-		if (normalBytesDelta === 0 && trashBytesDelta === 0) {
+		const prevDirBytes: Record<string, number> =
+			currentStats.dirBytes ?? {};
+		const dirBytes = applyDirBytesDeltas(prevDirBytes, changes);
+		// 目录间迁移时 normal/trash 两个全局数字不变，只有按目录统计会变
+		const hasDirBytesChanged = Object.keys(dirBytes).some(
+			(dir) => dirBytes[dir] !== (prevDirBytes[dir] ?? 0),
+		);
+		if (
+			normalBytesDelta === 0 &&
+			trashBytesDelta === 0 &&
+			!hasDirBytesChanged
+		) {
 			return;
 		}
 
@@ -212,6 +233,7 @@ export class CASMetadataImpl implements CASMetadata {
 			0,
 			currentStats.trashBytes + trashBytesDelta,
 		);
+		currentStats.dirBytes = dirBytes;
 
 		await executeIDBRequest(statsStore.put(currentStats), signal);
 	}
@@ -554,6 +576,36 @@ function keepExistingTrashedAt(
 }
 
 /**
+ * 按目录增量维护占用字节：正常副本按其所属目录计入，同一 CID 在多个目录有副本即
+ * 各计一次（与磁盘占用一致）。回收站副本不计入——它们由 trashBytes 单独统计，
+ * 且下载目录清理不触碰回收站副本。
+ *
+ * 口径只覆盖元数据中登记的副本：未经索引收录的磁盘文件既不计入也不清理。
+ */
+export function applyDirBytesDeltas(
+	dirBytes: Record<string, number>,
+	changes: { newValue?: PO; oldValue?: PO }[],
+): Record<string, number> {
+	const result = { ...dirBytes };
+	const add = (po: PO, sign: number) => {
+		for (const c of po.copies ?? []) {
+			if (c.trashedAt != null) {
+				continue;
+			}
+			result[c.dir] = Math.max(
+				0,
+				(result[c.dir] ?? 0) + sign * (po.size ?? 0),
+			);
+		}
+	};
+	for (const { newValue, oldValue } of changes) {
+		if (oldValue) add(oldValue, -1);
+		if (newValue) add(newValue, 1);
+	}
+	return result;
+}
+
+/**
  * 合并持久化对象（merge 的必经写入路径，所有更新都经由此处）。
  * - partial 更新（index/save/重建索引）可能缺失字段：index 进不来 size，
  *   重建索引进不来 filename/format，缺失时保留既有值，避免覆盖丢失。
@@ -595,4 +647,10 @@ interface PO {
 interface Stats {
 	normalBytes: number;
 	trashBytes: number;
+	/**
+	 * 各目录的占用字节（正常副本口径，随元数据增删增量维护）。
+	 * 引入本字段之前已存在的记录没有该值，读出时按空对象处理，
+	 * 其中的对象需经一次副本状态变更（如重建索引）才会计入。
+	 */
+	dirBytes: Record<string, number>;
 }

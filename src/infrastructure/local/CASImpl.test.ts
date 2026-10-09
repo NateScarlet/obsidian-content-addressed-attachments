@@ -135,7 +135,7 @@ class MemMeta implements CASMetadata {
 	}
 
 	async estimateStorage() {
-		return { normalBytes: 0, trashBytes: 0 };
+		return { normalBytes: 0, trashBytes: 0, dirBytes: {} };
 	}
 }
 
@@ -160,8 +160,15 @@ function setup(dirs: string[]) {
 	const sync = {
 		notifyChanged: vi.fn(),
 	};
-	const cas = new CASImpl(app as unknown as App, meta, () => dirs, sync);
-	return { cas, meta, fs, sync };
+	const guard = vi.fn(() => Promise.resolve());
+	const cas = new CASImpl(
+		app as unknown as App,
+		meta,
+		() => dirs,
+		sync,
+		guard,
+	);
+	return { cas, meta, fs, sync, guard };
 }
 
 async function makeObject(content: string) {
@@ -652,6 +659,20 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(false);
 	});
 
+	it("新副本落盘前先经写入策略把关，去重命中时不触发", async () => {
+		const { cas, guard } = setup(["dirA"]);
+		const { bytes } = await makeObject("abc");
+		const file = new File([bytes], "a.png", { type: "image/png" });
+
+		await cas.save("dirA", file);
+		expect(guard).toHaveBeenCalledTimes(1);
+		expect(guard).toHaveBeenCalledWith("dirA", bytes.length);
+
+		// 同一内容再存一次命中去重，不会新增副本，也就无需检查写入策略
+		await cas.save("dirA", file);
+		expect(guard).toHaveBeenCalledTimes(1);
+	});
+
 	it("save 新增副本后只发布失效信号，副本状态由后台消费者按磁盘重建", async () => {
 		const { cas, meta, sync } = setup(["dirA", "dirB"]);
 		const { cid, bytes } = await makeObject("abc");
@@ -681,5 +702,124 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		});
 		// 元数据同步由后台消费者（按磁盘真相重建）负责，此处不再同步反映
 		await expect(meta.get(cid)).resolves.toBeUndefined();
+	});
+});
+
+describe("CASImpl.deleteCopyInDir 删除指定目录的副本", () => {
+	const never = () => Promise.resolve(false);
+
+	it("删除目标目录的正常副本并保留其它目录的副本", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`);
+		fs.write(`dirB/${relPath}`);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA" }, { dir: "dirB" }],
+		});
+
+		expect(await cas.deleteCopyInDir(cid, "dirA", never)).toBe(true);
+
+		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
+		expect(fs.exists(`dirB/${relPath}`)).toBe(true);
+		const obj = await meta.get(cid);
+		expect(obj?.copies).toEqual([{ dir: "dirB", trashedAt: undefined }]);
+	});
+
+	it("同目录的回收站副本不受影响", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`);
+		fs.write(`dirA/.trash/${relPath}`);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA" }, { dir: "dirA", trashedAt: new Date() }],
+		});
+
+		await cas.deleteCopyInDir(cid, "dirA", never);
+
+		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
+		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(true);
+		const obj = await meta.get(cid);
+		expect(obj?.copies).toHaveLength(1);
+		expect(obj?.copies?.[0].dir).toBe("dirA");
+		expect(obj?.copies?.[0].trashedAt).toBeInstanceOf(Date);
+	});
+
+	it("唯一副本被删且仍被引用时保留记录并清空副本状态", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			filename: "a.png",
+			copies: [{ dir: "dirA" }],
+		});
+
+		await cas.deleteCopyInDir(cid, "dirA", () => Promise.resolve(true));
+
+		const obj = await meta.get(cid);
+		expect(obj?.filename).toBe("a.png");
+		expect(obj?.copies).toEqual([]);
+	});
+
+	it("唯一副本被删且无引用时删除记录", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA" }],
+		});
+
+		await cas.deleteCopyInDir(cid, "dirA", never);
+
+		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
+		await expect(meta.get(cid)).resolves.toBeUndefined();
+	});
+
+	it("副本被全部删净时才做引用判定", async () => {
+		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`);
+		fs.write(`dirB/${relPath}`);
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA" }, { dir: "dirB" }],
+		});
+		const isReferenced = vi.fn(() => Promise.resolve(true));
+
+		await cas.deleteCopyInDir(cid, "dirA", isReferenced);
+
+		expect(isReferenced).not.toHaveBeenCalled();
+	});
+
+	it("磁盘上已无该副本时不做任何事（交由后台索引对账）", async () => {
+		const { cas, meta } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("abc");
+		await meta.merge({
+			cid,
+			indexedAt: new Date(),
+			copies: [{ dir: "dirA" }],
+		});
+		const isReferenced = vi.fn(() => Promise.resolve(true));
+
+		expect(await cas.deleteCopyInDir(cid, "dirA", isReferenced)).toBe(
+			false,
+		);
+
+		expect(isReferenced).not.toHaveBeenCalled();
+		const obj = await meta.get(cid);
+		expect(obj?.copies).toEqual([{ dir: "dirA" }]);
 	});
 });

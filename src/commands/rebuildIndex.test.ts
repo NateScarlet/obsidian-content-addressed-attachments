@@ -33,7 +33,7 @@ class MemMeta implements CASMetadata {
 		}
 	}
 	async estimateStorage() {
-		return { normalBytes: 0, trashBytes: 0 };
+		return { normalBytes: 0, trashBytes: 0, dirBytes: {} };
 	}
 }
 

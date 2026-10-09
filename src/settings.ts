@@ -20,6 +20,17 @@ export interface Settings {
 	version: 1;
 	primaryDir: string;
 	downloadDir: string;
+	/**
+	 * 下载目录副本保留期（天，允许小数）。
+	 * 按副本创建时间判定：早于保留期的副本可被手动与自动清理删除。
+	 * 字面语义：0 表示全部副本可删，负值按 0 处理。
+	 */
+	downloadRetentionDays: number;
+	/**
+	 * 全部下载目录占用字节上限，超过时在写入新副本之前触发自动清理；
+	 * ≤0 表示不启用自动清理。
+	 */
+	downloadQuotaBytes: number;
 	gateways: GatewayConfig[];
 	/** 按 URL 前缀匹配的全局请求头规则 */
 	headerRules: HeaderRule[];
@@ -32,6 +43,10 @@ export interface Settings {
 
 export const DEFAULT_MAX_BLOB_SIZE = 20 * 1024 * 1024; // 20MB
 export const DEFAULT_DECRYPTED_CACHE_DIR = "";
+/** 下载目录副本的默认保留期（天） */
+export const DEFAULT_DOWNLOAD_RETENTION_DAYS = 7;
+/** 默认下载配额（字节）：0 表示不启用基于配额的自动清理 */
+export const DEFAULT_DOWNLOAD_QUOTA_BYTES = 0;
 
 interface SettingsV0 {
 	version: undefined;
@@ -48,6 +63,8 @@ interface SettingsV1Input {
 	version: 1;
 	primaryDir?: string;
 	downloadDir?: string;
+	downloadRetentionDays?: number;
+	downloadQuotaBytes?: number;
 	gateways?: GatewayConfig[];
 	headerRules?: HeaderRule[];
 	encryptPathRules?: EncryptPathRule[];
@@ -58,6 +75,45 @@ interface SettingsV1Input {
 }
 
 export type SettingsInput = SettingsV0 | SettingsV1Input | { version: number };
+
+/**
+ * 保留期归一：缺失或非有限数值回落到默认（保守：近期副本不可删）；
+ * 负值钳到 0（保留期为 0 的字面语义即全部副本可删）。
+ */
+export function normalizeRetentionDays(value: number | undefined): number {
+	if (value == null || !Number.isFinite(value)) {
+		return DEFAULT_DOWNLOAD_RETENTION_DAYS;
+	}
+	return value < 0 ? 0 : value;
+}
+
+/** 配额归一：缺失或非有限数值按 0（不启用自动清理）处理 */
+function normalizeQuotaBytes(value: number | undefined): number {
+	return value != null && Number.isFinite(value)
+		? value
+		: DEFAULT_DOWNLOAD_QUOTA_BYTES;
+}
+
+/** 下载配额的界面输入单位（兆字节） */
+export const BYTES_PER_MB = 1024 * 1024;
+
+/**
+ * 保留期文本输入归一（设置页与文件管理器共用，避免两处解析规则分叉）。
+ * 空输入不按 0 处理——0 的字面语义是全部副本可删——而是回落到默认保留期。
+ */
+export function normalizeRetentionDaysInput(value: string): number {
+	return normalizeRetentionDays(
+		value.trim() === "" ? Number.NaN : Number(value),
+	);
+}
+
+/** 下载配额文本输入（MB）归一为字节：空输入与非法数值按 0（不启用自动清理）处理 */
+export function normalizeQuotaBytesInput(value: string): number {
+	const mb = value.trim() === "" ? Number.NaN : Number(value);
+	return normalizeQuotaBytes(
+		Number.isFinite(mb) ? mb * BYTES_PER_MB : Number.NaN,
+	);
+}
 
 export function settingsFromInput(
 	input: SettingsInput | null | undefined,
@@ -90,6 +146,10 @@ export function settingsFromInput(
 			gateways: Array.isArray(v1.gateways)
 				? v1.gateways
 				: defaults.gateways,
+			downloadRetentionDays: normalizeRetentionDays(
+				v1.downloadRetentionDays,
+			),
+			downloadQuotaBytes: normalizeQuotaBytes(v1.downloadQuotaBytes),
 			headerRules: v1.headerRules ?? [],
 			encryptPathRules: v1.encryptPathRules ?? [],
 			maxBlobSize: v1.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
@@ -129,6 +189,8 @@ export function getDefaultSettings(): Settings {
 		version: 1,
 		primaryDir: ".attachments/cas",
 		downloadDir: "",
+		downloadRetentionDays: DEFAULT_DOWNLOAD_RETENTION_DAYS,
+		downloadQuotaBytes: DEFAULT_DOWNLOAD_QUOTA_BYTES,
 		gateways: [
 			{
 				name: "IPFS.io",

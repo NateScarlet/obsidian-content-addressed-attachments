@@ -28,6 +28,15 @@ export default class CASMetadataObjectFilterBuilder {
 			const m = filterBy.isTrashed;
 			b.add((i) => isCASObjectTrashed(i) === m);
 		}
+		if (filterBy.hasCopyInDirs) {
+			const dirs = new Set(filterBy.hasCopyInDirs);
+			b.add(
+				(i) =>
+					i.copies?.some(
+						(c) => c.trashedAt == null && dirs.has(c.dir),
+					) ?? false,
+			);
+		}
 		if (filterBy.hasReference != null) {
 			const m = filterBy.hasReference;
 			// 默认保障缓存最新后再信任缓存条目判定（skipVerify），避免缓存过时时列表不准。

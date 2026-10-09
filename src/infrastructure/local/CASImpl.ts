@@ -6,7 +6,7 @@ import { App, getBlobArrayBuffer } from "obsidian";
 import makeDirs from "#src/utils/makeDirs";
 import { mergeCopies } from "#src/utils/casCopies";
 import { basename, dirname, join } from "path-browserify";
-import type { CAS } from "#src/types/CAS";
+import type { CAS, CASWriteGuard } from "#src/types/CAS";
 import type {
 	CASMetadata,
 	CASMetadataCopy,
@@ -22,6 +22,7 @@ export class CASImpl implements CAS {
 		private meta: CASMetadata,
 		private dirs: () => Iterable<string>,
 		private sync: CASMetadataSync,
+		private guard: CASWriteGuard,
 	) {}
 
 	// #region 副本探测
@@ -142,6 +143,42 @@ export class CASImpl implements CAS {
 			await this.meta.delete(cid);
 		}
 		return count;
+	}
+
+	async deleteCopyInDir(
+		cid: CID,
+		dir: string,
+		isReferenced: (cid: CID) => Promise<boolean>,
+	): Promise<boolean> {
+		const path = this.getFilePath(dir, this.formatRelPath(cid));
+		const stat = await this.app.vault.adapter.stat(path);
+		if (stat?.type !== "file") {
+			// 磁盘上已无此副本：元数据的滞后交由后台索引对账，不在此处猜测副本状态
+			return false;
+		}
+		await this.app.vault.adapter.remove(path);
+		const copies = await this.collectCopies(cid);
+		const existing = await this.meta.get(cid);
+		if (copies.length > 0) {
+			await this.meta.merge({
+				// 元数据滞后于磁盘时以磁盘为准补上 size，否则按目录占用统计会漏记这份副本
+				...(existing ?? {
+					cid,
+					indexedAt: new Date(),
+					size: stat.size,
+				}),
+				copies,
+			});
+		} else if (await isReferenced(cid)) {
+			// 副本删净但仍被引用：保留记录并清空副本状态，等待后续重新获取
+			await this.meta.merge({
+				...(existing ?? { cid, indexedAt: new Date() }),
+				copies: [],
+			});
+		} else {
+			await this.meta.delete(cid);
+		}
+		return true;
 	}
 
 	async *objects(): AsyncIterableIterator<CASMetadataObject> {
@@ -453,6 +490,9 @@ export class CASImpl implements CAS {
 			});
 			return { cid, didCreate: false };
 		}
+
+		// 落盘前交给上层写入策略把关（如下载配额自动清理）；去重命中不新增副本，无需触发
+		await this.guard(dir, file.size);
 
 		await makeDirs(this.app.vault, dirname(filePath));
 		await this.app.vault.adapter.writeBinary(filePath, arrayBuffer);

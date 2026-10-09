@@ -2,7 +2,7 @@
 	import formatFileSize from "#src/utils/formatFileSize";
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorerContext";
-	import { casMetadataSave } from "#src/events";
+	import { casMetadataDelete, casMetadataSave } from "#src/events";
 	import { debounce } from "obsidian";
 
 	const { t } = defineLocales({
@@ -12,6 +12,7 @@
 			recycleBin: "Recycle bin",
 			mode: "Mode",
 			activeNote: "Active note",
+			downloads: "Downloads",
 		},
 		zh: {
 			all: "本地",
@@ -19,22 +20,37 @@
 			recycleBin: "回收站",
 			mode: "模式",
 			activeNote: "当前笔记",
+			downloads: "下载",
 		},
 	});
 </script>
 
 <script lang="ts">
-	const { casMetadata, mode } = getContext();
+	const { casMetadata, mode, getDownloadDirs } = getContext();
 	let estimateStorage = $state(casMetadata.estimateStorage());
 	const updateEstimateStorage = debounce(() => {
 		estimateStorage = casMetadata.estimateStorage();
 	}, 100);
 	$effect(() => {
-		return casMetadataSave.subscribe(() => {
-			updateEstimateStorage();
-		});
+		// 唯一副本删净且无引用时走的是删除事件，两种事件都要响应，
+		// 否则清空回收站/清理后占用数字会停在清理前
+		const refresh = () => updateEstimateStorage();
+		const unsubscribes = [
+			casMetadataSave.subscribe(refresh),
+			casMetadataDelete.subscribe(refresh),
+		];
+		return () => {
+			for (const unsubscribe of unsubscribes) {
+				unsubscribe();
+			}
+		};
 	});
-	const views = [Mode.LOCAL, Mode.UNREFERENCED, Mode.RECYCLE_BIN];
+	const views = [
+		Mode.LOCAL,
+		Mode.UNREFERENCED,
+		Mode.RECYCLE_BIN,
+		Mode.DOWNLOADS,
+	];
 	function handleKeydown(event: KeyboardEvent, view: Mode) {
 		const currentIndex = views.indexOf(mode.value);
 
@@ -77,6 +93,14 @@
 		const { trashBytes } = await estimateStorage;
 		return trashBytes;
 	});
+	const downloadBytes = $derived.by(async () => {
+		const { dirBytes } = await estimateStorage;
+		const dirs = new Set(getDownloadDirs());
+		return Object.entries(dirBytes).reduce(
+			(sum, [dir, bytes]) => (dirs.has(dir) ? sum + bytes : sum),
+			0,
+		);
+	});
 	// 定义标签配置，只包含每个标签特有的属性
 	const tabs = [
 		{
@@ -96,6 +120,11 @@
 			mode: Mode.RECYCLE_BIN,
 			size: () => trashBytes,
 			translationKey: "recycleBin" as const,
+		},
+		{
+			mode: Mode.DOWNLOADS,
+			size: () => downloadBytes,
+			translationKey: "downloads" as const,
 		},
 	];
 </script>

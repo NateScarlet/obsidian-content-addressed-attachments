@@ -3,6 +3,11 @@
 	const SKELETON_ITEMS = Array.from({ length: PAGE_SIZE }, (_, i) => i);
 	/** 保存事件的应用最小间隔（毫秒），限制列表重渲染频率 */
 	const BATCH_APPLY_INTERVAL_MS = 1000;
+	/**
+	 * 「不加载任何文件」筛选：下载目录页只按目录聚合展示占用，不渲染文件网格，
+	 * 空 cid 列表让数据层在查询入口直接短路，避免为看不见的网格做全量查询。
+	 */
+	const NO_FILES: CASMetadataObjectFilters = { cid: [] };
 </script>
 
 <script lang="ts">
@@ -19,6 +24,7 @@
 	import CASFileExplorerHeader from "./CASFileExplorerHeader.svelte";
 	import CASFileExplorerViewTabs from "./CASFileExplorerTabs.svelte";
 	import CASFileExplorerGrid from "./CASFileExplorerGrid.svelte";
+	import CASFileExplorerDownloads from "./CASFileExplorerDownloads.svelte";
 	import {
 		casMetadataDelete,
 		casMetadataSave,
@@ -41,6 +47,8 @@
 		metadataWriteSignal,
 		getPrimaryDir,
 		getDownloadDirs,
+		getDownloadRetentionDays,
+		setDownloadRetentionDays,
 	}: {
 		app: App;
 		referenceManager: ReferenceManager;
@@ -50,6 +58,8 @@
 		metadataWriteSignal: AbortSignal;
 		getPrimaryDir: () => string;
 		getDownloadDirs: () => string[];
+		getDownloadRetentionDays: () => number;
+		setDownloadRetentionDays: (days: number) => Promise<void>;
 	} = $props();
 
 	// 状态
@@ -87,6 +97,8 @@
 					query,
 					isTrashed: true,
 				};
+			case Mode.DOWNLOADS:
+				return NO_FILES;
 		}
 	});
 
@@ -141,7 +153,7 @@
 
 	// 提供 context
 	// 依赖服务实例（referenceManager/app/encryptionService）为稳定引用，仅在初始化时读取；
-	// getPrimaryDir/getDownloadDirs 为设置读取函数，调用时实时取当前设置
+	// getPrimaryDir/getDownloadDirs/getDownloadRetentionDays 为设置读取函数，调用时实时取当前设置
 	setContext(
 		untrack(() => ({
 			cas,
@@ -150,8 +162,10 @@
 			app,
 			encryptionService,
 			metadataWriteSignal,
-			getPrimaryDir,
+getPrimaryDir,
 			getDownloadDirs,
+			getDownloadRetentionDays,
+			setDownloadRetentionDays,
 			mode: {
 				get value() {
 					return mode;
@@ -218,7 +232,9 @@
 <div class="h-full flex flex-col gap-1 @container">
 	<CASFileExplorerHeader />
 	<CASFileExplorerViewTabs />
-	{#if !currentPage.loading}
+	{#if mode === Mode.DOWNLOADS}
+		<CASFileExplorerDownloads />
+	{:else if !currentPage.loading}
 		<CASFileExplorerGrid files={currentPage.page} />
 	{:else}
 		<div

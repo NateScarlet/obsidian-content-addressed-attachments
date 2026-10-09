@@ -115,3 +115,14 @@ preprocess-scripts/         # 官方维护的预处理脚本源码（构建入�
 - **恢复目标目录由引用类型决定**：`restoreIfTrashed`/`load` 接受可选允许目录列表，副本所在目录不在列表内时迁移到列表第一个目录，列表为空/未提供则原位恢复。恢复命令（`restoreReferencedFiles`）按引用类型计算列表——存在 `ipfs://` 引用 → 主存储目录；仅 `internal.ipfs-locked:` 锁定引用 → 下载目录列表（`downloadDir` 与各网关 `downloadDir` 去重）；下载目录为空则不传（原位）。触发笔记自身以 `ipfs://` 引用时短路跳过全库查询（`ReferenceManager.hasIPFSReference`）。
 - **重建索引对账**（`src/commands/rebuildIndex.ts`）：以磁盘为权威，分两阶段清理残留，内存只保留已产出 CID 的集合（不把全部对象加载进内存）——① 流式扫描磁盘副本：按「目录的正常区 → 同目录回收站 → 下一目录」顺序遍历，某 CID 首次出现时就地探测它在**尚未扫描目录**中的副本（已扫描过的目录不回查），凑成一条完整记录立即产出并记为 `lastVisitedAt = scannedAt`，之后在其它目录再遇到同一 CID 直接跳过；② 遍历元数据，凡 `lastVisitedAt` 早于 `scannedAt`（磁盘已无该 CID 任何副本）的记录：仍被引用则保留记录与 filename/format 并清空副本状态退出回收站，否则整体删除。这样 `.trash` 文件被外部删除后回收站不再残留。
 - IndexedDB schema 为 v2（`DB_VERSION=2`）：v1 的 `trashedAt` 在升级时迁移为 `copies`（用空字符串占位“未知目录”），**迁移惰性化**——不在 `onupgradeneeded` 里遍历数据（会卡住），改为运行时 decode/merge 兼容。
+
+## 下载目录清理
+
+下载目录存放 `internal.ipfs-locked:` 锁定引用的副本，只增不减会持续侵占磁盘，故按保留期清理（保留期与配额见术语表）：
+
+- **触发方式共用同一模块** `src/commands/cleanDownloadDir.ts`：文件管理器「下载」标签页的逐目录清理按钮（手动）与 `CASImpl.save` 落盘前的配额检查（自动，`enforceDownloadQuota`）只差触发方式与是否给出释放目标。自动清理的缺口算作「超出配额 + 本次写入的体积」，使新副本落盘后仍落在配额内；无可删副本时放弃清理、照常写入，由插件合并提示一次。
+- **保留期边界取「未达保留期」**：恰好到达保留期的副本仍在保留期内，不删除。
+- **候选来自元数据**（`hasCopyInDirs` 筛选的正常副本），因此只覆盖被索引收录的 CAS 副本：未知命名格式的文件与外部直接拷入的文件既不删除也不计入占用。`.trash` 内的回收站副本不参与（仍由清空回收站命令处理）。
+- **创建时间取自磁盘文件修改时间**：CAS 内容不可变，落盘后修改时间不再变化，与回收时间同源（见上）。
+- **CAS 原语 `deleteCopyInDir(cid, dir, isReferenced)`**：只删指定目录的正常副本，按磁盘真相重算 `copies`；副本删净后仍被引用则保留记录并清空副本状态（等待重新获取），无引用则删除记录。
+- **占用统计**：`CASMetadata.estimateStorage()` 在全局 normal/trash 之外返回 `dirBytes`（各目录占用字节，正常副本口径、随元数据增删增量维护）。文件管理器「下载」标签页与配额检查都只读这份统计，不做全量磁盘扫描。引入该字段之前已存在的记录没有该值，其中的对象需经一次副本状态变更（如重建索引）才会计入。

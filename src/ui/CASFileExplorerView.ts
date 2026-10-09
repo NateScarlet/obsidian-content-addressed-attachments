@@ -42,6 +42,12 @@ export class CASFileExplorerView extends ItemView {
 				metadataWriteSignal: this.plugin.metadataWriteController.signal,
 				getPrimaryDir: () => this.plugin.settings.primaryDir,
 				getDownloadDirs: () => getDownloadDirs(this.plugin.settings),
+				getDownloadRetentionDays: () =>
+					this.plugin.settings.downloadRetentionDays,
+				setDownloadRetentionDays: async (days: number) => {
+					this.plugin.settings.downloadRetentionDays = days;
+					await this.plugin.saveSettings();
+				},
 			},
 		});
 		return Promise.resolve();

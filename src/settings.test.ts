@@ -106,3 +106,80 @@ describe("settingsFromInput", () => {
 		expect(result.headerRules).toEqual([]);
 	});
 });
+
+describe("下载目录保留期与配额", () => {
+	it("缺省时保留期为 7 天、配额为 0（不启用自动清理）", () => {
+		const defaults = getDefaultSettings();
+		expect(defaults.downloadRetentionDays).toBe(7);
+		expect(defaults.downloadQuotaBytes).toBe(0);
+		expect(settingsFromInput({ version: 1 })).toEqual(defaults);
+	});
+
+	it("保留期允许小数并原样保留", () => {
+		const result = settingsFromInput({
+			version: 1,
+			downloadRetentionDays: 0.5,
+		});
+		expect(result.downloadRetentionDays).toBe(0.5);
+	});
+
+	it("保留期为 0 表示全部副本可删，不被替换为默认值", () => {
+		const result = settingsFromInput({
+			version: 1,
+			downloadRetentionDays: 0,
+		});
+		expect(result.downloadRetentionDays).toBe(0);
+	});
+
+	it("保留期为负数时钳到 0", () => {
+		const result = settingsFromInput({
+			version: 1,
+			downloadRetentionDays: -3,
+		});
+		expect(result.downloadRetentionDays).toBe(0);
+	});
+
+	it("保留期缺失或非有限数值时回落到默认值", () => {
+		expect(
+			settingsFromInput({ version: 1, downloadRetentionDays: undefined })
+				.downloadRetentionDays,
+		).toBe(7);
+		expect(
+			settingsFromInput({
+				version: 1,
+				downloadRetentionDays: Number.NaN,
+			}).downloadRetentionDays,
+		).toBe(7);
+	});
+
+	it("配额原样保留，≤0 表示不启用自动清理", () => {
+		expect(
+			settingsFromInput({
+				version: 1,
+				downloadQuotaBytes: 512 * 1024 * 1024,
+			}).downloadQuotaBytes,
+		).toBe(512 * 1024 * 1024);
+		expect(
+			settingsFromInput({ version: 1, downloadQuotaBytes: -1 })
+				.downloadQuotaBytes,
+		).toBe(-1);
+	});
+
+	it("配额非有限数值时回落到 0（禁用自动清理）", () => {
+		expect(
+			settingsFromInput({
+				version: 1,
+				downloadQuotaBytes: Number.POSITIVE_INFINITY,
+			}).downloadQuotaBytes,
+		).toBe(0);
+	});
+
+	it("v0 迁移同样带上默认保留期与配额", () => {
+		const result = settingsFromInput({
+			version: undefined,
+			casDir: "custom/cas",
+		});
+		expect(result.downloadRetentionDays).toBe(7);
+		expect(result.downloadQuotaBytes).toBe(0);
+	});
+});

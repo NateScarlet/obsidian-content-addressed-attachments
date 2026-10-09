@@ -1,6 +1,13 @@
 import { PluginSettingTab, Setting, Notice } from "obsidian";
 import type ContentAddressedAttachmentPlugin from "../main";
 import defineLocales from "../utils/defineLocales";
+import {
+	BYTES_PER_MB,
+	DEFAULT_DOWNLOAD_RETENTION_DAYS,
+	normalizeQuotaBytesInput,
+	normalizeRetentionDaysInput,
+} from "../settings";
+import { cleanDownloadDirMessages } from "#src/commands/cleanDownloadDir";
 import GatewayOptionsModal from "./GatewayOptionsModal";
 import HeaderRuleOptionsModal from "./HeaderRuleOptionsModal";
 import ExportKeysModal from "./modals/ExportKeysModal";
@@ -59,6 +66,47 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.downloadDir)
 					.onChange(async (value) => {
 						this.plugin.settings.downloadDir = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+		new Setting(containerEl)
+			.setName(t("downloadRetentionDays"))
+			.setDesc(t("downloadRetentionDaysDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder(String(DEFAULT_DOWNLOAD_RETENTION_DAYS))
+					.setValue(
+						String(this.plugin.settings.downloadRetentionDays),
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.downloadRetentionDays =
+							normalizeRetentionDaysInput(value);
+						await this.plugin.saveSettings();
+					}),
+			);
+		// 配额说明与清理不可逆的常驻提示合并为一段描述（ADR-0005）
+		const quotaDesc = createFragment((fragment: DocumentFragment) => {
+			fragment.createDiv({ text: t("downloadQuotaDesc") });
+			fragment.createDiv({
+				text: t("cleanupWarning"),
+				cls: "mod-warning",
+			});
+		});
+		new Setting(containerEl)
+			.setName(t("downloadQuota"))
+			.setDesc(quotaDesc)
+			.addText((text) =>
+				text
+					.setPlaceholder("0")
+					.setValue(
+						String(
+							this.plugin.settings.downloadQuotaBytes /
+								BYTES_PER_MB,
+						),
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.downloadQuotaBytes =
+							normalizeQuotaBytesInput(value);
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -457,6 +505,13 @@ const { t } = defineLocales({
 		primaryStorageDirectoryDesc: "Directory for new attachments",
 		downloadDirectory: "Download directory",
 		downloadDirectoryDesc: "Directory for files downloaded from the web",
+		downloadRetentionDays: "Download retention period",
+		downloadRetentionDaysDesc:
+			"Copies in download directories older than this are removable by cleanup. 0 means every copy is removable; negative values are clamped to 0.",
+		downloadQuota: "Download quota (MB)",
+		downloadQuotaDesc:
+			"When all download directories together exceed this, expired copies are cleaned up automatically before a new copy is written. 0 or less disables automatic cleanup.",
+		...cleanDownloadDirMessages.en,
 		gateways: "Gateways",
 		gatewaysDesc:
 			"Used to fetch missing local files, using Mustache template syntax. If empty, only existing files from the download directory will be read.",
@@ -505,6 +560,13 @@ const { t } = defineLocales({
 		primaryStorageDirectoryDesc: "存储新添加的附件",
 		downloadDirectory: "下载目录",
 		downloadDirectoryDesc: "存储从网络下载文件",
+		downloadRetentionDays: "下载保留期",
+		downloadRetentionDaysDesc:
+			"下载目录中创建时间超过该时长的副本可被清理。0 表示全部副本可删，负值按 0 处理。",
+		downloadQuota: "下载配额（MB）",
+		downloadQuotaDesc:
+			"全部下载目录合计占用超过该值时，写入新副本之前自动清理超期副本。0 或更小的值表示不启用自动清理。",
+		...cleanDownloadDirMessages.zh,
 		gateways: "网关",
 		gatewaysDesc:
 			"用于获取本地缺少的文件，使用 Mustache 模板语法定义 URL 格式。如果网址为空，则仅从下载目录（选项中设置）读取已有文件",
