@@ -576,6 +576,8 @@
 						value={rule.pattern}
 						placeholder={t("encryptPathRulePatternPlaceholder")}
 						class="w-full rounded border border-border bg-primary px-3 py-2 text-xs font-mono text-theme-text resize-y"
+						spellcheck="false"
+						autocapitalize="off"
 						oninput={(e) =>
 							updateRulePattern(index, (e.target as HTMLTextAreaElement).value)}
 						onblur={() => handleRuleBlur(index)}

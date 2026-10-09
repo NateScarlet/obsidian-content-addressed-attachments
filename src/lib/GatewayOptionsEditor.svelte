@@ -114,6 +114,8 @@
 			class="w-full min-h-32 resize-none font-mono"
 			bind:value={headerTextModel.value}
 			placeholder={t("headersPlaceholder")}
+			spellcheck="false"
+			autocapitalize="off"
 		></textarea>
 	</label>
 
