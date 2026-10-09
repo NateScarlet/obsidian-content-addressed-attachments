@@ -118,7 +118,7 @@
 	{:else}
 		<!-- 清理不可逆，提示常驻可见（ADR-0005） -->
 		<p class="text-sm text-muted">{t("cleanupWarning")}</p>
-		<ul class="flex flex-col gap-1">
+		<ul class="flex flex-col gap-1 p-0">
 			{#each downloadDirs as dir (dir)}
 				<li
 					class="flex items-center gap-2 px-2 py-1 border border-border rounded text-sm"

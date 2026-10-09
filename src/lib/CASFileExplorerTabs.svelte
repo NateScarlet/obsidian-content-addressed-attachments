@@ -132,7 +132,7 @@
 <div
 	role="tablist"
 	aria-label={t("mode")}
-	class="flex flex-col gap-1 @sm:flex-row @sm:gap-0"
+	class="flex flex-col flex-wrap gap-1 @sm:flex-row @sm:gap-0"
 >
 	{#each tabs as tab, index (tab.mode)}
 		<div
