@@ -8,7 +8,7 @@
 
 **启动节拍为按批，而非自由 worker 池。** 每批并发取至多 `limit` 个源元素，并在同一个同步块内启动该批全部投影。这不是风格选择：合并批（`CoalescingBatch`）的收益依赖「同一注册窗口内并发到达的请求」，自由 worker 池会让相邻请求散落到不同微任务，元数据写入与引用计数查询的合并随即失效，事务数从 ~30 退回 ~10k。代价是批内最慢的一项会押住整批——而按 `limit` 的语义，同一批本来也要等它。
 
-**`limit` 因此是双重含义**：既是并发上限，也是合并批宽。取值写在每个调用点而非集中默认（`doIncrementalScan` 64、`loadFileContent`/`process` 8、`applyBatch`/`rebuildIndex` 1000）；`CASMetadataImpl.find` 的 1024 是刻意的大批宽，它限制的是「合并批宽」而非独立任务数，因此豁免。原语另外导出 `DEFAULT_PARALLEL_LIMIT = 8` 供取常规并发度的调用点显式引用——它是调用点可选的取值来源，不是原语的隐式默认（`limit` 仍为必填参数）。
+**`limit` 因此是双重含义**：既是并发上限，也是合并批宽。取值写在每个调用点而非集中默认（`doIncrementalScan` 64、`loadFileContent`/`process` 8、`applyBatch`/`rebuildIndex` 1000）；`CASMetadataImpl.find` 的 1024 是刻意的大批宽，它限制的是「合并批宽」而非独立任务数，因此豁免。原语另外导出 `DEFAULT_PARALLEL_LIMIT = 8` 供取常规并发度的调用点显式引用——它是调用点可选的取值来源，不是原语的隐式默认（`limit` 仍为必填参数）。`CASImpl.scanShardCopies` 与 `cleanDownloadDir` 的删除各引用一次 `DEFAULT_PARALLEL_LIMIT`：两者的瓶颈都是磁盘 IO 延迟而非合并批宽，取常规并发度。
 
 **Considered Options**:
 

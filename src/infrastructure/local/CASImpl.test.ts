@@ -5,6 +5,7 @@ import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import type { App } from "obsidian";
 import { CASImpl } from "./CASImpl";
+import type { CASDirCopy } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
 
 /** 内存文件系统：模拟 vault adapter 的磁盘操作 */
@@ -705,72 +706,107 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 	});
 });
 
-describe("CASImpl.deleteCopyInDir 删除指定目录的副本", () => {
-	const never = () => Promise.resolve(false);
+describe("CASImpl.walkDirCopies 直接遍历指定目录", () => {
+	/** 收集目录遍历的全部产出 */
+	async function walk(cas: CASImpl, dir: string) {
+		const seen: CASDirCopy[] = [];
+		for await (const copy of cas.walkDirCopies(dir)) {
+			seen.push(copy);
+		}
+		return seen;
+	}
 
-	it("删除目标目录的正常副本并保留其它目录的副本", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+	it("产出目录内正常副本的 CID、路径与磁盘 stat", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const { cid } = await makeObject("walk-me");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`, undefined, 4321);
+
+		const seen = await walk(cas, "dirA");
+
+		expect(seen).toHaveLength(1);
+		expect(seen[0].cid.toString()).toBe(cid.toString());
+		expect(seen[0].path).toBe(`dirA/${relPath}`);
+		expect(seen[0].stat.size).toBe(4321);
+		expect(seen[0].stat.mtime).toBe(fs.files.get(`dirA/${relPath}`)!.mtime);
+	});
+
+	it("只遍历指定目录，不触碰其它目录的副本", async () => {
+		const { cas, fs } = setup(["dirA", "dirB"]);
+		const { cid } = await makeObject("shared");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/${relPath}`);
+		fs.write(`dirB/${relPath}`);
+
+		expect((await walk(cas, "dirA")).map((c) => c.cid.toString())).toEqual([
+			cid.toString(),
+		]);
+		expect((await walk(cas, "dirB")).map((c) => c.cid.toString())).toEqual([
+			cid.toString(),
+		]);
+	});
+
+	it("不遍历回收站副本", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const { cid } = await makeObject("trashed");
+		const relPath = cas.formatRelPath(cid);
+		fs.write(`dirA/.trash/${relPath}`);
+
+		expect(await walk(cas, "dirA")).toEqual([]);
+	});
+
+	it("忽略非分片目录与不符合命名约定的文件", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const { cid } = await makeObject("real");
+		fs.write(`dirA/${cas.formatRelPath(cid)}`);
+		// 目录名不是 2 个字符：非分片目录
+		fs.write(`dirA/notes/whatever.data`);
+		// 分片目录内命名不符合 CAS 约定
+		fs.write(`dirA/${cas.formatRelPath(cid).split("/")[0]}/readme.txt`);
+
+		expect((await walk(cas, "dirA")).map((c) => c.cid.toString())).toEqual([
+			cid.toString(),
+		]);
+	});
+
+	it("目录尚未创建时不产出任何副本", async () => {
+		const { cas } = setup(["dirA"]);
+
+		expect(await walk(cas, "dirA")).toEqual([]);
+	});
+});
+
+describe("CASImpl.removeCopyInDir 删除指定目录的副本", () => {
+	it("删除目标目录的正常副本并发布失效信号", async () => {
+		const { cas, fs, sync } = setup(["dirA", "dirB"]);
 		const { cid } = await makeObject("abc");
 		const relPath = cas.formatRelPath(cid);
 		fs.write(`dirA/${relPath}`);
 		fs.write(`dirB/${relPath}`);
-		await meta.merge({
-			cid,
-			indexedAt: new Date(),
-			copies: [{ dir: "dirA" }, { dir: "dirB" }],
-		});
 
-		expect(await cas.deleteCopyInDir(cid, "dirA", never)).toBe(true);
+		expect(await cas.removeCopyInDir(cid, "dirA")).toBe(true);
 
 		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
+		// 其它目录的副本不受影响
 		expect(fs.exists(`dirB/${relPath}`)).toBe(true);
-		const obj = await meta.get(cid);
-		expect(obj?.copies).toEqual([{ dir: "dirB", trashedAt: undefined }]);
+		expect(sync.notifyChanged).toHaveBeenCalledWith({ cid });
 	});
 
 	it("同目录的回收站副本不受影响", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+		const { cas, fs } = setup(["dirA"]);
 		const { cid } = await makeObject("abc");
 		const relPath = cas.formatRelPath(cid);
 		fs.write(`dirA/${relPath}`);
 		fs.write(`dirA/.trash/${relPath}`);
-		await meta.merge({
-			cid,
-			indexedAt: new Date(),
-			copies: [{ dir: "dirA" }, { dir: "dirA", trashedAt: new Date() }],
-		});
 
-		await cas.deleteCopyInDir(cid, "dirA", never);
+		await cas.removeCopyInDir(cid, "dirA");
 
 		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
 		expect(fs.exists(`dirA/.trash/${relPath}`)).toBe(true);
-		const obj = await meta.get(cid);
-		expect(obj?.copies).toHaveLength(1);
-		expect(obj?.copies?.[0].dir).toBe("dirA");
-		expect(obj?.copies?.[0].trashedAt).toBeInstanceOf(Date);
 	});
 
-	it("唯一副本被删且仍被引用时保留记录并清空副本状态", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
-		const { cid } = await makeObject("abc");
-		const relPath = cas.formatRelPath(cid);
-		fs.write(`dirA/${relPath}`);
-		await meta.merge({
-			cid,
-			indexedAt: new Date(),
-			filename: "a.png",
-			copies: [{ dir: "dirA" }],
-		});
-
-		await cas.deleteCopyInDir(cid, "dirA", () => Promise.resolve(true));
-
-		const obj = await meta.get(cid);
-		expect(obj?.filename).toBe("a.png");
-		expect(obj?.copies).toEqual([]);
-	});
-
-	it("唯一副本被删且无引用时删除记录", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
+	it("不直接改写元数据：副本状态交由后台索引按磁盘真相对账", async () => {
+		const { cas, meta, fs, sync } = setup(["dirA"]);
 		const { cid } = await makeObject("abc");
 		const relPath = cas.formatRelPath(cid);
 		fs.write(`dirA/${relPath}`);
@@ -780,46 +816,23 @@ describe("CASImpl.deleteCopyInDir 删除指定目录的副本", () => {
 			copies: [{ dir: "dirA" }],
 		});
 
-		await cas.deleteCopyInDir(cid, "dirA", never);
+		await cas.removeCopyInDir(cid, "dirA");
 
-		expect(fs.exists(`dirA/${relPath}`)).toBe(false);
-		await expect(meta.get(cid)).resolves.toBeUndefined();
-	});
-
-	it("副本被全部删净时才做引用判定", async () => {
-		const { cas, meta, fs } = setup(["dirA", "dirB"]);
-		const { cid } = await makeObject("abc");
-		const relPath = cas.formatRelPath(cid);
-		fs.write(`dirA/${relPath}`);
-		fs.write(`dirB/${relPath}`);
-		await meta.merge({
-			cid,
-			indexedAt: new Date(),
-			copies: [{ dir: "dirA" }, { dir: "dirB" }],
-		});
-		const isReferenced = vi.fn(() => Promise.resolve(true));
-
-		await cas.deleteCopyInDir(cid, "dirA", isReferenced);
-
-		expect(isReferenced).not.toHaveBeenCalled();
-	});
-
-	it("磁盘上已无该副本时不做任何事（交由后台索引对账）", async () => {
-		const { cas, meta } = setup(["dirA", "dirB"]);
-		const { cid } = await makeObject("abc");
-		await meta.merge({
-			cid,
-			indexedAt: new Date(),
-			copies: [{ dir: "dirA" }],
-		});
-		const isReferenced = vi.fn(() => Promise.resolve(true));
-
-		expect(await cas.deleteCopyInDir(cid, "dirA", isReferenced)).toBe(
-			false,
-		);
-
-		expect(isReferenced).not.toHaveBeenCalled();
 		const obj = await meta.get(cid);
 		expect(obj?.copies).toEqual([{ dir: "dirA" }]);
+		expect(sync.notifyChanged).toHaveBeenCalledTimes(1);
+	});
+
+	it("磁盘上已无该副本时不删除也不发布失效信号", async () => {
+		const { cas, sync } = setup(["dirA"]);
+
+		expect(
+			await cas.removeCopyInDir(
+				await makeObject("gone").then((o) => o.cid),
+				"dirA",
+			),
+		).toBe(false);
+
+		expect(sync.notifyChanged).not.toHaveBeenCalled();
 	});
 });

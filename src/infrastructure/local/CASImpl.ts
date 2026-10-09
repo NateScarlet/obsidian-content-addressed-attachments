@@ -6,7 +6,11 @@ import { App, getBlobArrayBuffer } from "obsidian";
 import makeDirs from "#src/utils/makeDirs";
 import { mergeCopies } from "#src/utils/casCopies";
 import { basename, dirname, join } from "path-browserify";
-import type { CAS, CASWriteGuard } from "#src/types/CAS";
+import { shuffle } from "es-toolkit";
+import orderedParallelMap, {
+	DEFAULT_PARALLEL_LIMIT,
+} from "#src/utils/orderedParallelMap";
+import type { CAS, CASDirCopy, CASWriteGuard } from "#src/types/CAS";
 import type {
 	CASMetadata,
 	CASMetadataCopy,
@@ -145,40 +149,31 @@ export class CASImpl implements CAS {
 		return count;
 	}
 
-	async deleteCopyInDir(
-		cid: CID,
-		dir: string,
-		isReferenced: (cid: CID) => Promise<boolean>,
-	): Promise<boolean> {
+	async removeCopyInDir(cid: CID, dir: string): Promise<boolean> {
 		const path = this.getFilePath(dir, this.formatRelPath(cid));
 		const stat = await this.app.vault.adapter.stat(path);
 		if (stat?.type !== "file") {
-			// 磁盘上已无此副本：元数据的滞后交由后台索引对账，不在此处猜测副本状态
 			return false;
 		}
 		await this.app.vault.adapter.remove(path);
-		const copies = await this.collectCopies(cid);
-		const existing = await this.meta.get(cid);
-		if (copies.length > 0) {
-			await this.meta.merge({
-				// 元数据滞后于磁盘时以磁盘为准补上 size，否则按目录占用统计会漏记这份副本
-				...(existing ?? {
-					cid,
-					indexedAt: new Date(),
-					size: stat.size,
-				}),
-				copies,
-			});
-		} else if (await isReferenced(cid)) {
-			// 副本删净但仍被引用：保留记录并清空副本状态，等待后续重新获取
-			await this.meta.merge({
-				...(existing ?? { cid, indexedAt: new Date() }),
-				copies: [],
-			});
-		} else {
-			await this.meta.delete(cid);
-		}
+		// 落盘事实已变，仅发布失效信号：副本状态由后台索引按磁盘真相对账
+		// （其它目录仍有副本时合并，副本删净时删除记录），本方法不读写元数据。
+		this.sync.notifyChanged({ cid });
 		return true;
+	}
+
+	/**
+	 * 直接遍历单个目录的正常副本：不查元数据库、不探测其它目录与回收站。
+	 * 供下载目录清理按保留期删除副本使用——目录里有多少文件就做多少次 stat，
+	 * 与元数据表的规模无关。
+	 */
+	async *walkDirCopies(dir: string): AsyncIterableIterator<CASDirCopy> {
+		// 分片目录与分片内的文件都是随机顺序：清理只关心删不删、不关心先后，
+		// 随机化可避免单个报错文件在多次清理中反复卡住同一批副本
+		for (const shardDir of shuffle(await this.listShardDirs(dir))) {
+			const { files } = await this.app.vault.adapter.list(shardDir);
+			yield* this.statShardCopies(basename(shardDir), shuffle(files));
+		}
 	}
 
 	async *objects(): AsyncIterableIterator<CASMetadataObject> {
@@ -263,82 +258,99 @@ export class CASImpl implements CAS {
 		dir: string,
 		trashed: boolean,
 	): AsyncIterableIterator<CASMetadataObject> {
-		// 列出 baseDir 下的所有项目
-		const items = await this.app.vault.adapter.list(baseDir);
-
 		// 只处理符合分片目录格式的文件夹（2个字符的目录名）
-		for (const folder of items.folders) {
-			// 递归扫描分片目录下的文件
-			yield* this.scanShardDir(folder, dir, trashed);
-		}
-	}
-
-	private async *scanShardDir(
-		shardDir: string,
-		dir: string,
-		trashed: boolean,
-	): AsyncIterableIterator<CASMetadataObject> {
-		const shard = basename(shardDir);
-
-		// 检查是否是分片目录：必须是2个字符
-		if (shard.length !== 2) {
-			return;
-		}
-
-		const items = await this.app.vault.adapter.list(shardDir);
-
-		for (const filePath of items.files) {
-			const metadata = await this.metadataFromPath(
-				shard,
-				dir,
-				filePath,
-				trashed,
-			);
-			if (metadata) {
-				yield metadata;
+		for (const shardDir of await this.listShardDirs(baseDir)) {
+			const { files } = await this.app.vault.adapter.list(shardDir);
+			// 递归扫描分片目录下的文件；重建索引依赖列举顺序，此处不随机化
+			for await (const copy of this.statShardCopies(
+				basename(shardDir),
+				files,
+			)) {
+				yield this.objectFromCopy(copy, dir, trashed);
 			}
 		}
 	}
 
-	private async metadataFromPath(
+	/**
+	 * 列出 baseDir 下的分片目录（目录名恰为 2 个字符者）。
+	 * baseDir 尚未创建（如刚配好目录还没落过盘）时返回空列表：
+	 * 目录不存在意味着其中没有任何副本，不是错误。
+	 */
+	private async listShardDirs(baseDir: string): Promise<string[]> {
+		if (!(await this.app.vault.adapter.exists(baseDir))) {
+			return [];
+		}
+		const items = await this.app.vault.adapter.list(baseDir);
+		return items.folders.filter((folder) => basename(folder).length === 2);
+	}
+
+	/**
+	 * 解析一个分片目录下的文件列表，逐个 stat 后产出副本。
+	 * 逐文件 stat 是目录遍历的主要开销，以受限并发进行（瓶颈是磁盘 IO 而非
+	 * 合并批宽，取常规并发度）；产出保持给定的文件顺序，上层按序消费。
+	 */
+	private statShardCopies(
 		shard: string,
+		files: Iterable<string>,
+	): AsyncGenerator<CASDirCopy> {
+		return orderedParallelMap(
+			files,
+			async (filePath) => {
+				const copy = await this.copyFromPath(shard, filePath);
+				// 未知命名格式的文件不是副本，不产出
+				return copy ? [copy] : [];
+			},
+			{ limit: DEFAULT_PARALLEL_LIMIT },
+		);
+	}
+
+	private objectFromCopy(
+		copy: CASDirCopy,
 		dir: string,
-		normalizedPath: string,
 		trashed: boolean,
-	): Promise<CASMetadataObject | undefined> {
+	): CASMetadataObject {
+		return {
+			cid: copy.cid,
+			indexedAt: new Date(),
+			size: copy.stat.size,
+			copies: [
+				{
+					dir,
+					trashedAt: trashed ? new Date(copy.stat.mtime) : undefined,
+				},
+			],
+		};
+	}
+
+	/**
+	 * 把分片目录下的单个文件路径解析为副本：符合 CAS 命名约定时给出 CID 与 stat，
+	 * 未知命名格式（外部直接拷入的文件）返回 undefined。文件名的分片与所在目录不符时
+	 * 同样忽略；非法 CID 说明外部使用了不兼容的哈希函数，应抛出而非静默忽略。
+	 */
+	private async copyFromPath(
+		shard: string,
+		normalizedPath: string,
+	): Promise<CASDirCopy | undefined> {
 		const base = basename(normalizedPath);
-		const { vault } = this.app;
 		// CID Base32 编码长度为 59
-		if (base.length === 59 - 1 + 5 && base.endsWith(".data")) {
-			if (base.slice(-8, -6) !== shard) {
-				console.warn("忽略不匹配分片目录的文件", normalizedPath);
-				return;
+		if (base.length !== 59 - 1 + 5 || !base.endsWith(".data")) {
+			return undefined;
+		}
+		if (base.slice(-8, -6) !== shard) {
+			console.warn("忽略不匹配分片目录的文件", normalizedPath);
+			return undefined;
+		}
+		try {
+			const cid = CID.parse("B" + base.slice(0, 58), base32upper);
+			const stat = await this.app.vault.adapter.stat(normalizedPath);
+			if (stat?.type !== "file") {
+				return undefined;
 			}
-			// 如果有错误格式的CID，说明有外部使用了不兼容的哈希函数，不应静默忽略
-			try {
-				const cid = CID.parse("B" + base.slice(0, 58), base32upper);
-				const stat = await vault.adapter.stat(normalizedPath);
-				if (stat?.type !== "file") {
-					return;
-				}
-				return {
-					cid,
-					indexedAt: new Date(),
-					size: stat.size,
-					copies: [
-						{
-							dir,
-							trashedAt: trashed
-								? new Date(stat.mtime)
-								: undefined,
-						},
-					],
-				};
-			} catch (err) {
-				throw new Error(
-					`go invalid file in cas: ${normalizedPath}: ${String(err)}`,
-				);
-			}
+			return { cid, path: normalizedPath, stat };
+		} catch (err) {
+			throw new Error(
+				`go invalid file in cas: ${normalizedPath}: ${String(err)}`,
+			);
 		}
 	}
 

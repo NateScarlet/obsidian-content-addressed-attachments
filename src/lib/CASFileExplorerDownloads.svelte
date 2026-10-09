@@ -24,27 +24,21 @@
 </script>
 
 <script lang="ts">
-	import type { CID } from "multiformats";
 	import { Notice } from "obsidian";
 	import cleanDownloadDir from "#src/commands/cleanDownloadDir";
 	import { normalizeRetentionDaysInput } from "#src/settings";
 	import { casMetadataDelete, casMetadataSave } from "#src/events";
-	import isCIDReferenced from "#src/utils/isCIDReferenced";
 	import showError from "#src/utils/showError";
 	import showProgress from "#src/utils/showProgress";
 
 	const {
 		cas,
 		casMetadata,
-		referenceManager,
 		metadataWriteSignal,
 		getDownloadDirs,
 		getDownloadRetentionDays,
 		setDownloadRetentionDays,
 	} = getContext();
-
-	const isReferenced = (cid: CID) =>
-		isCIDReferenced(referenceManager, cid, metadataWriteSignal);
 
 	let retentionInput = $state(String(getDownloadRetentionDays()));
 	/** 清理中的目录：每个目录独立互斥，避免重复点击 */
@@ -58,8 +52,8 @@
 	}
 	$effect(() => {
 		void refreshDirBytes();
-		// 清理与写入都会经元数据派发事件：唯一副本删净且无引用时走的是删除事件，
-		// 两种事件都要响应才能让占用与实际一致
+		// 清理与写入都经后台索引对账后派发事件：副本删净走删除事件，
+		// 仍有副本走保存事件，两种事件都要响应才能让占用与实际一致
 		const refresh = () => void refreshDirBytes();
 		const unsubscribes = [
 			casMetadataSave.subscribe(refresh),
@@ -88,11 +82,9 @@
 		try {
 			const { deleted, freedBytes } = await cleanDownloadDir(
 				cas,
-				casMetadata,
 				{
 					dirs: [dir],
 					retentionDays: getDownloadRetentionDays(),
-					isReferenced,
 					signal: metadataWriteSignal,
 				},
 				(index, cidStr) => notice.update(index, cidStr),

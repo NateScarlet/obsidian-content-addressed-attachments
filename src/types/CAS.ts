@@ -9,6 +9,13 @@ import type { Stat } from "obsidian";
  */
 export type CASWriteGuard = (dir: string, size: number) => Promise<void>;
 
+/** 目录遍历命中的单个副本：其 CID、规范化路径与磁盘 stat */
+export interface CASDirCopy {
+	cid: CID;
+	path: string;
+	stat: Stat;
+}
+
 export interface CAS {
 	formatRelPath(cid: CID): string;
 	formatNormalizePath(dir: string, cid: CID): string;
@@ -31,17 +38,18 @@ export interface CAS {
 	save(dir: string, file: File): Promise<{ cid: CID; didCreate: boolean }>;
 	deleteIfTrashed(cid: CID): Promise<number>;
 	/**
-	 * 删除某 CID 在指定目录的正常副本，并按磁盘真相重算该 CID 的副本集合。
-	 * 同目录的回收站副本与其他目录的副本都不受影响。
-	 * 副本删净后按 isReferenced 决定记录去留：仍被引用则保留记录并清空副本状态
-	 * （等待重新获取），无引用则删除记录。
-	 * @returns 是否真的删除了物理文件（磁盘上已无此副本时返回 false，不改元数据）
+	 * 直接遍历指定目录的正常副本（`dir/XX/{cid}.data`），逐个产出其 CID、
+	 * 规范化路径与磁盘 stat。不查元数据库，也不碰其它目录与回收站副本。
+	 * 分片目录与分片内的文件都按随机顺序产出：清理只需遍历一次，顺序不携带信息，
+	 * 随机化可避免单个报错文件在多次清理中反复卡住同一批副本。
 	 */
-	deleteCopyInDir(
-		cid: CID,
-		dir: string,
-		isReferenced: (cid: CID) => Promise<boolean>,
-	): Promise<boolean>;
+	walkDirCopies(dir: string): AsyncIterableIterator<CASDirCopy>;
+	/**
+	 * 删除某 CID 在指定目录的正常副本。其它目录的副本与同目录的回收站副本不受影响。
+	 * 删后仅发布失效信号，元数据由后台消费者按磁盘真相对账，本方法不读写元数据。
+	 * @returns 是否真的删除了物理文件（磁盘上已无此副本时返回 false）
+	 */
+	removeCopyInDir(cid: CID, dir: string): Promise<boolean>;
 	objects(): AsyncIterableIterator<CASMetadataObject>;
 	/** 索引元数据，使其和实际一致 */
 	index(meta: CASMetadataObject): Promise<void>;

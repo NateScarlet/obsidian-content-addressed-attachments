@@ -39,7 +39,6 @@ import { uniq } from "es-toolkit";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import { enforceDownloadQuota } from "./commands/cleanDownloadDir";
-import isCIDReferenced from "./utils/isCIDReferenced";
 import {
 	createReprocessContext,
 	reprocessCurrentNote,
@@ -177,12 +176,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 						quotaBytes: this.settings.downloadQuotaBytes,
 						incomingBytes: size,
 						retentionDays: this.settings.downloadRetentionDays,
-						isReferenced: (cid) =>
-							isCIDReferenced(
-								this.referenceManager,
-								cid,
-								this.metadataWriteController.signal,
-							),
 						signal: this.metadataWriteController.signal,
 					},
 				);

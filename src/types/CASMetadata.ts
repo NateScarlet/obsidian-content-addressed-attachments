@@ -38,12 +38,6 @@ export interface CASMetadataObjectFilters {
 	 */
 	unverifiedHasReference?: boolean;
 	isTrashed?: boolean;
-	/**
-	 * 目录归属筛选：命中「在任一给定目录存在正常副本」的对象。
-	 * 回收站副本不参与判定——`.trash` 由清空回收站命令处理，
-	 * 下载目录清理同样不触碰回收站副本。
-	 */
-	hasCopyInDirs?: string[];
 }
 
 export interface CASMetadata {
