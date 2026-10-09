@@ -505,7 +505,7 @@ const { t } = defineLocales({
 		primaryStorageDirectoryDesc: "Directory for new attachments",
 		downloadDirectory: "Download directory",
 		downloadDirectoryDesc: "Directory for files downloaded from the web",
-		downloadRetentionDays: "Download retention period",
+		downloadRetentionDays: "Download retention days",
 		downloadRetentionDaysDesc:
 			"Copies in download directories older than this are removable by cleanup. 0 means every copy is removable; negative values are clamped to 0.",
 		downloadQuota: "Download quota (MB)",
@@ -560,7 +560,7 @@ const { t } = defineLocales({
 		primaryStorageDirectoryDesc: "存储新添加的附件",
 		downloadDirectory: "下载目录",
 		downloadDirectoryDesc: "存储从网络下载文件",
-		downloadRetentionDays: "下载保留期",
+		downloadRetentionDays: "下载保留天数",
 		downloadRetentionDaysDesc:
 			"下载目录中创建时间超过该时长的副本可被清理。0 表示全部副本可删，负值按 0 处理。",
 		downloadQuota: "下载配额（MB）",
