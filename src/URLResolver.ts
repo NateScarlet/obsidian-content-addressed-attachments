@@ -55,6 +55,25 @@ export function gatewayProducesSource(config: {
 	return !!config.urlTemplate;
 }
 
+/**
+ * 启用网关声明的下载目录（去重、忽略空值）。
+ *
+ * 禁用网关等价于不存在：它不作为来源（见 `buildRemoteSources`），因而不声明副本
+ * 位置——其目录不进入任何下载目录口径，既不在读取范围与手动清理的「下载」标签页
+ * 内，也不计入配额（见 `getDownloadDirs` 与 `quotaDirs`）。
+ *
+ * 判据按目录集合：同一目录若还被任一启用的配置声明，照常参与。
+ */
+export function enabledGatewayDownloadDirs(
+	gateways: readonly Pick<GatewayConfig, "enabled" | "downloadDir">[],
+): string[] {
+	return [
+		...new Set(
+			gateways.filter((g) => g.enabled).map((g) => g.downloadDir ?? ""),
+		),
+	].filter(Boolean);
+}
+
 /** 按 URL 前缀匹配的全局请求头规则，命中任意远程请求时附加 headers */
 export interface HeaderRule {
 	/** URL 前缀，仅当请求 URL 以此开头时应用；空值视为未配置，不匹配任何请求 */

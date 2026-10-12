@@ -221,4 +221,45 @@ describe("getDownloadDirs 下载目录列表", () => {
 
 		expect(getDownloadDirs(settings)).toEqual(["dl", "external", "gw"]);
 	});
+
+	it("排除被禁用网关声明的目录，重新启用后恢复", () => {
+		const settings = settingsFromInput({
+			version: 1,
+			downloadDir: "dl",
+			gateways: [
+				{
+					name: "停用",
+					urlTemplate: "https://off.example/{{cid}}",
+					headers: [],
+					enabled: false,
+					downloadDir: "off",
+				},
+			],
+		});
+
+		// 禁用网关等价于不存在：不声明副本位置，其目录不在读取、清理与配额口径内
+		expect(getDownloadDirs(settings)).toEqual(["dl"]);
+
+		settings.gateways[0].enabled = true;
+		expect(getDownloadDirs(settings)).toEqual(["dl", "off"]);
+	});
+
+	it("被禁用网关与全局下载目录重名时该目录仍在列表内", () => {
+		// 判据按目录集合而非配置来源：全局下载目录声明了它就仍参与
+		const settings = settingsFromInput({
+			version: 1,
+			downloadDir: "shared",
+			gateways: [
+				{
+					name: "停用",
+					urlTemplate: "https://off.example/{{cid}}",
+					headers: [],
+					enabled: false,
+					downloadDir: "shared",
+				},
+			],
+		});
+
+		expect(getDownloadDirs(settings)).toEqual(["shared"]);
+	});
 });

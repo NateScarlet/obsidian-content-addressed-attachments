@@ -21,6 +21,8 @@ const EXTERNAL = "external";
 const REMOTE_TEMPLATE = "https://gateway.example/{{cid}}";
 /** 仅用于读取已有文件的网关：URL 模板为空 */
 const READ_ONLY_TEMPLATE = "";
+/** 被禁用网关声明的目录：禁用等价于不存在，该目录不进入任何下载目录口径 */
+const OFF = "off";
 
 async function makeCid(content: string) {
 	const hash = await sha256.digest(new TextEncoder().encode(content));
@@ -511,7 +513,13 @@ describe("enforceDownloadQuota 写入前按配额自动清理", () => {
 			cas,
 			meta,
 			quotaOptions(signal, {
-				gateways: [{ urlTemplate: REMOTE_TEMPLATE, downloadDir: GW }],
+				gateways: [
+					{
+						urlTemplate: REMOTE_TEMPLATE,
+						downloadDir: GW,
+						enabled: true,
+					},
+				],
 			}),
 		);
 
@@ -536,7 +544,11 @@ describe("enforceDownloadQuota 写入前按配额自动清理", () => {
 			meta,
 			quotaOptions(signal, {
 				gateways: [
-					{ urlTemplate: READ_ONLY_TEMPLATE, downloadDir: EXTERNAL },
+					{
+						urlTemplate: READ_ONLY_TEMPLATE,
+						downloadDir: EXTERNAL,
+						enabled: true,
+					},
 				],
 			}),
 		);
@@ -567,8 +579,16 @@ describe("enforceDownloadQuota 写入前按配额自动清理", () => {
 				targetDir: EXTERNAL,
 				downloadDir: "",
 				gateways: [
-					{ urlTemplate: READ_ONLY_TEMPLATE, downloadDir: EXTERNAL },
-					{ urlTemplate: REMOTE_TEMPLATE, downloadDir: EXTERNAL },
+					{
+						urlTemplate: READ_ONLY_TEMPLATE,
+						downloadDir: EXTERNAL,
+						enabled: true,
+					},
+					{
+						urlTemplate: REMOTE_TEMPLATE,
+						downloadDir: EXTERNAL,
+						enabled: true,
+					},
 				],
 			}),
 		);
@@ -597,13 +617,75 @@ describe("enforceDownloadQuota 写入前按配额自动清理", () => {
 				targetDir: EXTERNAL,
 				downloadDir: "",
 				gateways: [
-					{ urlTemplate: READ_ONLY_TEMPLATE, downloadDir: EXTERNAL },
+					{
+						urlTemplate: READ_ONLY_TEMPLATE,
+						downloadDir: EXTERNAL,
+						enabled: true,
+					},
 				],
 			}),
 		);
 
 		expect(disk.deleted).toEqual([]);
 		expect(disk.has(external.cid, EXTERNAL)).toBe(true);
+	});
+
+	it("被禁用网关声明的目录不计入占用，也不被自动清理", async () => {
+		const { disk, meta, cas, signal } = setup();
+		// 停用网关的目录里有一份超期副本：若它参与配额，这次检查就会遍历并删除它
+		const off = await downloaded(meta, disk, "off", OFF, 30, 100);
+		meta.dirBytes = { [DL]: 100, [OFF]: 1000 };
+
+		const result = await enforceDownloadQuota(
+			cas,
+			meta,
+			quotaOptions(signal, {
+				gateways: [
+					{
+						urlTemplate: REMOTE_TEMPLATE,
+						downloadDir: OFF,
+						enabled: false,
+					},
+				],
+			}),
+		);
+
+		// 停用网关等价于不存在：占用只计插件自己的下载目录
+		expect(result.usedBytes).toBe(100);
+		expect(result.didClean).toBe(false);
+		expect(disk.deleted).toEqual([]);
+		expect(disk.has(off.cid, OFF)).toBe(true);
+	});
+
+	it("停用网关与启用网关共用同一目录时，该目录仍参与配额", async () => {
+		const { disk, meta, cas, signal } = setup();
+		const shared = await downloaded(meta, disk, "shared", OFF, 30, 100);
+		meta.dirBytes = { [OFF]: 1000 };
+
+		const result = await enforceDownloadQuota(
+			cas,
+			meta,
+			quotaOptions(signal, {
+				targetDir: OFF,
+				downloadDir: "",
+				gateways: [
+					{
+						urlTemplate: REMOTE_TEMPLATE,
+						downloadDir: OFF,
+						enabled: false,
+					},
+					{
+						urlTemplate: REMOTE_TEMPLATE,
+						downloadDir: OFF,
+						enabled: true,
+					},
+				],
+			}),
+		);
+
+		// 判据按目录集合而非配置来源：只要还被启用网关使用就参与配额
+		expect(result.usedBytes).toBe(1000);
+		expect(disk.deleted).toEqual([shared.cid.toString()]);
 	});
 
 	it("保留期内的副本已占满配额时放弃清理（写入照常成功）", async () => {

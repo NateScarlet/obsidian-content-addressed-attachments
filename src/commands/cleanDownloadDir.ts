@@ -1,4 +1,8 @@
-import { gatewayProducesSource, type GatewayConfig } from "#src/URLResolver";
+import {
+	enabledGatewayDownloadDirs,
+	gatewayProducesSource,
+	type GatewayConfig,
+} from "#src/URLResolver";
 import type { CAS, CASDirCopy } from "#src/types/CAS";
 import type { CASMetadata } from "#src/types/CASMetadata";
 import orderedParallelMap, {
@@ -108,11 +112,16 @@ export default async function cleanDownloadDir(
 }
 
 /** 配额判定所需的网关配置 */
-type QuotaGateway = Pick<GatewayConfig, "urlTemplate" | "downloadDir">;
+type QuotaGateway = Pick<
+	GatewayConfig,
+	"urlTemplate" | "downloadDir" | "enabled"
+>;
 
 /**
- * 参与配额的下载目录：只计「会产生远程来源」的配置所声明的目录——全局下载目录，
- * 以及 URL 模板非空的网关的专属下载目录。
+ * 参与配额的下载目录：只计「会产生远程来源」的启用配置所声明的目录——全局下载
+ * 目录，以及 URL 模板非空的启用网关的专属下载目录。
+ *
+ * 禁用的网关等价于不存在，其目录不参与配额（见 `enabledGatewayDownloadDirs`）。
  *
  * URL 模板为空的网关语义是「仅从下载目录读取已有文件」（见
  * `gatewayProducesSource`），它的目录可能由外部应用管理（如 IPFS 应用自身的
@@ -120,8 +129,8 @@ type QuotaGateway = Pick<GatewayConfig, "urlTemplate" | "downloadDir">;
  * CAS 命名约定删除磁盘文件、不查元数据，会真的删掉外部应用管理的文件。它们仍在
  * 读取范围内，文件管理器「下载」标签页也可手动清理。
  *
- * 判据按目录集合而非配置来源：同一目录只要还被任一会产生远程来源的配置使用就仍
- * 参与配额，仅当它只被仅读取配置使用时才被排除。
+ * 判据按目录集合而非配置来源：同一目录只要还被任一启用的、会产生远程来源的配置
+ * 使用就仍参与配额，仅当它只被其余配置使用时才被排除。
  */
 function quotaDirs(
 	downloadDir: string,
@@ -130,9 +139,9 @@ function quotaDirs(
 	return [
 		...new Set([
 			downloadDir,
-			...gateways
-				.filter(gatewayProducesSource)
-				.map((g) => g.downloadDir ?? ""),
+			...enabledGatewayDownloadDirs(
+				gateways.filter(gatewayProducesSource),
+			),
 		]),
 	].filter(Boolean);
 }
@@ -142,7 +151,7 @@ export interface EnforceDownloadQuotaOptions {
 	targetDir: string;
 	/** 全局下载目录：插件自身下载落盘的目录，参与配额 */
 	downloadDir: string;
-	/** 各网关声明的下载目录；某目录是否参与配额取决于它是否仍被会产生远程来源的网关使用 */
+	/** 各网关声明的下载目录；某目录是否参与配额取决于它是否仍被启用的、会产生远程来源的网关使用 */
 	gateways: readonly QuotaGateway[];
 	/** 配额字节；≤0 表示不启用自动清理 */
 	quotaBytes: number;
@@ -161,7 +170,7 @@ export interface EnforceDownloadQuotaResult {
 	 * 由调用方合并提示用户。
 	 */
 	didExceedQuota: boolean;
-	/** 清理前参与配额的下载目录合计占用（不含仅用于读取的目录） */
+	/** 清理前参与配额的下载目录合计占用（不含仅用于读取与被禁用网关声明的目录） */
 	usedBytes: number;
 	/** 实际释放的字节数 */
 	freedBytes: number;

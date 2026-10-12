@@ -1,4 +1,8 @@
-import type { GatewayConfig, HeaderRule } from "./URLResolver";
+import {
+	enabledGatewayDownloadDirs,
+	type GatewayConfig,
+	type HeaderRule,
+} from "./URLResolver";
 import defineLocales from "./utils/defineLocales";
 
 export const CURRENT_SETTINGS_VERSION = 1;
@@ -239,14 +243,15 @@ export function getDefaultSettings(): Settings {
 }
 
 /**
- * 下载目录列表：主下载目录与各网关专属下载目录（去重、忽略空值）。
+ * 下载目录列表：主下载目录与各启用网关专属下载目录（去重、忽略空值）。
+ * 被禁用网关不贡献目录（见 `enabledGatewayDownloadDirs`）。
  * 恢复仅锁定引用的文件时只允许落盘这些目录。
  */
 export function getDownloadDirs(settings: Settings): string[] {
 	return [
 		...new Set([
 			settings.downloadDir,
-			...settings.gateways.map((g) => g.downloadDir ?? ""),
+			...enabledGatewayDownloadDirs(settings.gateways),
 		]),
 	].filter(Boolean);
 }
