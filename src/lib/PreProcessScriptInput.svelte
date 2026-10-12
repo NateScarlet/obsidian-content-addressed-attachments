@@ -9,7 +9,7 @@
 			preProcessScriptName: "Pre-processing script",
 			devGuideLink: "Script Development Guide",
 			devGuideUrl:
-				"https://github.com/NateScarlet/obsidian-content-addressed-attachments/blob/main/docs/preprocess-scripts.en.md",
+				"https://github.com/NateScarlet/obsidian-content-addressed-attachments/blob/master/docs/preprocess-scripts.en.md",
 		},
 		zh: {
 			scriptURLPlaceholder:
@@ -17,7 +17,7 @@
 			preProcessScriptName: "预处理脚本",
 			devGuideLink: "脚本开发指南",
 			devGuideUrl:
-				"https://github.com/NateScarlet/obsidian-content-addressed-attachments/blob/main/docs/preprocess-scripts.zh-CN.md",
+				"https://github.com/NateScarlet/obsidian-content-addressed-attachments/blob/master/docs/preprocess-scripts.zh-CN.md",
 		},
 	});
 	//#endregion
