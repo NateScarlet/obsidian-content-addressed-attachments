@@ -1,17 +1,13 @@
-import { Notice, type App, type TFile, type Editor } from "obsidian";
+import { Notice, type TFile, type Editor } from "obsidian";
 import { CID } from "multiformats/cid";
 
-import type { CAS } from "#src/types/CAS";
-import type EncryptionService from "#src/lib/encryption/EncryptionService";
-import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
-import type { URLResolver } from "#src/URLResolver";
 import { ENCRYPTED_FORMAT } from "#src/lib/encryption/types";
 import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
 import type KeyManager from "#src/lib/encryption/KeyManager";
-import type ReferenceManager from "#src/ReferenceManager";
+import type PluginContext from "#src/types/PluginContext";
 import trashIfUnreferenced from "./trashIfUnreferenced";
 import loadFileContent from "./loadFileContent";
 
@@ -31,15 +27,9 @@ const { t } = defineLocales({
 
 // #region shared helpers
 
-/** Shared encryption context bundling all common dependencies */
-export interface EncryptContext {
-	app: App;
-	cas: CAS;
-	encryptionService: EncryptionService;
-	urlResolver: URLResolver;
-	referenceManager: ReferenceManager;
+/** 加密路径的上下文：共享依赖 + 主密钥管理器 */
+export interface EncryptContext extends PluginContext {
 	keyManager: KeyManager;
-	encryptPathPolicy?: EncryptPathPolicy;
 }
 
 /**

@@ -36,6 +36,7 @@ import {
 	type EncryptContext,
 } from "./commands/convertAttachment";
 import { uniq } from "es-toolkit";
+import createPluginContext from "./createPluginContext";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import { enforceDownloadQuota } from "./commands/cleanDownloadDir";
@@ -344,13 +345,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							: undefined;
 					if (!rawText) return;
 					const ctx: EncryptContext = {
-						app: this.app,
-						cas: this.cas,
-						encryptionService: this.encryptionService,
-						urlResolver: this.urlResolver,
-						referenceManager: this.referenceManager,
+						...createPluginContext(this),
 						keyManager: this.keyManager,
-						encryptPathPolicy: this.encryptPathPolicy,
 					};
 					const isEncrypted = isEncryptedLink(rawText);
 					if (isEncrypted) {

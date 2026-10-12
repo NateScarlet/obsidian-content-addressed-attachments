@@ -1,10 +1,9 @@
-import { Modal, Notice, Setting, type App, type Editor } from "obsidian";
-import type { CAS } from "#src/types/CAS";
-import type EncryptionService from "#src/lib/encryption/EncryptionService";
+import { Modal, Notice, Setting, type Editor } from "obsidian";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
-import type { URLResolver } from "#src/URLResolver";
-import type ReferenceManager from "#src/ReferenceManager";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
+import createPluginContext from "#src/createPluginContext";
+import type PluginContext from "#src/types/PluginContext";
+import type { PluginContextSource } from "#src/types/PluginContext";
 import { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
@@ -57,25 +56,15 @@ const { t } = defineLocales({
 
 //#region Shared context
 
-export interface ReprocessContext {
-	app: App;
-	cas: CAS;
-	encryptionService: EncryptionService;
-	urlResolver: URLResolver;
-	referenceManager: ReferenceManager;
+export interface ReprocessContext extends PluginContext {
+	/** 重新处理必然走路径策略加密，故在此收窄为必需 */
 	encryptPathPolicy: EncryptPathPolicy;
 	pipeline: TransformPipeline;
 	dir: string;
 }
 
 /** 构造重新处理上下文所需的最小插件依赖 */
-export interface ReprocessContextSource {
-	app: App;
-	cas: CAS;
-	encryptionService: EncryptionService;
-	urlResolver: URLResolver;
-	referenceManager: ReferenceManager;
-	encryptPathPolicy: EncryptPathPolicy;
+export interface ReprocessContextSource extends PluginContextSource {
 	pipeline: TransformPipeline;
 	settings: { primaryDir: string };
 }
@@ -85,11 +74,7 @@ export function createReprocessContext(
 	source: ReprocessContextSource,
 ): ReprocessContext {
 	return {
-		app: source.app,
-		cas: source.cas,
-		encryptionService: source.encryptionService,
-		urlResolver: source.urlResolver,
-		referenceManager: source.referenceManager,
+		...createPluginContext(source),
 		encryptPathPolicy: source.encryptPathPolicy,
 		pipeline: source.pipeline,
 		dir: source.settings.primaryDir,
