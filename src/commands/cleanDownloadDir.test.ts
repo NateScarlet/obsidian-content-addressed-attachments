@@ -15,6 +15,12 @@ const NOW = 1_700_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;
 const DL = "dl";
 const GW = "gw";
+/** 外部应用（如 IPFS 应用）自身管理的目录：只被 URL 模板为空的网关声明 */
+const EXTERNAL = "external";
+/** 会产生远程来源的网关：URL 模板非空 */
+const REMOTE_TEMPLATE = "https://gateway.example/{{cid}}";
+/** 仅用于读取已有文件的网关：URL 模板为空 */
+const READ_ONLY_TEMPLATE = "";
 
 async function makeCid(content: string) {
 	const hash = await sha256.digest(new TextEncoder().encode(content));
@@ -393,7 +399,8 @@ describe("enforceDownloadQuota 写入前按配额自动清理", () => {
 	) {
 		return {
 			targetDir: DL,
-			downloadDirs: [DL],
+			downloadDir: DL,
+			gateways: [],
 			quotaBytes: 100,
 			incomingBytes: 0,
 			retentionDays: 7,
@@ -503,10 +510,100 @@ describe("enforceDownloadQuota 写入前按配额自动清理", () => {
 		await enforceDownloadQuota(
 			cas,
 			meta,
-			quotaOptions(signal, { downloadDirs: [DL, GW] }),
+			quotaOptions(signal, {
+				gateways: [{ urlTemplate: REMOTE_TEMPLATE, downloadDir: GW }],
+			}),
 		);
 
 		expect(disk.deleted).toEqual([old.cid.toString()]);
+	});
+
+	it("URL 模板为空的网关（仅读取）的下载目录不计入占用，也不被自动清理", async () => {
+		const { disk, meta, cas, signal } = setup();
+		// 外部目录里有一份超期副本：若它参与配额，这次检查就会遍历并删除它
+		const external = await downloaded(
+			meta,
+			disk,
+			"external",
+			EXTERNAL,
+			30,
+			100,
+		);
+		meta.dirBytes = { [DL]: 100, [EXTERNAL]: 1000 };
+
+		const result = await enforceDownloadQuota(
+			cas,
+			meta,
+			quotaOptions(signal, {
+				gateways: [
+					{ urlTemplate: READ_ONLY_TEMPLATE, downloadDir: EXTERNAL },
+				],
+			}),
+		);
+
+		// 外部目录的 1000 字节不在配额口径内：插件自己的下载目录未超配额
+		expect(result.usedBytes).toBe(100);
+		expect(result.didClean).toBe(false);
+		expect(disk.deleted).toEqual([]);
+		expect(disk.has(external.cid, EXTERNAL)).toBe(true);
+	});
+
+	it("仅读取网关与远程网关共用同一目录时，该目录仍参与配额", async () => {
+		const { disk, meta, cas, signal } = setup();
+		const shared = await downloaded(
+			meta,
+			disk,
+			"shared",
+			EXTERNAL,
+			30,
+			100,
+		);
+		meta.dirBytes = { [EXTERNAL]: 1000 };
+
+		const result = await enforceDownloadQuota(
+			cas,
+			meta,
+			quotaOptions(signal, {
+				targetDir: EXTERNAL,
+				downloadDir: "",
+				gateways: [
+					{ urlTemplate: READ_ONLY_TEMPLATE, downloadDir: EXTERNAL },
+					{ urlTemplate: REMOTE_TEMPLATE, downloadDir: EXTERNAL },
+				],
+			}),
+		);
+
+		// 判据按目录集合而非配置来源：只要还被远程网关使用就参与配额
+		expect(result.usedBytes).toBe(1000);
+		expect(disk.deleted).toEqual([shared.cid.toString()]);
+	});
+
+	it("写入仅读取网关的目录时不触发配额检查", async () => {
+		const { disk, meta, cas, signal } = setup();
+		const external = await downloaded(
+			meta,
+			disk,
+			"external",
+			EXTERNAL,
+			30,
+			100,
+		);
+		meta.dirBytes = { [EXTERNAL]: 1000 };
+
+		await enforceDownloadQuota(
+			cas,
+			meta,
+			quotaOptions(signal, {
+				targetDir: EXTERNAL,
+				downloadDir: "",
+				gateways: [
+					{ urlTemplate: READ_ONLY_TEMPLATE, downloadDir: EXTERNAL },
+				],
+			}),
+		);
+
+		expect(disk.deleted).toEqual([]);
+		expect(disk.has(external.cid, EXTERNAL)).toBe(true);
 	});
 
 	it("保留期内的副本已占满配额时放弃清理（写入照常成功）", async () => {

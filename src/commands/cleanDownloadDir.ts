@@ -1,3 +1,4 @@
+import { gatewayProducesSource, type GatewayConfig } from "#src/URLResolver";
 import type { CAS, CASDirCopy } from "#src/types/CAS";
 import type { CASMetadata } from "#src/types/CASMetadata";
 import orderedParallelMap, {
@@ -106,11 +107,43 @@ export default async function cleanDownloadDir(
 	return { deleted, freedBytes };
 }
 
+/** 配额判定所需的网关配置 */
+type QuotaGateway = Pick<GatewayConfig, "urlTemplate" | "downloadDir">;
+
+/**
+ * 参与配额的下载目录：只计「会产生远程来源」的配置所声明的目录——全局下载目录，
+ * 以及 URL 模板非空的网关的专属下载目录。
+ *
+ * URL 模板为空的网关语义是「仅从下载目录读取已有文件」（见
+ * `gatewayProducesSource`），它的目录可能由外部应用管理（如 IPFS 应用自身的
+ * 存储目录）。配额不应把这些目录计入占用，更不应自动清理它们——自动清理直接按
+ * CAS 命名约定删除磁盘文件、不查元数据，会真的删掉外部应用管理的文件。它们仍在
+ * 读取范围内，文件管理器「下载」标签页也可手动清理。
+ *
+ * 判据按目录集合而非配置来源：同一目录只要还被任一会产生远程来源的配置使用就仍
+ * 参与配额，仅当它只被仅读取配置使用时才被排除。
+ */
+function quotaDirs(
+	downloadDir: string,
+	gateways: readonly QuotaGateway[],
+): string[] {
+	return [
+		...new Set([
+			downloadDir,
+			...gateways
+				.filter(gatewayProducesSource)
+				.map((g) => g.downloadDir ?? ""),
+		]),
+	].filter(Boolean);
+}
+
 export interface EnforceDownloadQuotaOptions {
-	/** 即将写入的目录；非下载目录的写入不牵涉下载目录占用 */
+	/** 即将写入的目录；非参与配额的目录的写入不牵涉下载目录占用 */
 	targetDir: string;
-	/** 全部下载目录（空列表表示无需检查） */
-	downloadDirs: string[];
+	/** 全局下载目录：插件自身下载落盘的目录，参与配额 */
+	downloadDir: string;
+	/** 各网关声明的下载目录；某目录是否参与配额取决于它是否仍被会产生远程来源的网关使用 */
+	gateways: readonly QuotaGateway[];
 	/** 配额字节；≤0 表示不启用自动清理 */
 	quotaBytes: number;
 	/** 即将写入的新副本字节数：为它腾出空间后才算落到配额内 */
@@ -128,14 +161,16 @@ export interface EnforceDownloadQuotaResult {
 	 * 由调用方合并提示用户。
 	 */
 	didExceedQuota: boolean;
-	/** 清理前的下载目录合计占用 */
+	/** 清理前参与配额的下载目录合计占用（不含仅用于读取的目录） */
 	usedBytes: number;
 	/** 实际释放的字节数 */
 	freedBytes: number;
 }
 
 /**
- * 写入新副本前的配额检查：全部下载目录占用合计超过配额时先清理再写入。
+ * 写入新副本前的配额检查：参与配额的下载目录占用合计超过配额时先清理再写入。
+ *
+ * 参与配额的目录口径见 `quotaDirs`。
  *
  * 占用取自元数据维护的按目录统计（O(1) 读取），未超配额时不遍历目录，
  * 因此这里的常态开销只是一次统计读取。超配额时按「超出配额 + 本次写入」的量
@@ -148,13 +183,15 @@ export async function enforceDownloadQuota(
 ): Promise<EnforceDownloadQuotaResult> {
 	const {
 		targetDir,
-		downloadDirs,
+		downloadDir,
+		gateways,
 		quotaBytes,
 		incomingBytes,
 		retentionDays,
 		signal,
 	} = options;
-	if (quotaBytes <= 0 || !downloadDirs.includes(targetDir)) {
+	const dirs = quotaDirs(downloadDir, gateways);
+	if (quotaBytes <= 0 || !dirs.includes(targetDir)) {
 		return {
 			didClean: false,
 			didExceedQuota: false,
@@ -163,10 +200,7 @@ export async function enforceDownloadQuota(
 		};
 	}
 	const { dirBytes } = await casMetadata.estimateStorage();
-	const usedBytes = downloadDirs.reduce(
-		(sum, dir) => sum + (dirBytes[dir] ?? 0),
-		0,
-	);
+	const usedBytes = dirs.reduce((sum, dir) => sum + (dirBytes[dir] ?? 0), 0);
 	// 本次写入后要落回配额内，缺口含新副本自身
 	const excessBytes = usedBytes + incomingBytes - quotaBytes;
 	if (excessBytes <= 0) {
@@ -179,7 +213,7 @@ export async function enforceDownloadQuota(
 	}
 
 	const { freedBytes } = await cleanDownloadDir(cas, {
-		dirs: downloadDirs,
+		dirs,
 		retentionDays,
 		freeBytes: excessBytes,
 		signal,

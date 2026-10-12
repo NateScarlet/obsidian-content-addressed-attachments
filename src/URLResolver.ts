@@ -44,6 +44,17 @@ export interface GatewayConfig {
 	downloadDir?: string;
 }
 
+/**
+ * 该网关是否会产生远程来源：URL 模板为空时渲染不出任何 URL，它退化为「仅从下载
+ * 目录读取已有文件」，既不产生来源也不会让插件往它声明的目录落盘。
+ * 下载配额据此排除这类目录（见 `cleanDownloadDir` 的 `quotaDirs`）。
+ */
+export function gatewayProducesSource(config: {
+	urlTemplate: string;
+}): boolean {
+	return !!config.urlTemplate;
+}
+
 /** 按 URL 前缀匹配的全局请求头规则，命中任意远程请求时附加 headers */
 export interface HeaderRule {
 	/** URL 前缀，仅当请求 URL 以此开头时应用；空值视为未配置，不匹配任何请求 */
@@ -580,7 +591,7 @@ export class URLResolver {
 	}
 
 	renderGatewayURL(rawURL: string, config: GatewayConfig): string {
-		if (!rawURL || !config.urlTemplate) return "";
+		if (!rawURL || !gatewayProducesSource(config)) return "";
 		const templateData = this.prepareTemplateData(rawURL);
 		return mustache.render(config.urlTemplate, templateData, undefined, {
 			escape: encodeURIComponent,

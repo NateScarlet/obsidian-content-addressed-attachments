@@ -510,7 +510,7 @@ const { t } = defineLocales({
 			"Copies in download directories older than this are removable by cleanup. 0 means every copy is removable; negative values are clamped to 0.",
 		downloadQuota: "Download quota (MB)",
 		downloadQuotaDesc:
-			"When all download directories together exceed this, expired copies are cleaned up automatically before a new copy is written. 0 or less disables automatic cleanup.",
+			"The download directories used for fetching (the global one and the ones of gateways with a URL template) are counted here. When their total exceeds this, expired copies are cleaned up automatically before a new copy is written. 0 or less disables automatic cleanup. Directories of read-only gateways (empty URL template) are neither counted nor cleaned up automatically.",
 		...cleanDownloadDirMessages.en,
 		gateways: "Gateways",
 		gatewaysDesc:
@@ -565,7 +565,7 @@ const { t } = defineLocales({
 			"下载目录中创建时间超过该时长的副本可被清理。0 表示全部副本可删，负值按 0 处理。",
 		downloadQuota: "下载配额（MB）",
 		downloadQuotaDesc:
-			"全部下载目录合计占用超过该值时，写入新副本之前自动清理超期副本。0 或更小的值表示不启用自动清理。",
+			"统计范围是插件用于下载的目录（全局下载目录与有网址的网关目录）：合计占用超过该值时，写入新副本之前自动清理超期副本。0 或更小的值表示不启用自动清理。仅用于读取的网关（网址为空）的下载目录既不计入统计，也不会被自动清理。",
 		...cleanDownloadDirMessages.zh,
 		gateways: "网关",
 		gatewaysDesc:

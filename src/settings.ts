@@ -27,8 +27,8 @@ export interface Settings {
 	 */
 	downloadRetentionDays: number;
 	/**
-	 * 全部下载目录占用字节上限，超过时在写入新副本之前触发自动清理；
-	 * ≤0 表示不启用自动清理。
+	 * 下载配额：参与配额的下载目录占用字节上限，超过时在写入新副本之前触发自动清理；
+	 * ≤0 表示不启用自动清理。仅被 URL 模板为空的网关使用的目录不参与配额。
 	 */
 	downloadQuotaBytes: number;
 	gateways: GatewayConfig[];

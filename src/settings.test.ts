@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { settingsFromInput, getDefaultSettings } from "./settings";
+import {
+	settingsFromInput,
+	getDefaultSettings,
+	getDownloadDirs,
+} from "./settings";
 
 describe("settingsFromInput", () => {
 	it("returns default settings when input is null or undefined", () => {
@@ -181,5 +185,40 @@ describe("下载目录保留期与配额", () => {
 		});
 		expect(result.downloadRetentionDays).toBe(7);
 		expect(result.downloadQuotaBytes).toBe(0);
+	});
+});
+
+describe("getDownloadDirs 下载目录列表", () => {
+	it("包含仅用于读取的网关目录，去重并忽略空值", () => {
+		// 仅读取的目录仍需在读取范围内、也仍可在文件管理器中手动清理，
+		// 因此不因配额排除而从本列表消失（排除只作用于配额口径）
+		const settings = settingsFromInput({
+			version: 1,
+			downloadDir: "dl",
+			gateways: [
+				{
+					name: "只读",
+					urlTemplate: "",
+					headers: [],
+					enabled: true,
+					downloadDir: "external",
+				},
+				{
+					name: "远程",
+					urlTemplate: "https://gw.example/{{cid}}",
+					headers: [],
+					enabled: true,
+					downloadDir: "gw",
+				},
+				{
+					name: "无目录",
+					urlTemplate: "https://gw2.example/{{cid}}",
+					headers: [],
+					enabled: true,
+				},
+			],
+		});
+
+		expect(getDownloadDirs(settings)).toEqual(["dl", "external", "gw"]);
 	});
 });

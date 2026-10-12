@@ -172,7 +172,8 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 					this.casMetadata,
 					{
 						targetDir: dir,
-						downloadDirs: getDownloadDirs(this.settings),
+						downloadDir: this.settings.downloadDir,
+						gateways: this.settings.gateways,
 						quotaBytes: this.settings.downloadQuotaBytes,
 						incomingBytes: size,
 						retentionDays: this.settings.downloadRetentionDays,
