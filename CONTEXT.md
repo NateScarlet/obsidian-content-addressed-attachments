@@ -1,132 +1,59 @@
-# CONTEXT.md
+# 内容寻址附件
+
+本项目专有的领域词汇表：只用这里的词描述附件的来源、存储与清理概念。
+
+本文件**只定义词义**。项目概述与目录结构见 [AGENTS.md](./AGENTS.md)，架构决策及其理由见
+[docs/adr/](./docs/adr/)，调用方式与行为细节见代码注释——凡是改动实现时需要同步维护的内容
+都不写在这里。
 
 ## Language
 
+### 远程来源
+
 **来源（source）**：
-一次解析中可尝试获取内容的任一远程 HTTP 端点的统称，包括网关与源站。
+一次解析中可尝试获取内容的任一远程 HTTP 端点的统称，包括源站与网关。
 _Avoid_: 候选、remote source
 
 **源站**：
-锁定链接（`internal.ipfs-locked:`）中记录的原始服务 URL，是来源的一种，与网关相区分。
+锁定链接（`internal.ipfs-locked:`）中记录的原始服务 URL，是来源的一种。
+_Avoid_: origin
 
 **网关（gateway）**：
 用户在设置中配置的 URL 模板化远程服务，是来源的一种。
+_Avoid_: 镜像、mirror
 
 **探测（probe）**：
-以测量某来源所在 Host 的可达性与往返延迟为目的的轻量请求；不判定内容是否存在。
-_Avoid_: 预检（与 CORS preflight 混淆）
+以测量来源所在 Host 的可达性与往返延迟为目的的轻量请求；不判定内容是否存在。
+_Avoid_: 预检（与 CORS preflight 混淆）、HEAD 请求
 
-**合并批（coalescing batch）**：
-把同一注册窗口（同步块）内并发到达的请求自动合并为单个事务的通用机制
-（go 参照 `runInBatch`+`loop` 收集循环，`src/utils/CoalescingBatch.ts`）：
-写入侧把并发 `merge` 合并为一个 IndexedDB 读写事务，查询侧把并发引用计数
-查询合并为一个只读事务；调用方无需感知「逐条 vs 批量」、无需自行分块。
-其收益依赖调用方的并行消费堆积，且并行消费由 `orderedParallelMap` 的有界并发
-承担（同批投影在同一同步块内启动），故并发上限同时是合并批宽。
-_Avoid_: 批量写入、mergeBatch
+### 下载目录
+
+**下载目录（download dir）**：
+存放锁定链接（`internal.ipfs-locked:`）副本的目录。
+_Avoid_: 缓存目录、临时目录
+
+**仅用于读取的目录**：
+只用于读取已有文件、不作为落盘目标的下载目录，语义来自 URL 模板为空的网关；其中的文件
+可能由外部应用管理。
+_Avoid_: 外部目录、只读缓存
 
 **保留期（retention period）**：
-下载目录中一份副本被视为可清理的时间门槛，按副本的创建时间判定；
-未达保留期的副本在手动与自动清理中都不会被删除。
+一份副本被视为可清理的时间门槛，按副本的创建时间判定；未达保留期的副本在手动与自动清理中
+都不会被删除。
 _Avoid_: 过期时间、TTL
 
 **下载配额（download quota）**：
-参与配额的下载目录占用字节的上限，超过时在写入新副本前触发自动清理；
-未配置（≤0）表示不启用自动清理。不含仅用于读取的目录（见下）。
+参与配额的下载目录占用字节的上限；超过时在写入新副本前触发自动清理，未配置（≤0）表示不启用。
+占用口径只含会被插件写入的目录，不含仅用于读取的目录。
 _Avoid_: 容量限制、上限
 
-## 项目概述
+### 预处理
 
-- **目标**：Obsidian 社区插件（将 TypeScript 编译并打包为单文件 JavaScript）。
-- **插件定位**：基于内容寻址存储（CAS）管理 Obsidian 的本地和网络附件（基于文件内容的 CID 进行分片存储与去重，防止附件丢失和重复）。支持附件加密（AES-256-GCM），加密文件在存储前自动加密，读取时透明解密。
-- **入口文件**：`src/main.ts`。经编译生成根目录下的发布产物 `main.js` 由 Obsidian 加载。
-- **发布产物**：`main.js`、`manifest.json` 和可选的 `styles.css`。
+**脚本（preprocess script）**：
+附件插入前执行的可转换码模块，由官方维护者发布，或由高级用户自写并配置 URL。
+_Avoid_: preset、预设
 
-## 项目目录结构
-
-```
-src/
-  main.ts                   # 插件入口，仅用于生命周期、命令注册与配置加载
-  settings.ts               # 设置项的数据结构、校验及默认配置
-  commands/                 # 独立的交互和批处理业务命令函数（不挂载于主类）
-    insertAttachment.ts
-    restoreReferencedFiles.ts
-    emptyTrash.ts
-    ...
-  infrastructure/           # 数据与文件底层存储实现
-    local/
-      CASImpl.ts            # 本地内容寻址存储（CAS）物理文件操作（含回收站）
-    indexed-db/
-      CASMetadataImpl.ts    # 附件 CID 元数据 IndexedDB 实现
-      ReferenceManagerCache.ts # 引用关系缓存数据库实现
-  lib/                      # 核心 Svelte UI 交互组件
-    CASFileExplorer.svelte
-    CASFileExplorerHeader.svelte
-    EncryptionSettings.svelte  # 加密密钥管理设置面板
-    encryption/               # 加密子系统
-      EncryptionService.ts    # 加解密应用层门面
-      KeyManager.ts           # 密钥生命周期管理（基于 Obsidian SecretStorage）
-      CryptoService.ts        # AES-256-GCM 物理加解密
-      EncryptPathPolicy.ts    # 笔记路径加密策略
-      cryptoUtils.ts          # Web Crypto API 封装
-      fileHeader.ts           # 加密文件头解析
-      constants.ts            # 加密常量
-      types.ts                # 加密类型定义
-    ...
-  ui/                       # Obsidian 面板、视图和弹窗包装器
-    CASFileExplorerView.ts  # Obsidian Panel 视图绑定
-    MainPluginSettingTab.ts # 设置页面
-  types/                    # 各种核心组件的契约和接口定义
-  utils/                    # 工具辅助函数与多语言国际化宏
-
-preprocess-scripts/         # 官方维护的预处理脚本源码（构建入口在 scripts/build-preprocess-scripts.mjs 中写死）
-  registry.json             # 脚本注册表：包含官方与社区预设条目（vault-relative/https/ipfs/internal.ipfs-locked）
-  shared-types.ts           # 脚本端与插件端共享的类型定义
-```
-
-## 预处理脚本命名约定
-
-预处理功能采用三词分工，杜绝 "preset" 一词：
-
-- **脚本（preprocess script）**：可执行的转换模块，官方维护者写在 `preprocess-scripts/` 下（构建入口在构建配置中写死）；高级用户可自写脚本并配置 URL。
-- **注册表（registry）**：`preprocess-scripts/registry.json`，统一维护预设脚本列表。官方脚本用 vault 相对路径，社区贡献脚本以 `internal.ipfs-locked:` 或 HTTPS URL 提交。
-- **生成索引（generated index）**：`src/preprocess/script-index.generated.json`，由 `scripts/generate-preprocess-index.mjs` 在发布流程中生成（把条目改写为 release CID 的 `internal.ipfs-locked:` 格式），用于构建发布版插件；生成结果不提交回仓库，仓库中维护的是开发用版本（vault 相对路径）。由插件运行时 import 供设置下拉使用。`.generated` 后缀明确表示这是构建产物而非手改源文件。
-
-`scriptURL` 支持多种 scheme：vault 相对路径、`https:`、`ipfs:`、`internal.ipfs-locked:`；参数经 URL fragment 传入。首个正式脚本发布前 index 条目使用 vault 相对路径，发布后切换为 `internal.ipfs-locked:<cid>,<release-url>`。
-
-## 数据权威：磁盘为唯一可信源
-
-附件的事实（是否存在、在哪个目录、路径/URL）以**磁盘文件系统**为唯一权威，IndexedDB 元数据（`CASMetadataImpl`/`ReferenceManagerCache`）**不是**权威源，只是可推导、可删除重建的索引：
-
-- 事实判定必须基于磁盘探测（`adapter.stat`/`exists` + CID 推导路径），不得依赖或等待 IndexedDB。
-- 元数据删除后按磁盘实际内容重建即可恢复正确；元数据丢失与磁盘真实缺失是不同的严重级别——前者可重建，后者才是真缺失。
-- 因此元数据同步（`meta.get/merge/delete`）是索引维护，不应阻塞任何仅需磁盘结果的操作（典型如 `resolveURL` 解析出落盘路径即可返回，不应被 IndexedDB 忙碌时的元数据写入拖住）。重建索引对账即遵循此原则（见下）。
-- 元数据写入经存储层合并批缓冲（见 Language「合并批」）：`merge` 单条调用在同一注册窗口内自动合并为一个读写事务，达到批上限（1000）才切新批，无积压时单条零等待（maxWait 而非 minWait）；调用方并行调用单条 `merge` 即可获得批量收益（重建索引与写侧同步服务均经 `orderedParallelMap` 的有界并发并行调用），无需也不应使用批量入口。
-
-## 回收站与多目录副本状态
-
-附件元数据（`CASMetadataObject`）用 `copies: [{dir, trashedAt?}]` 记录附件副本**实例**，不使用单一 `trashedAt` 字段：
-
-- 每个物理副本一条实例，允许同一目录同时存在正常与回收两个实例（per-instance 模型，`src/utils/casCopies.ts` 的 `mergeCopies` 按"目录+是否回收"合并）。
-- 回收站判定：任一副本实例 `trashedAt` 非空（`isCASObjectTrashed`）。
-- 写入元数据时**不**扫描磁盘来判定回收站状态：`index`/`save` 保留已有副本状态；`trash`/`load`/`restoreIfTrashed`/`deleteIfTrashed` 基于磁盘操作重建副本状态。
-- 回收站副本的回收时间**以元数据既有值为准**：磁盘只能读到文件修改时间，而 CAS 内容不可变，修改时间恒早于该副本真正进入回收站的时刻；只有元数据里没有该副本（库外移入回收站）才采用磁盘修改时间。
-- 清空回收站（`src/commands/emptyTrash.ts`）仍基于元数据增量执行，不做全量磁盘扫描。
-- **恢复目标目录由引用类型决定**：`restoreIfTrashed`/`load` 接受可选允许目录列表，副本所在目录不在列表内时迁移到列表第一个目录，列表为空/未提供则原位恢复。恢复命令（`restoreReferencedFiles`）按引用类型计算列表——存在 `ipfs://` 引用 → 主存储目录；仅 `internal.ipfs-locked:` 锁定引用 → 下载目录列表（`downloadDir` 与各网关 `downloadDir` 去重）；下载目录为空则不传（原位）。触发笔记自身以 `ipfs://` 引用时短路跳过全库查询（`ReferenceManager.hasIPFSReference`）。
-- **重建索引对账**（`src/commands/rebuildIndex.ts`）：以磁盘为权威，分两阶段清理残留，内存只保留已产出 CID 的集合（不把全部对象加载进内存）——① 流式扫描磁盘副本：按「目录的正常区 → 同目录回收站 → 下一目录」顺序遍历，某 CID 首次出现时就地探测它在**尚未扫描目录**中的副本（已扫描过的目录不回查），凑成一条完整记录立即产出并记为 `lastVisitedAt = scannedAt`，之后在其它目录再遇到同一 CID 直接跳过；② 遍历元数据，凡 `lastVisitedAt` 早于 `scannedAt`（磁盘已无该 CID 任何副本）的记录：仍被引用则保留记录与 filename/format 并清空副本状态退出回收站，否则整体删除。这样 `.trash` 文件被外部删除后回收站不再残留。
-- IndexedDB schema 为 v2（`DB_VERSION=2`）：v1 的 `trashedAt` 在升级时迁移为 `copies`（用空字符串占位“未知目录”），**迁移惰性化**——不在 `onupgradeneeded` 里遍历数据（会卡住），改为运行时 decode/merge 兼容。
-
-## 下载目录清理
-
-下载目录存放 `internal.ipfs-locked:` 锁定引用的副本，只增不减会持续侵占磁盘，故按保留期清理（保留期与配额见术语表）：
-
-- **触发方式共用同一模块** `src/commands/cleanDownloadDir.ts`：文件管理器「下载」标签页的逐目录清理按钮（手动）与 `CASImpl.save` 落盘前的配额检查（自动，`enforceDownloadQuota`）只差触发方式与是否给出释放目标。自动清理的缺口算作「超出配额 + 本次写入的体积」，使新副本落盘后仍落在配额内；无可删副本时放弃清理、照常写入，由插件合并提示一次。
-- **配额口径窄于全部下载目录**：只统计会被插件下载写入的目录（全局 `downloadDir`，或网关声明的目录）；自动清理直接遍历目录删磁盘文件（ADR-0006），故外部应用（如 IPFS 应用）自己管理的目录绝不能成为清理目标，否则会删掉对方的文件。
-- **仅用于读取的目录不参与配额**：URL 模板为空的网关语义是「仅从下载目录读取已有文件」（`gatewayProducesSource`，渲染不出 URL 便不作为来源，插件也不会往该目录落盘），其目录不计入占用、不作为自动清理的目标。判据按目录集合而非配置来源：同一目录只要还被任一 URL 模板非空的网关使用就仍参与配额。这些目录仍在读取范围内、也仍在「下载」标签页支持手动清理——排除只作用于 `enforceDownloadQuota` 内的 `quotaDirs`，`getDownloadDirs`（读取、恢复、标签页列表）不区分口径。
-- **保留期边界取「未达保留期」**：恰好到达保留期的副本仍在保留期内，不删除。
-- **候选直接遍历目录得到**（`CAS.walkDirCopies`，不查元数据库）：目录里有多少文件就做多少次 stat，与元数据表的规模无关，因此万级副本的清理是秒级而非分钟级。遍历只认 CAS 命名约定（`dir/XX/{cid}.data`），未知命名格式的文件与外部直接拷入的文件既不删除也不计入占用。`.trash` 内的回收站副本不参与（仍由清空回收站命令处理）。
-- **遍历与删除均为随机顺序**：不按创建时间排序——清理只需遍历一次，随机化可避免单个报错文件在多次清理中反复卡住同一批副本。配额清理在随机顺序下释放量略微超出目标是可接受的（超出的副本同样是超保留期的可删副本），代价是每轮删到哪些文件不同。
-- **创建时间取自磁盘文件修改时间**：CAS 内容不可变，落盘后修改时间不再变化，与回收时间同源（见上）。
-- **CAS 原语 `removeCopyInDir(cid, dir)`**：只删指定目录的正常副本，删后仅发布失效信号，副本状态由后台索引按磁盘真相对账（见 ADR-0006）。
-- **释放量取自 stat**：副本是否被元数据收录不影响它被清理与计入释放量——判据是磁盘事实而非索引。
-- **占用统计**：`CASMetadata.estimateStorage()` 在全局 normal/trash 之外返回 `dirBytes`（各目录占用字节，正常副本口径、随元数据增删增量维护）。文件管理器「下载」标签页与配额检查都只读这份统计，不做全量磁盘扫描；清理完成后该统计由后台索引异步追平，「下载」标签页订阅元数据事件随之刷新。引入该字段之前已存在的记录没有该值，其中的对象需经一次副本状态变更（如重建索引）才会计入。
+**注册表（registry）**：
+统一列出官方与社区脚本的清单。官方脚本以 vault 相对路径收录，社区贡献脚本锁定为 CID 引用
+后收录。
+_Avoid_: preset 列表、脚本市场、marketplace

@@ -20,7 +20,7 @@
 - 调用方不并行逐条、改串行 `merge`：串行调用时批内永远只有自己，合并收益完全消失，否决。
 - minWait 凑批（等一小段时间攒批再执行）：无积压的单条写入被强加延迟，违背「无积压零等待」，否决。
 - 查询批维护独立容器 `ReferenceLookupBatch` + 策略纯函数 `mergeBatchPolicy`（`pending<=1` 即收割）：探针证实该收割语义把同步突发请求拆成逐个独立批，合并失效；且批逻辑散落两处（容器各写各的、仅策略共享），否决——统一为一个 `CoalescingBatch`。
-- 类名沿用 `MergeBatch`：该类并非 merge 方法专用（查询侧同样使用），与 CONTEXT 术语 _Avoid: mergeBatch 冲突，否决，改用 `CoalescingBatch`。
+- 类名沿用 `MergeBatch`：该类并非 `merge` 方法专用（查询侧同样使用），且会与已移除的批量入口 `mergeBatch` 撞名，否决，改用 `CoalescingBatch`。
 
 **Consequences**:
 

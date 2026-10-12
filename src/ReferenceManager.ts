@@ -271,7 +271,7 @@ export default class ReferenceManager {
 		if (!(file instanceof TFile)) {
 			return false;
 		}
-		// 引用判定以磁盘为唯一可信源（vault.read），不以 cachedRead 为准（见 CONTEXT.md）
+		// 引用判定以磁盘为唯一可信源（vault.read），不以 cachedRead 为准（见 ADR-0007）
 		const content = await this.plugin.app.vault.read(file);
 		return content.includes(prefix) || content.includes(prefix2);
 	}
@@ -381,7 +381,7 @@ export default class ReferenceManager {
 		const file =
 			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
 		// 索引以磁盘为唯一可信源（vault.read），不以 cachedRead / 编辑器缓冲为准，
-		// 避免过时缓存让被引用附件被误判为未引用（见 CONTEXT.md「磁盘为唯一可信源」）。
+		// 避免过时缓存让被引用附件被误判为未引用（见 ADR-0007）。
 		// 共享后台中止信号：卸载时取消在飞索引写入。
 		await this.loadFileContent(
 			normalizedPath,
