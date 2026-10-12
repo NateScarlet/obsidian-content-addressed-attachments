@@ -22,6 +22,11 @@ export default defineConfig({
 			"#src": path.resolve(dirname, "./src"),
 			obsidian: path.resolve(dirname, "./src/__mocks__/obsidian.ts"),
 		},
+		// svelte 只导出 client/server 两套入口，没有 node 条件，
+		// 组件测试要 mount 组件必须解析到 client 入口
+		// （直接依赖中另一处 browser 条件是 multiformats 的 hashes/sha*，
+		//   其 encode 变异步但仓库内全部 await 调用，行为不变）
+		conditions: ["browser"],
 	},
 	test: {
 		include: ["src/**/*.test.ts", "preprocess-scripts/**/*.test.ts"],

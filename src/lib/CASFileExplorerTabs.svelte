@@ -3,6 +3,7 @@
 	import defineLocales from "../utils/defineLocales";
 	import { getContext, Mode } from "./CASFileExplorerContext";
 	import { casMetadataDelete, casMetadataSave } from "#src/events";
+	import staleWithRevalidate from "./stores/staleWhileRevalidate.svelte";
 	import { debounce } from "obsidian";
 
 	const { t } = defineLocales({
@@ -27,14 +28,17 @@
 
 <script lang="ts">
 	const { casMetadata, mode, getDownloadDirs } = getContext();
-	let estimateStorage = $state(casMetadata.estimateStorage());
-	const updateEstimateStorage = debounce(() => {
-		estimateStorage = casMetadata.estimateStorage();
+
+	// 增量索引期间保存/删除事件密集到达，去抖合并成一次统计查询，
+	// 避免把每个事件都打成一趟 IndexedDB 扫描
+	let estimateVersion = $state(0);
+	const scheduleEstimateRefresh = debounce(() => {
+		estimateVersion += 1;
 	}, 100);
 	$effect(() => {
 		// 唯一副本删净且无引用时走的是删除事件，两种事件都要响应，
 		// 否则清空回收站/清理后占用数字会停在清理前
-		const refresh = () => updateEstimateStorage();
+		const refresh = () => scheduleEstimateRefresh();
 		const unsubscribes = [
 			casMetadataSave.subscribe(refresh),
 			casMetadataDelete.subscribe(refresh),
@@ -45,6 +49,28 @@
 			}
 		};
 	});
+
+	// 三个标签的占用共享同一次统计，重算期间沿用上一次的数字并脉冲提示，
+	// 而不是撤下内容换成骨架：占用是持续存在的指标，闪断只会让人以为在加载
+	const { result: storage, isStale } = staleWithRevalidate(() => {
+		void estimateVersion;
+		return casMetadata.estimateStorage();
+	});
+
+	const normalBytes = $derived($storage?.normalBytes);
+	const trashBytes = $derived($storage?.trashBytes);
+	const downloadBytes = $derived.by(() => {
+		const dirBytes = $storage?.dirBytes;
+		if (!dirBytes) {
+			return undefined;
+		}
+		const dirs = new Set(getDownloadDirs());
+		return Object.entries(dirBytes).reduce(
+			(sum, [dir, bytes]) => (dirs.has(dir) ? sum + bytes : sum),
+			0,
+		);
+	});
+
 	const views = [
 		Mode.LOCAL,
 		Mode.UNREFERENCED,
@@ -85,22 +111,7 @@
 				break;
 		}
 	}
-	const normalBytes = $derived.by(async () => {
-		const { normalBytes } = await estimateStorage;
-		return normalBytes;
-	});
-	const trashBytes = $derived.by(async () => {
-		const { trashBytes } = await estimateStorage;
-		return trashBytes;
-	});
-	const downloadBytes = $derived.by(async () => {
-		const { dirBytes } = await estimateStorage;
-		const dirs = new Set(getDownloadDirs());
-		return Object.entries(dirBytes).reduce(
-			(sum, [dir, bytes]) => (dirs.has(dir) ? sum + bytes : sum),
-			0,
-		);
-	});
+
 	// 定义标签配置，只包含每个标签特有的属性
 	const tabs = [
 		{
@@ -152,9 +163,13 @@
 		>
 			{t(tab.translationKey)}
 			{#if tab.size}
-				{#await tab.size() then size}
-					{formatFileSize(size)}
-				{/await}
+				{@const size = tab.size()}
+				{#if size !== undefined}
+					<!-- 只脉冲数字，标签文字保持稳定 -->
+					<span class={$isStale ? "animate-pulse" : ""}
+						>{formatFileSize(size)}</span
+					>
+				{/if}
 			{/if}
 		</div>
 	{/each}

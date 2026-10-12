@@ -21,6 +21,24 @@ export class TFile {
 export class App {}
 export class Editor {}
 export const requestUrl = vi.fn();
+export function debounce<T extends unknown[]>(
+	cb: (...args: T) => unknown,
+	timeout = 0,
+) {
+	let timer: number | undefined;
+	const debounced = (...args: T) => {
+		if (timer !== undefined) window.clearTimeout(timer);
+		timer = window.setTimeout(() => {
+			timer = undefined;
+			cb(...args);
+		}, timeout);
+	};
+	debounced.cancel = () => {
+		if (timer !== undefined) window.clearTimeout(timer);
+		timer = undefined;
+	};
+	return debounced;
+}
 export function getLanguage() {
 	return "en";
 }
