@@ -1,12 +1,16 @@
-import { App, Notice, requestUrl, type RequestUrlResponse } from "obsidian";
+import { App, requestUrl, type RequestUrlResponse } from "obsidian";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
 import isAbortError from "./utils/isAbortError";
 import type { Settings } from "./settings";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import type { CAS } from "./types/CAS";
-import castError from "./utils/castError";
 import computeCID from "./utils/computeCID";
+import ResolveURLError, {
+	AllSourcesFailedError,
+	DecryptionFailedError,
+	InvalidContentIDError,
+} from "./ResolveURLError";
 import parseIPFSLockedURL, {
 	type IPFSLockedURL,
 } from "./utils/parseIPFSLockedURL";
@@ -190,6 +194,13 @@ export class URLResolver {
 		this.cacheManager.dispose();
 	}
 
+	/**
+	 * 解析链接为可访问的资源 URL。
+	 *
+	 * - 合法缺失（404 / CID 不匹配 / vault 中不存在）返回 `undefined`；
+	 * - 可预期的失败抛出 `ResolveURLError` 子类（自带展示文案），由展示层渲染；
+	 * - 不在此处弹 Notice：同一页面可能有大量元素同时失败。
+	 */
 	async resolveURL(rawURL: string): Promise<ResolveURLResult | undefined> {
 		const lockedURL = parseIPFSLockedURL(rawURL);
 		if (lockedURL) {
@@ -211,6 +222,10 @@ export class URLResolver {
 			return this.resolveFromRemote(data, [
 				lockedURL.sourceURL.toString(),
 			]);
+		}
+		if (rawURL.startsWith("internal.ipfs-locked:")) {
+			// 前缀正确但内容无法解析（CID 或源站 URL 非法）：属于内容标识非法，不是缺失
+			throw new InvalidContentIDError(rawURL);
 		}
 
 		// vault-relative（无协议头）或 HTTP(S) URL
@@ -389,7 +404,8 @@ export class URLResolver {
 	 * （天然为 RTT 序）开始完整下载，不等待其余仍在飞的探测——挂住的
 	 * 探测只影响它自己的来源，不拖住其他健康来源。
 	 * 串行下载：同一时刻至多一个 GET 在飞，首个成功即结束。
-	 * 全部来源出局且确有异常时提示一次（与既有失败反馈语义一致）。
+	 * 全部来源出局且确有异常时抛出 `AllSourcesFailedError`（由展示层渲染到元素）；
+	 * 仅有合法缺失（404/CID 不匹配）时返回 undefined。
 	 */
 	private async resolveFromRemote(
 		data: TemplateData,
@@ -462,6 +478,11 @@ export class URLResolver {
 					return result;
 				}
 			} catch (error) {
+				// 内容级失败（如解密失败）换来源也无济于事：同一 CID 的内容一致，
+				// 直接抛给展示层，而不是被当作来源故障后汇总成 AllSourcesFailedError
+				if (error instanceof ResolveURLError) {
+					throw error;
+				}
 				if (!isAbortError(error)) {
 					errors.push(error);
 					console.debug(`解析来源 ${source.label} 失败`, error);
@@ -469,10 +490,11 @@ export class URLResolver {
 			}
 		}
 
-		// 全部来源失败：仅当确有异常时才提示一次（404/CID 不匹配属于合法缺失，保持静默）
+		// 全部来源失败：404/CID 不匹配属于合法缺失（errors 为空），保持静默返回 undefined；
+		// 确有异常时抛出，让调用方（元素补丁层）把原因渲染到失败占位图
 		if (errors.length > 0) {
 			console.error("解析 IPFS 网址失败", data.rawURL, errors);
-			new Notice(t("allSourcesFailed")(castError(errors[0]).message));
+			throw new AllSourcesFailedError(sources.length, errors[0]);
 		}
 		return undefined;
 	}
@@ -572,13 +594,20 @@ export class URLResolver {
 
 	// 生成模板数据
 	private prepareTemplateData(rawURL: string): TemplateData {
-		const url = new URL(rawURL);
-		if (!url || url.protocol != "ipfs:") {
-			throw new Error(`invalid url: '${url}'`);
+		let url: URL;
+		try {
+			url = new URL(rawURL);
+		} catch (error) {
+			throw new InvalidContentIDError(rawURL, error);
 		}
-		const cid = CID.parse(url.host);
-		if (!cid) {
-			throw new Error(`invalid cid in url: '${url}'`);
+		if (url.protocol !== "ipfs:") {
+			throw new InvalidContentIDError(rawURL);
+		}
+		let cid: CID;
+		try {
+			cid = CID.parse(url.host);
+		} catch (error) {
+			throw new InvalidContentIDError(rawURL, error);
 		}
 		const casPath = this.cas.formatRelPath(cid);
 		return {
@@ -637,61 +666,69 @@ export class URLResolver {
 			};
 		}
 
+		// 读取与解密失败才是内容级失败（密钥缺失、数据损坏），包装成
+		// DecryptionFailedError 交给展示层；其后的缓存目录配置与落盘逻辑
+		// 语义不同（配置问题、写盘失败），不纳入这个错误类型
+		let decrypted: Awaited<
+			ReturnType<EncryptionService["ensureDecrypted"]>
+		>;
 		try {
 			const encryptedData =
 				await this.app.vault.adapter.readBinary(encryptedPath);
-
-			const decrypted =
+			decrypted =
 				await this.encryptionService.ensureDecrypted(encryptedData);
-			if (decrypted.layers.length === 0) return;
-
-			const size = decrypted.data.byteLength;
-			const maxBlob = this.settings().maxBlobSize;
-
-			if (size <= maxBlob) {
-				const url = this.cacheManager.createBlobUrl(
-					encryptedPath,
-					decrypted.toBlob(),
-				);
-				return { url, path: encryptedPath, cid };
-			}
-
-			// 大文件：解密到缓存目录
-			const cacheDir = this.settings().decryptedCacheDir;
-			if (!cacheDir) {
-				console.error(
-					`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
-				);
-				new Notice(t("decryptedCacheDirNotSet")(encryptedPath));
-
-				// 仅对图片类型生成图片占位符，其他类型返回简单提示
-				const mimeType = decrypted.mimeType;
-				const isImage = mimeType.startsWith("image/");
-
-				if (isImage) {
-					const svg = createImagePlaceholderSVG(
-						t("decryptedCacheDirNotSetPlaceholder"),
-						"error",
-					);
-					return {
-						url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-						cid,
-					};
-				}
-
-				throw new Error(t("decryptedCacheDirNotSetSimple"));
-			}
-
-			await this.cacheManager.writeDiskCache(cachePath!, decrypted.data);
-
-			return {
-				path: cachePath!,
-				url: this.app.vault.adapter.getResourcePath(cachePath!),
-				cid,
-			};
 		} catch (err) {
 			console.error("Failed to decrypt file:", encryptedPath, err);
+			throw err instanceof DecryptionFailedError
+				? err
+				: new DecryptionFailedError(encryptedPath, err);
 		}
+
+		if (decrypted.layers.length === 0) return;
+
+		const size = decrypted.data.byteLength;
+		const maxBlob = this.settings().maxBlobSize;
+
+		if (size <= maxBlob) {
+			const url = this.cacheManager.createBlobUrl(
+				encryptedPath,
+				decrypted.toBlob(),
+			);
+			return { url, path: encryptedPath, cid };
+		}
+
+		// 大文件：解密到缓存目录
+		const cacheDir = this.settings().decryptedCacheDir;
+		if (!cacheDir) {
+			console.error(
+				`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
+			);
+
+			// 仅对图片类型生成图片占位符，其他类型直接报错
+			const mimeType = decrypted.mimeType;
+			const isImage = mimeType.startsWith("image/");
+
+			if (isImage) {
+				const svg = createImagePlaceholderSVG(
+					t("decryptedCacheDirNotSetPlaceholder"),
+					"error",
+				);
+				return {
+					url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+					cid,
+				};
+			}
+
+			throw new Error(t("decryptedCacheDirNotSetSimple"));
+		}
+
+		await this.cacheManager.writeDiskCache(cachePath!, decrypted.data);
+
+		return {
+			path: cachePath!,
+			url: this.app.vault.adapter.getResourcePath(cachePath!),
+			cid,
+		};
 	}
 
 	/**
@@ -778,26 +815,14 @@ export class URLResolver {
 
 const { t } = defineLocales({
 	en: {
-		keyNotFound: (fp: string, path: string) =>
-			`Encryption key ${fp} not found. Cannot decrypt ${path}`,
-		decryptedCacheDirNotSet: (path: string) =>
-			`Decrypted cache directory not configured. Please set Decrypted Cache Dir or increase Max Blob Size for ${path}`,
 		decryptedCacheDirNotSetPlaceholder:
 			"Decryption cache directory not set",
 		decryptedCacheDirNotSetSimple:
 			"Decrypted cache directory not configured. Please set Decrypted Cache Dir or increase Max Blob Size.",
-		allSourcesFailed: (firstError: string) =>
-			`Failed to resolve: all sources failed. ${firstError}`,
 	},
 	zh: {
-		keyNotFound: (fp: string, path: string) =>
-			`加密密钥 ${fp} 未找到，无法解密 ${path}`,
-		decryptedCacheDirNotSet: (path: string) =>
-			`未设置解密缓存目录。请在设置中配置文件解密缓存目录或提高内存解密上限：${path}`,
 		decryptedCacheDirNotSetPlaceholder: "未设置解密缓存目录",
 		decryptedCacheDirNotSetSimple:
 			"未设置解密缓存目录。请在设置中配置文件解密缓存目录或提高内存解密上限。",
-		allSourcesFailed: (firstError: string) =>
-			`解析失败：所有源均不可用。${firstError}`,
 	},
 });

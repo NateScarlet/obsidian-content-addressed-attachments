@@ -51,6 +51,7 @@ import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
 import patchElementURL from "./utils/patchElementURLs";
 import patchElementBackgroundImage from "./utils/patchElementBackgroundImage";
+import FailureImages from "./utils/FailureImages";
 import { stripWrappedPrefix } from "./utils/wrappedBackgroundImage";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
@@ -118,7 +119,10 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	public scriptLoader!: ScriptLoader;
 
 	private placeholderImageURL!: string;
-	private notFoundImageURL!: string;
+	/** 元素解析失败时的占位图；按错误自带的文案缓存并统一释放 */
+	private readonly failureImages = this.stack.use(
+		new FailureImages(t("fileNotFound")),
+	);
 
 	async onload() {
 		await this.loadSettings();
@@ -127,17 +131,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				new Blob([createImagePlaceholderSVG(t("loading"), "loading")], {
 					type: "image/svg+xml",
 				}),
-			),
-			(i) => URL.revokeObjectURL(i),
-		);
-		this.notFoundImageURL = this.stack.adopt(
-			URL.createObjectURL(
-				new Blob(
-					[createImagePlaceholderSVG(t("fileNotFound"), "error")],
-					{
-						type: "image/svg+xml",
-					},
-				),
 			),
 			(i) => URL.revokeObjectURL(i),
 		);
@@ -606,7 +599,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		const options = {
 			placeholder: this.placeholderImageURL,
-			notFound: this.notFoundImageURL,
+			failures: this.failureImages,
 		};
 		for (const attr of ["src", "href"]) {
 			const value = el.getAttribute(attr);
@@ -651,7 +644,7 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			(rawURL) => this.urlResolver.resolveURL(rawURL),
 			{
 				placeholder: this.placeholderImageURL,
-				notFound: this.notFoundImageURL,
+				failures: this.failureImages,
 			},
 		);
 	}

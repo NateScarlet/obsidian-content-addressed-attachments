@@ -9,6 +9,7 @@ import {
 } from "obsidian";
 import type { CAS } from "./types/CAS";
 import type EncryptionService from "./lib/encryption/EncryptionService";
+import { AllSourcesFailedError } from "./ResolveURLError";
 import { getDefaultSettings, type Settings } from "./settings";
 
 /**
@@ -202,9 +203,10 @@ describe("URLResolver probe", () => {
 		fetchDeferreds
 			.get(`https://gateway.com/ipfs/${dummyCIDStr}`)!
 			.reject(new TypeError("Failed to fetch"));
-		const result = await resultPromise;
 
-		expect(result).toBeUndefined();
+		await expect(resultPromise).rejects.toBeInstanceOf(
+			AllSourcesFailedError,
+		);
 		// 探测失败的来源从未发起完整下载
 		expect(getCallURLs()).toHaveLength(0);
 	});

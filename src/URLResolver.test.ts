@@ -11,6 +11,11 @@ import {
 } from "obsidian";
 import type { CAS } from "./types/CAS";
 import type EncryptionService from "./lib/encryption/EncryptionService";
+import {
+	AllSourcesFailedError,
+	DecryptionFailedError,
+	InvalidContentIDError,
+} from "./ResolveURLError";
 import { getDefaultSettings, type Settings } from "./settings";
 
 describe("URLResolver", () => {
@@ -441,23 +446,89 @@ describe("URLResolver", () => {
 		expect(noticeInstances()).toHaveLength(0);
 	});
 
-	it("shows a single notice when all sources fail", async () => {
+	it("throws AllSourcesFailedError without notifying when all sources fail", async () => {
 		setupMutuallyExclusiveGateways();
 
 		// 两个网关都在探测阶段不可达
-		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		const errorPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`).then(
+			() => undefined,
+			(error: unknown) => error,
+		);
 		await flushMicrotasks();
 		for (const defer of fetchDeferreds.values()) {
 			defer.reject(new TypeError("net::ERR_CONNECTION_REFUSED"));
 		}
-		const result = await resultPromise;
+		const error = await errorPromise;
 
-		expect(result).toBeUndefined();
-		// 全部失败只提示一次，且带上首个错误原因
-		expect(noticeInstances()).toHaveLength(1);
-		expect(noticeInstances()[0].message).toContain(
-			"net::ERR_CONNECTION_REFUSED",
+		// 全部来源失败抛出自定义错误，由元素补丁层渲染到失败图，不再逐个弹窗
+		expect(error).toBeInstanceOf(AllSourcesFailedError);
+		expect((error as AllSourcesFailedError).sourceCount).toBe(2);
+		expect(noticeInstances()).toHaveLength(0);
+	});
+
+	it("throws InvalidContentIDError for an invalid CID", async () => {
+		await expect(
+			resolver.resolveURL("ipfs://not-a-valid-cid"),
+		).rejects.toBeInstanceOf(InvalidContentIDError);
+	});
+
+	it("throws InvalidContentIDError for a malformed locked URL", async () => {
+		await expect(
+			resolver.resolveURL("internal.ipfs-locked:not-a-valid-cid"),
+		).rejects.toBeInstanceOf(InvalidContentIDError);
+	});
+
+	it("throws DecryptionFailedError when downloaded content cannot be decrypted", async () => {
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": ENCRYPTED_FORMAT },
+			arrayBuffer: new ArrayBuffer(16),
+			json: {},
+			text: "",
+		});
+		// eslint-disable-next-line @typescript-eslint/unbound-method
+		vi.mocked(mockEncryptionService.ensureDecrypted).mockRejectedValue(
+			new Error("bad key"),
 		);
+
+		const rawURL = `ipfs://${dummyCIDStr}?format=${encodeURIComponent(ENCRYPTED_FORMAT)}`;
+		const resultPromise = resolver.resolveURL(rawURL);
+		await passProbeStage();
+
+		await expect(resultPromise).rejects.toBeInstanceOf(
+			DecryptionFailedError,
+		);
+	});
+
+	it("does not mislabel a missing decrypted-cache-dir configuration as a decryption failure", async () => {
+		// 本地已有加密副本：解析直接走解密路径
+		// eslint-disable-next-line @typescript-eslint/unbound-method
+		vi.mocked(mockCas.load).mockResolvedValue({
+			normalizedPath: ".attachments/cas/existing.data",
+			didRestore: false,
+		});
+		// 解密成功，但内容超过 maxBlobSize 且未设置解密缓存目录（非图片）：
+		// 属于配置问题，不应被包装成 DecryptionFailedError（那会显示「文件解密失败」）
+		// eslint-disable-next-line @typescript-eslint/unbound-method
+		vi.mocked(mockEncryptionService.ensureDecrypted).mockResolvedValue({
+			data: new ArrayBuffer(8),
+			mimeType: "application/octet-stream",
+			layers: [{ header: {} }],
+			toBlob: () => new Blob(["x"]),
+		} as unknown as Awaited<
+			ReturnType<EncryptionService["ensureDecrypted"]>
+		>);
+		settings.maxBlobSize = 0;
+		settings.decryptedCacheDir = "";
+
+		const rawURL = `ipfs://${dummyCIDStr}?format=${encodeURIComponent(ENCRYPTED_FORMAT)}`;
+		const error = await resolver.resolveURL(rawURL).then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		expect(error).not.toBeInstanceOf(DecryptionFailedError);
 	});
 
 	it("applies matching header rules to the locked URL source request", async () => {
