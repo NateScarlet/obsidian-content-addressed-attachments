@@ -31,6 +31,7 @@ function ensureFileMimeType(file: File): File {
 }
 
 // #region 插入附件：链接格式化与处理主流程
+/** 纯链接（不含换行）：插入文本与失败通知文案均以其为基础 */
 function formatIPFSLinkMarkdown(
 	fileToProcess: File,
 	fileToSave: File,
@@ -42,6 +43,14 @@ function formatIPFSLinkMarkdown(
 		format: fileToSave.type,
 	});
 	return link.toMarkdown(fileToProcess.type.startsWith("image/"));
+}
+
+/**
+ * 把纯链接转换为插入笔记的文本：末尾追加一个换行，效果等同于在链接后按一次回车，
+ * 使附件在 Markdown 中独占一行、后续输入落在下一行。
+ */
+function toInsertText(linkMarkdown: string): string {
+	return `${linkMarkdown}\n`;
 }
 
 export async function processFileAndInsertLink(
@@ -62,7 +71,7 @@ export async function processFileAndInsertLink(
 			(await encryptPathPolicy.ensureEncrypted(file, notePath)) ?? file;
 		const { cid } = await cas.save(dir, fileToSave);
 		const linkMarkdown = formatIPFSLinkMarkdown(file, fileToSave, cid);
-		editor.replaceSelection(linkMarkdown);
+		editor.replaceSelection(toInsertText(linkMarkdown));
 		return;
 	}
 
@@ -109,13 +118,13 @@ export async function processFileAndInsertLink(
 		);
 		notice.hide();
 
-		// 替换编辑器或 Vault 磁盘中的占位符
+		// 替换编辑器或 Vault 磁盘中的占位符，两条路径使用同一份带尾随换行的替换文本
 		const replaced = await replacePlaceholderInEditorOrVault(
 			vault,
 			editor,
 			notePath,
 			placeholder,
-			linkMarkdown,
+			toInsertText(linkMarkdown),
 		);
 		if (!replaced) {
 			new Notice(t("replaceFailed")(file.name, linkMarkdown));
