@@ -5,8 +5,9 @@ import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import type { App } from "obsidian";
 import { CASImpl } from "./CASImpl";
-import type { CASDirCopy } from "#src/types/CAS";
+import type { CASDirCopy, ByteSource } from "#src/types/CAS";
 import type { CASMetadata, CASMetadataObject } from "#src/types/CASMetadata";
+import fileToByteSource from "#src/utils/fileToByteSource";
 
 /** 内存文件系统：模拟 vault adapter 的磁盘操作 */
 class MemFS {
@@ -14,6 +15,9 @@ class MemFS {
 		string,
 		{ size: number; mtime: number; content?: Uint8Array }
 	>();
+	/** 写入次数：用于断言流式落盘是按批次合并写的 */
+	writeCalls = 0;
+	appendCalls = 0;
 
 	write(path: string, content?: Uint8Array, size = 8) {
 		this.files.set(path, {
@@ -85,10 +89,28 @@ class MemFS {
 	}
 
 	async writeBinary(path: string, data: ArrayBuffer) {
+		this.writeCalls += 1;
 		this.files.set(path, {
 			size: data.byteLength,
 			mtime: Date.now(),
 			content: new Uint8Array(data),
+		});
+	}
+
+	async appendBinary(path: string, data: ArrayBuffer) {
+		this.appendCalls += 1;
+		const existing = this.files.get(path);
+		if (!existing) {
+			throw new Error("File does not exist!");
+		}
+		const prev = existing.content ?? new Uint8Array(existing.size);
+		const next = new Uint8Array(prev.length + data.byteLength);
+		next.set(prev);
+		next.set(new Uint8Array(data), prev.length);
+		this.files.set(path, {
+			size: next.length,
+			mtime: Date.now(),
+			content: next,
 		});
 	}
 }
@@ -150,6 +172,7 @@ function setup(dirs: string[]) {
 		rename: (s: string, d: string) => fs.rename(s, d),
 		readBinary: (p: string) => fs.readBinary(p),
 		writeBinary: (p: string, d: ArrayBuffer) => fs.writeBinary(p, d),
+		appendBinary: (p: string, d: ArrayBuffer) => fs.appendBinary(p, d),
 	};
 	const vault = {
 		adapter,
@@ -426,7 +449,7 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		});
 
 		const file = new File([bytes], "a.png", { type: "image/png" });
-		await cas.save("dirA", file);
+		await cas.save("dirA", fileToByteSource(file));
 
 		// save 只发布失效信号，不直接写元数据；副本状态（含回收站）由后台消费者
 		// 基于磁盘探测重建（seam 迁移：该不变量迁至 CASMetadataSyncService seam）
@@ -665,12 +688,12 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		const { bytes } = await makeObject("abc");
 		const file = new File([bytes], "a.png", { type: "image/png" });
 
-		await cas.save("dirA", file);
+		await cas.save("dirA", fileToByteSource(file));
 		expect(guard).toHaveBeenCalledTimes(1);
 		expect(guard).toHaveBeenCalledWith("dirA", bytes.length);
 
 		// 同一内容再存一次命中去重，不会新增副本，也就无需检查写入策略
-		await cas.save("dirA", file);
+		await cas.save("dirA", fileToByteSource(file));
 		expect(guard).toHaveBeenCalledTimes(1);
 	});
 
@@ -680,11 +703,11 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 
 		await cas.save(
 			"dirA",
-			new File([bytes], "a.png", { type: "image/png" }),
+			fileToByteSource(new File([bytes], "a.png", { type: "image/png" })),
 		);
 		await cas.save(
 			"dirB",
-			new File([bytes], "b.png", { type: "image/png" }),
+			fileToByteSource(new File([bytes], "b.png", { type: "image/png" })),
 		);
 
 		// save 落盘成功后只发布失效信号，不同步写入元数据
@@ -703,6 +726,109 @@ describe("CASImpl 多目录回收站状态（copies）", () => {
 		});
 		// 元数据同步由后台消费者（按磁盘真相重建）负责，此处不再同步反映
 		await expect(meta.get(cid)).resolves.toBeUndefined();
+	});
+
+	/** 按固定块大小切分内容构造字节来源；省略 size 模拟流式下载 */
+	function byteSource(
+		content: Uint8Array,
+		options: { chunkSize?: number; size?: number; name?: string } = {},
+	): ByteSource {
+		const { chunkSize = 64 * 1024, name = "stream.bin" } = options;
+		return {
+			name,
+			size: options.size,
+			open: async function* () {
+				for (
+					let offset = 0;
+					offset < content.length;
+					offset += chunkSize
+				) {
+					yield content.subarray(offset, offset + chunkSize);
+				}
+			},
+		};
+	}
+
+	it("save 分块流式落盘：CID 与一次性哈希一致，内容完整且按批次写入", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		// 超过一个写盘批次：首块 writeBinary，其余 appendBinary
+		const content = new Uint8Array(5 * 1024 * 1024 + 123);
+		for (let i = 0; i < content.length; i++) {
+			content[i] = (i * 17) % 256;
+		}
+
+		const { cid } = await cas.save("dirA", byteSource(content));
+		const expected = CID.create(1, raw.code, await sha256.digest(content));
+		expect(cid.equals(expected)).toBe(true);
+
+		const stored = fs.files.get(`dirA/${cas.formatRelPath(cid)}`)?.content;
+		expect(stored?.length).toBe(content.length);
+		expect((await sha256.digest(stored!)).bytes).toEqual(
+			(await sha256.digest(content)).bytes,
+		);
+		// 合并写入：一次首写 + 一次追加，而不是逐块（64KB）写 80 次
+		expect(fs.writeCalls).toBe(1);
+		expect(fs.appendCalls).toBe(1);
+	});
+
+	it("save 在来源中途失败时删除临时文件，不留下半截副本", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const source: ByteSource = {
+			name: "broken.bin",
+			open: async function* () {
+				yield new Uint8Array(1024);
+				throw new Error("boom");
+			},
+		};
+
+		await expect(cas.save("dirA", source)).rejects.toThrow("boom");
+		expect([...fs.files.keys()]).toEqual([]);
+	});
+
+	it("save 在取消（AbortError）后删除临时文件", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const source: ByteSource = {
+			name: "cancelled.bin",
+			open: async function* () {
+				yield new Uint8Array(1024);
+				throw new DOMException("Aborted", "AbortError");
+			},
+		};
+
+		await expect(cas.save("dirA", source)).rejects.toThrow("Aborted");
+		expect([...fs.files.keys()]).toEqual([]);
+	});
+
+	it("save 在写入策略拒绝时删除已写入的临时文件", async () => {
+		const { cas, fs, guard } = setup(["dirA"]);
+		guard.mockRejectedValueOnce(new Error("quota exceeded"));
+
+		await expect(
+			cas.save("dirA", byteSource(new Uint8Array(2048))),
+		).rejects.toThrow("quota exceeded");
+		expect([...fs.files.keys()]).toEqual([]);
+	});
+
+	it("save 大小未知时在写完拿到总长后再记账", async () => {
+		const { cas, guard } = setup(["dirA"]);
+		const content = new Uint8Array(1234);
+
+		await cas.save("dirA", byteSource(content, { size: undefined }));
+
+		expect(guard).toHaveBeenCalledTimes(1);
+		expect(guard).toHaveBeenCalledWith("dirA", content.length);
+	});
+
+	it("save 空来源也能落盘为空文件", async () => {
+		const { cas, fs } = setup(["dirA"]);
+		const { cid, bytes } = await makeObject("");
+
+		const saved = await cas.save("dirA", byteSource(bytes));
+
+		expect(saved.cid.equals(cid)).toBe(true);
+		expect(saved.didCreate).toBe(true);
+		const stored = fs.files.get(`dirA/${cas.formatRelPath(cid)}`);
+		expect(stored?.size).toBe(0);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { App, requestUrl, type RequestUrlResponse } from "obsidian";
+import { App } from "obsidian";
 import mustache from "mustache";
 import { CID } from "multiformats/cid";
 import isAbortError from "./utils/isAbortError";
@@ -10,6 +10,7 @@ import ResolveURLError, {
 	AllSourcesFailedError,
 	DecryptionFailedError,
 	InvalidContentIDError,
+	WholeBodyTooLargeError,
 } from "./ResolveURLError";
 import parseIPFSLockedURL, {
 	type IPFSLockedURL,
@@ -18,7 +19,8 @@ import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type EncryptionService from "./lib/encryption/EncryptionService";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import defineLocales from "./utils/defineLocales";
-import { applyHeaderRules, headersToRecord } from "./utils/applyHeaderRules";
+import { applyHeaderRules } from "./utils/applyHeaderRules";
+import openRemoteByteSource from "./openRemoteByteSource";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -156,7 +158,7 @@ class DecryptedCacheManager {
 
 /**
  * 一个可参与远程竞争的来源：URL、请求头与下载目录均延迟到实际请求时求值，
- * 保证 HEAD 预检与 GET 完整下载使用同一份来源配置。
+ * 保证 HEAD 能力查询与 GET 完整下载使用同一份来源配置。
  */
 interface RemoteSource {
 	label: string;
@@ -234,10 +236,10 @@ export class URLResolver {
 		const isVaultRelative = rawURL.indexOf(":") < 0;
 
 		if (isVaultRelative || isNetworkURL) {
-			const { result } = await this.flight.do(rawURL, () => {
+			const { result } = await this.flight.do(rawURL, (signal) => {
 				return isVaultRelative
 					? this.resolveVaultRelativePath(rawURL)
-					: this.resolveHTTP(rawURL);
+					: this.resolveHTTP(rawURL, signal);
 			});
 			return result;
 		}
@@ -250,52 +252,13 @@ export class URLResolver {
 		}
 
 		const data = this.prepareTemplateData(rawURL);
-		const { result } = await this.flight.do(data.cid.toString(), () => {
-			return this.doResolveURL(data);
-		});
-		return result;
-	}
-
-	private async readResponse(
-		dir: string,
-		resp: RequestUrlResponse,
-		expected: {
-			cid: CID;
-			format?: string;
-			filename?: string;
-		},
-	) {
-		if (resp.status !== 200) {
-			return;
-		}
-		const { cid, didCreate } = await this.cas.save(
-			dir,
-			new File(
-				[new Blob([resp.arrayBuffer], {})],
-				expected.filename ?? "",
-				{
-					type: (() => {
-						const ct = resp.headers["content-type"];
-						if (ct && ct !== "application/octet-stream") {
-							return ct;
-						}
-						return expected.format || undefined;
-					})(),
-				},
-			),
+		const { result } = await this.flight.do(
+			data.cid.toString(),
+			(signal) => {
+				return this.doResolveURL(data, signal);
+			},
 		);
-		if (!cid.equals(expected.cid)) {
-			if (didCreate) {
-				await this.cas.trash(cid);
-			}
-			return;
-		}
-		const path = this.cas.formatNormalizePath(dir, cid);
-		return {
-			url: this.app.vault.adapter.getResourcePath(path),
-			path,
-			cid: expected.cid,
-		} satisfies ResolveURLResult;
+		return result;
 	}
 
 	/**
@@ -325,26 +288,25 @@ export class URLResolver {
 	 */
 	private async resolveHTTP(
 		rawURL: string,
+		signal?: AbortSignal,
 	): Promise<ResolveURLResult | undefined> {
 		const headers = new Headers();
 		applyHeaderRules(rawURL, headers, this.settings().headerRules);
-		const resp = await requestUrl({
+		const opened = await openRemoteByteSource({
 			url: rawURL,
-			headers: headersToRecord(headers),
-			throw: false,
+			headers,
+			signal,
+			maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
+			name: rawURL.split("/").pop() || "download",
 		});
 		// 404 与 vault-relative 语义一致，视为合法的“资源不存在”；
 		// 其他状态码抛错让调用方可见，避免服务器故障被当成文件缺失静默吞掉
-		if (resp.status === 404) return undefined;
-		if (resp.status !== 200) {
-			throw new Error(`HTTP ${resp.status} while resolving ${rawURL}`);
+		if (opened.status === 404) return undefined;
+		if (opened.status !== 200 || !opened.source) {
+			throw new Error(`HTTP ${opened.status} while resolving ${rawURL}`);
 		}
 		const dir = this.settings().downloadDir || this.settings().primaryDir;
-		const file = new File(
-			[resp.arrayBuffer],
-			rawURL.split("/").pop() || "download",
-		);
-		const { cid } = await this.cas.save(dir, file);
+		const { cid } = await this.cas.save(dir, opened.source);
 		const path = this.cas.formatNormalizePath(dir, cid);
 		return {
 			path,
@@ -355,6 +317,7 @@ export class URLResolver {
 
 	private async doResolveURL(
 		data: TemplateData,
+		signal?: AbortSignal,
 	): Promise<ResolveURLResult | undefined> {
 		// 该路径只处理 ipfs:// 链接，恢复目标固定为主存储目录
 		const match = await this.cas.load(data.cid, [
@@ -375,7 +338,7 @@ export class URLResolver {
 				cid: data.cid,
 			};
 		}
-		return this.resolveFromRemote(data);
+		return this.resolveFromRemote(data, [], signal);
 	}
 
 	/**
@@ -410,6 +373,7 @@ export class URLResolver {
 	private async resolveFromRemote(
 		data: TemplateData,
 		extraURLs: string[] = [],
+		signal?: AbortSignal,
 	): Promise<ResolveURLResult | undefined> {
 		const sources = this.buildRemoteSources(data, extraURLs);
 		if (sources.length === 0) {
@@ -473,14 +437,22 @@ export class URLResolver {
 			const source = await nextProbed();
 			if (!source) break;
 			try {
-				const result = await this.downloadFromSource(source, data);
+				const result = await this.downloadFromSource(
+					source,
+					data,
+					signal,
+				);
 				if (result) {
 					return result;
 				}
 			} catch (error) {
-				// 内容级失败（如解密失败）换来源也无济于事：同一 CID 的内容一致，
-				// 直接抛给展示层，而不是被当作来源故障后汇总成 AllSourcesFailedError
-				if (error instanceof ResolveURLError) {
+				// 内容级失败（如解密失败、分块校验不一致）换来源也无济于事：同一 CID
+				// 的内容一致，直接抛给展示层，而不是被当作来源故障后汇总成
+				// AllSourcesFailedError
+				if (
+					error instanceof ResolveURLError &&
+					!(error instanceof WholeBodyTooLargeError)
+				) {
 					throw error;
 				}
 				if (!isAbortError(error)) {
@@ -491,39 +463,61 @@ export class URLResolver {
 		}
 
 		// 全部来源失败：404/CID 不匹配属于合法缺失（errors 为空），保持静默返回 undefined；
-		// 确有异常时抛出，让调用方（元素补丁层）把原因渲染到失败占位图
+		// 确有异常时抛出，让调用方（元素补丁层）把原因渲染到失败占位图。
+		// 「该来源不允许整包下载」是可读的具体原因，优先于笼统的「全部来源不可用」
 		if (errors.length > 0) {
 			console.error("解析 IPFS 网址失败", data.rawURL, errors);
-			throw new AllSourcesFailedError(sources.length, errors[0]);
+			const specific = errors.find(
+				(error) => error instanceof WholeBodyTooLargeError,
+			);
+			throw (
+				specific ?? new AllSourcesFailedError(sources.length, errors[0])
+			);
 		}
 		return undefined;
 	}
 
 	/**
 	 * 对一个探测可达的来源发起完整下载并保存到 CAS。
-	 * GET 非 200 视为该来源失败（静默返回 undefined）；网络/存储错误
+	 * 下载通道按来源能力选择（见 {@link openRemoteByteSource}），不把整包读进内存。
+	 * 非 200 视为该来源失败（静默返回 undefined）；网络/存储错误
 	 * 向上抛出，由调用方收集错误后决定换下一个来源或结束。
 	 */
 	private async downloadFromSource(
 		source: RemoteSource,
 		data: TemplateData,
+		signal?: AbortSignal,
 	): Promise<ResolveURLResult | undefined> {
 		const url = source.getURL();
 		console.debug("GET", url);
-		const resp = await requestUrl({
+		const opened = await openRemoteByteSource({
 			url,
-			headers: headersToRecord(source.buildHeaders()),
-			throw: false,
+			headers: source.buildHeaders(),
+			signal,
+			maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
+			name: data.filename(),
+			fallbackType: data.format() || undefined,
 		});
-		if (resp.status !== 200) {
+		if (opened.status !== 200 || !opened.source) {
 			return undefined;
 		}
-		console.debug("GOT", resp.headers);
-		return this.fetchRemote(source.getDir(), resp, {
+		const dir = source.getDir();
+		const { cid, didCreate } = await this.cas.save(dir, opened.source);
+		if (!cid.equals(data.cid)) {
+			if (didCreate) {
+				await this.cas.trash(cid);
+			}
+			return undefined;
+		}
+		const path = this.cas.formatNormalizePath(dir, cid);
+		if (data.format() === ENCRYPTED_FORMAT) {
+			return this.resolveEncryptedFile(path, data.cid);
+		}
+		return {
+			url: this.app.vault.adapter.getResourcePath(path),
+			path,
 			cid: data.cid,
-			filename: data.filename(),
-			format: data.format(),
-		});
+		};
 	}
 
 	/**
@@ -574,22 +568,6 @@ export class URLResolver {
 			});
 		}
 		return sources;
-	}
-
-	/**
-	 * 将远程响应保存到 CAS 并校验 CID，若是加密格式则再解密后返回。
-	 * 下载失败或 CID 不匹配时返回 undefined。
-	 */
-	private async fetchRemote(
-		dir: string,
-		resp: RequestUrlResponse,
-		expected: { cid: CID; format?: string; filename?: string },
-	): Promise<ResolveURLResult | undefined> {
-		const downloaded = await this.readResponse(dir, resp, expected);
-		if (downloaded && expected.format === ENCRYPTED_FORMAT) {
-			return this.resolveEncryptedFile(downloaded.path, expected.cid);
-		}
-		return downloaded;
 	}
 
 	// 生成模板数据

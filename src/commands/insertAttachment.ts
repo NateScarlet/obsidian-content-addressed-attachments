@@ -6,6 +6,7 @@ import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import IPFSLink from "#src/utils/IPFSLink";
 import { effectiveMimeType } from "#src/utils/mimeTypeByExtension";
 import defineLocales from "#src/utils/defineLocales";
+import fileToByteSource from "#src/utils/fileToByteSource";
 import {
 	createPreprocessPlaceholder,
 	replacePlaceholderInEditorOrVault,
@@ -69,7 +70,7 @@ export async function processFileAndInsertLink(
 	if (!scriptURL) {
 		const fileToSave =
 			(await encryptPathPolicy.ensureEncrypted(file, notePath)) ?? file;
-		const { cid } = await cas.save(dir, fileToSave);
+		const { cid } = await cas.save(dir, fileToByteSource(fileToSave));
 		const linkMarkdown = formatIPFSLinkMarkdown(file, fileToSave, cid);
 		editor.replaceSelection(toInsertText(linkMarkdown));
 		return;
@@ -110,7 +111,7 @@ export async function processFileAndInsertLink(
 				fileToProcess,
 				notePath,
 			)) ?? fileToProcess;
-		const { cid } = await cas.save(dir, fileToSave);
+		const { cid } = await cas.save(dir, fileToByteSource(fileToSave));
 		const linkMarkdown = formatIPFSLinkMarkdown(
 			fileToProcess,
 			fileToSave,

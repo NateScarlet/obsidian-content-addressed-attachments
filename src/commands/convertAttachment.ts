@@ -6,6 +6,7 @@ import findIPFSLinks, { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
+import fileToByteSource from "#src/utils/fileToByteSource";
 import type KeyManager from "#src/lib/encryption/KeyManager";
 import type PluginContext from "#src/types/PluginContext";
 import trashIfUnreferenced from "./trashIfUnreferenced";
@@ -85,7 +86,10 @@ async function encryptSingleLink(
 		return undefined;
 	}
 
-	const { cid: newCid } = await ctx.cas.save(dir, encryptedFile);
+	const { cid: newCid } = await ctx.cas.save(
+		dir,
+		fileToByteSource(encryptedFile),
+	);
 
 	return {
 		newURL: new IPFSLink({
@@ -164,7 +168,7 @@ export async function decryptLink(
 	const file = new File([decrypted.toBlob()], parsed.filename || "file", {
 		type: decrypted.mimeType,
 	});
-	const { cid: newCid } = await ctx.cas.save(dir, file);
+	const { cid: newCid } = await ctx.cas.save(dir, fileToByteSource(file));
 	const oldCID = newCid.equals(parsed.cid) ? undefined : parsed.cid;
 	const newURL = new IPFSLink({
 		cid: newCid,

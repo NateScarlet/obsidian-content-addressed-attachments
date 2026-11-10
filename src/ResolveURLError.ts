@@ -67,3 +67,48 @@ export class DecryptionFailedError extends ResolveURLError {
 		this.name = "DecryptionFailedError";
 	}
 }
+
+/**
+ * 来源既不支持 CORS 流式读取、也不支持 Range，且整包大小超过内存下载上限：
+ * 不发出会带回整包 body 的请求。换源仍可能成功（其它来源可能支持 Range），
+ * 但全部来源都失败时应把这条具体原因展示给用户。
+ */
+export class WholeBodyTooLargeError extends ResolveURLError {
+	readonly display: LocalizedText = {
+		en: "Failed to load: file too large for this source",
+		zh: "加载失败：文件超出该来源的下载上限",
+	};
+
+	constructor(
+		readonly url: string,
+		/** 总长已知时给出；HEAD 失败或未带 content-length 时为 undefined */
+		readonly sizeBytes: number | undefined,
+		readonly limitBytes: number,
+	) {
+		super(
+			`Whole-body download of ${url} refused: size ${
+				sizeBytes == null ? "unknown" : `${sizeBytes} bytes`
+			}, limit ${limitBytes}`,
+		);
+		this.name = "WholeBodyTooLargeError";
+	}
+}
+
+/**
+ * 分块下载的分块边界、总长与实际字节数互相矛盾。
+ * 属于内容级失败：同一 CID 的内容在所有来源一致，换源没有意义。
+ */
+export class DownloadIntegrityError extends ResolveURLError {
+	readonly display: LocalizedText = {
+		en: "Failed to load: incomplete download",
+		zh: "加载失败：下载内容不完整",
+	};
+
+	constructor(
+		readonly url: string,
+		readonly detail: string,
+	) {
+		super(`Download integrity check failed for ${url}: ${detail}`);
+		this.name = "DownloadIntegrityError";
+	}
+}

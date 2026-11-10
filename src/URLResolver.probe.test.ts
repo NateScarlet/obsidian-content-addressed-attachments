@@ -36,11 +36,18 @@ describe("URLResolver probe", () => {
 		}
 	}
 
-	/** 收集 requestUrl 收到的请求 URL（完整下载只走 requestUrl）。 */
+	/** 收集 requestUrl 收到的完整下载（GET）URL；能力查询（HEAD）不计入。 */
 	function getCallURLs(): string[] {
 		return vi
 			.mocked(requestUrl)
-			.mock.calls.map(([options]) =>
+			.mock.calls.filter(([options]) => {
+				const method =
+					typeof options === "string"
+						? "GET"
+						: (options.method ?? "GET");
+				return method === "GET";
+			})
+			.map(([options]) =>
 				typeof options === "string" ? options : options.url,
 			);
 	}
@@ -65,6 +72,10 @@ describe("URLResolver probe", () => {
 							? input.href
 							: input.url;
 				fetchCalls.push({ url, init: init ?? {} });
+				// 完整下载的 CORS fetch 默认视为被拦截，走 requestUrl 回退
+				if ((init?.method ?? "GET") !== "HEAD") {
+					return Promise.reject(new TypeError("Failed to fetch"));
+				}
 				let resolve!: (v: Response) => void;
 				let reject!: (e: unknown) => void;
 				const promise = new Promise<Response>((res, rej) => {

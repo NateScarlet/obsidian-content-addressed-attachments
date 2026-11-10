@@ -16,6 +16,21 @@ export interface CASDirCopy {
 	stat: Stat;
 }
 
+/**
+ * 待落盘的字节来源。
+ *
+ * CAS 只按块消费它，实现方不必把内容整体放进内存。`open()` 每次调用都返回一个
+ * 新的异步迭代器；消费方提前结束迭代（含抛错与中止）即表示取消，迭代器应停止
+ * 继续拉取数据并释放底层资源。
+ */
+export interface ByteSource {
+	name: string;
+	type?: string;
+	/** 已知时给出；流式下载在首块之前未知，可省略 */
+	size?: number;
+	open(): AsyncIterable<Uint8Array>;
+}
+
 export interface CAS {
 	formatRelPath(cid: CID): string;
 	formatNormalizePath(dir: string, cid: CID): string;
@@ -35,7 +50,14 @@ export interface CAS {
 	 * 供后台索引追平按磁盘真相重建副本状态；这是磁盘探测，不依赖元数据库。
 	 */
 	collectCopies(cid: CID): Promise<{ dir: string; trashedAt?: Date }[]>;
-	save(dir: string, file: File): Promise<{ cid: CID; didCreate: boolean }>;
+	/**
+	 * 把字节来源按块写入 CAS，返回内容的 CID。
+	 * 分块流式写盘并增量计算摘要，峰值内存只与块大小同阶，与对象总大小无关。
+	 */
+	save(
+		dir: string,
+		source: ByteSource,
+	): Promise<{ cid: CID; didCreate: boolean }>;
 	deleteIfTrashed(cid: CID): Promise<number>;
 	/**
 	 * 直接遍历指定目录的正常副本（`dir/XX/{cid}.data`），逐个产出其 CID、

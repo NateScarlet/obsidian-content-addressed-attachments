@@ -3,6 +3,9 @@ import {
 	settingsFromInput,
 	getDefaultSettings,
 	getDownloadDirs,
+	DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+	normalizeMaxWholeBodyBytes,
+	normalizeMaxWholeBodyBytesInput,
 } from "./settings";
 
 describe("settingsFromInput", () => {
@@ -185,6 +188,67 @@ describe("下载目录保留期与配额", () => {
 		});
 		expect(result.downloadRetentionDays).toBe(7);
 		expect(result.downloadQuotaBytes).toBe(0);
+	});
+});
+
+describe("整包下载上限", () => {
+	it("缺省时使用默认上限，v0 迁移同样带上", () => {
+		const defaults = getDefaultSettings();
+		expect(defaults.maxWholeBodyDownloadBytes).toBe(
+			DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+		);
+		expect(settingsFromInput({ version: 1 })).toEqual(defaults);
+		expect(
+			settingsFromInput({ version: undefined, casDir: "custom/cas" })
+				.maxWholeBodyDownloadBytes,
+		).toBe(DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES);
+	});
+
+	it("显式配置的字节数原样保留", () => {
+		expect(
+			settingsFromInput({
+				version: 1,
+				maxWholeBodyDownloadBytes: 8 * 1024 * 1024,
+			}).maxWholeBodyDownloadBytes,
+		).toBe(8 * 1024 * 1024);
+	});
+
+	it("负数钳到 0，表示永不允许整包下载", () => {
+		expect(
+			settingsFromInput({ version: 1, maxWholeBodyDownloadBytes: -5 })
+				.maxWholeBodyDownloadBytes,
+		).toBe(0);
+	});
+
+	it("非有限数值回落到默认上限", () => {
+		expect(
+			settingsFromInput({
+				version: 1,
+				maxWholeBodyDownloadBytes: Number.NaN,
+			}).maxWholeBodyDownloadBytes,
+		).toBe(DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES);
+	});
+
+	it("界面输入按 MB 解析，空输入回落到默认上限而不是 0", () => {
+		expect(normalizeMaxWholeBodyBytesInput("8")).toBe(8 * 1024 * 1024);
+		expect(normalizeMaxWholeBodyBytesInput("0")).toBe(0);
+		expect(normalizeMaxWholeBodyBytesInput("")).toBe(
+			DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+		);
+		expect(normalizeMaxWholeBodyBytesInput("abc")).toBe(
+			DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+		);
+	});
+
+	it("归一函数对非法值保持默认，负值钳到 0", () => {
+		expect(normalizeMaxWholeBodyBytes(undefined)).toBe(
+			DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+		);
+		expect(normalizeMaxWholeBodyBytes(Number.POSITIVE_INFINITY)).toBe(
+			DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+		);
+		expect(normalizeMaxWholeBodyBytes(-1)).toBe(0);
+		expect(normalizeMaxWholeBodyBytes(0)).toBe(0);
 	});
 });
 

@@ -2,6 +2,7 @@ import { App, TFile } from "obsidian";
 // TODO: Refactor batch link traversal using VaultLinkTransformer
 import type ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
+import fileToByteSource from "./utils/fileToByteSource";
 import { LockProgressModal } from "./ui/LockProgressModal";
 import { requestUrl } from "obsidian";
 import { basename } from "path-browserify";
@@ -414,7 +415,10 @@ export class LockManager {
 				this.plugin.settings.downloadDir ||
 				this.plugin.settings.primaryDir;
 
-			const { cid } = await this.plugin.cas.save(dir, fileObj);
+			const { cid } = await this.plugin.cas.save(
+				dir,
+				fileToByteSource(fileObj),
+			);
 
 			// 创建新的锁定链接格式
 			const newURL = `internal.ipfs-locked:${cid.toString()},${url}`;

@@ -2,6 +2,7 @@ import { App, TFile, type LinkCache } from "obsidian";
 // TODO: Refactor batch link traversal using VaultLinkTransformer
 import ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
+import fileToByteSource from "./utils/fileToByteSource";
 import { MigrationProgressModal } from "./ui/MigrationProgressModal";
 
 //#region 国际化字符串
@@ -394,7 +395,7 @@ export class MigrationManager {
 
 			const { cid } = await this.plugin.cas.save(
 				this.plugin.settings.primaryDir,
-				fileObj,
+				fileToByteSource(fileObj),
 			);
 
 			const url = new URL(`ipfs://${cid.toString()}`);

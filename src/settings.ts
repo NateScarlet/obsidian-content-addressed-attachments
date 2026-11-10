@@ -35,6 +35,11 @@ export interface Settings {
 	 * ≤0 表示不启用自动清理。仅被 URL 模板为空的网关使用的目录不参与配额。
 	 */
 	downloadQuotaBytes: number;
+	/**
+	 * 整包下载上限（字节）：来源既不能流式读取也不能按 Range 下载时，超过该值的对象
+	 * 直接失败，不发出会带回整包 body 的请求；≤0 表示永不允许整包下载。
+	 */
+	maxWholeBodyDownloadBytes: number;
 	gateways: GatewayConfig[];
 	/** 按 URL 前缀匹配的全局请求头规则 */
 	headerRules: HeaderRule[];
@@ -51,6 +56,8 @@ export const DEFAULT_DECRYPTED_CACHE_DIR = "";
 export const DEFAULT_DOWNLOAD_RETENTION_DAYS = 7;
 /** 默认下载配额（字节）：0 表示不启用基于配额的自动清理 */
 export const DEFAULT_DOWNLOAD_QUOTA_BYTES = 0;
+/** 默认允许整包下载的最大字节数：无流式、无 Range 的来源超过它就直接失败 */
+export const DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES = 32 * 1024 * 1024;
 
 interface SettingsV0 {
 	version: undefined;
@@ -69,6 +76,7 @@ interface SettingsV1Input {
 	downloadDir?: string;
 	downloadRetentionDays?: number;
 	downloadQuotaBytes?: number;
+	maxWholeBodyDownloadBytes?: number;
 	gateways?: GatewayConfig[];
 	headerRules?: HeaderRule[];
 	encryptPathRules?: EncryptPathRule[];
@@ -98,6 +106,17 @@ function normalizeQuotaBytes(value: number | undefined): number {
 		: DEFAULT_DOWNLOAD_QUOTA_BYTES;
 }
 
+/**
+ * 整包下载上限归一：缺失或非有限数值回落到默认上限（保守：保留整包兜底）；
+ * 负值钳到 0（上限 0 的字面语义即永不允许整包下载）。
+ */
+export function normalizeMaxWholeBodyBytes(value: number | undefined): number {
+	if (value == null || !Number.isFinite(value)) {
+		return DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES;
+	}
+	return value < 0 ? 0 : value;
+}
+
 /** 下载配额的界面输入单位（兆字节） */
 export const BYTES_PER_MB = 1024 * 1024;
 
@@ -115,6 +134,17 @@ export function normalizeRetentionDaysInput(value: string): number {
 export function normalizeQuotaBytesInput(value: string): number {
 	const mb = value.trim() === "" ? Number.NaN : Number(value);
 	return normalizeQuotaBytes(
+		Number.isFinite(mb) ? mb * BYTES_PER_MB : Number.NaN,
+	);
+}
+
+/**
+ * 整包下载上限文本输入（MB）归一为字节。
+ * 空输入回落到默认上限而不是 0——0 的字面语义是永不允许整包下载。
+ */
+export function normalizeMaxWholeBodyBytesInput(value: string): number {
+	const mb = value.trim() === "" ? Number.NaN : Number(value);
+	return normalizeMaxWholeBodyBytes(
 		Number.isFinite(mb) ? mb * BYTES_PER_MB : Number.NaN,
 	);
 }
@@ -154,6 +184,9 @@ export function settingsFromInput(
 				v1.downloadRetentionDays,
 			),
 			downloadQuotaBytes: normalizeQuotaBytes(v1.downloadQuotaBytes),
+			maxWholeBodyDownloadBytes: normalizeMaxWholeBodyBytes(
+				v1.maxWholeBodyDownloadBytes,
+			),
 			headerRules: v1.headerRules ?? [],
 			encryptPathRules: v1.encryptPathRules ?? [],
 			maxBlobSize: v1.maxBlobSize ?? DEFAULT_MAX_BLOB_SIZE,
@@ -195,6 +228,7 @@ export function getDefaultSettings(): Settings {
 		downloadDir: "",
 		downloadRetentionDays: DEFAULT_DOWNLOAD_RETENTION_DAYS,
 		downloadQuotaBytes: DEFAULT_DOWNLOAD_QUOTA_BYTES,
+		maxWholeBodyDownloadBytes: DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
 		gateways: [
 			{
 				name: "IPFS.io",

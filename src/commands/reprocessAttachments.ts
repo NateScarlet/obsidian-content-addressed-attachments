@@ -8,6 +8,7 @@ import { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
 import IPFSLink from "#src/utils/IPFSLink";
 import VaultLinkTransformer from "#src/utils/VaultLinkTransformer";
 import defineLocales from "#src/utils/defineLocales";
+import fileToByteSource from "#src/utils/fileToByteSource";
 import ProgressModal from "#src/ui/ProgressModal";
 import SingleFlightGroup from "#src/utils/SingleFlightGroup";
 import trashIfUnreferenced from "./trashIfUnreferenced";
@@ -146,7 +147,10 @@ async function reprocessSingleLink(
 		)) ?? transformedFile;
 
 	// 保存新文件
-	const { cid: newCid } = await ctx.cas.save(ctx.dir, fileToSave);
+	const { cid: newCid } = await ctx.cas.save(
+		ctx.dir,
+		fileToByteSource(fileToSave),
+	);
 
 	// 清理旧文件
 	if (!newCid.equals(parsed.cid)) {

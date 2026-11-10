@@ -2,7 +2,8 @@ import { CID } from "multiformats/cid";
 import { base32upper } from "multiformats/bases/base32";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
-import { App, getBlobArrayBuffer } from "obsidian";
+import * as Digest from "multiformats/hashes/digest";
+import { App } from "obsidian";
 import makeDirs from "#src/utils/makeDirs";
 import { mergeCopies } from "#src/utils/casCopies";
 import { basename, dirname, join } from "path-browserify";
@@ -10,13 +11,42 @@ import { shuffle } from "es-toolkit";
 import orderedParallelMap, {
 	DEFAULT_PARALLEL_LIMIT,
 } from "#src/utils/orderedParallelMap";
-import type { CAS, CASDirCopy, CASWriteGuard } from "#src/types/CAS";
+import StreamingSha256 from "#src/utils/streamingSha256";
+import type {
+	ByteSource,
+	CAS,
+	CASDirCopy,
+	CASWriteGuard,
+} from "#src/types/CAS";
 import type {
 	CASMetadata,
 	CASMetadataCopy,
 	CASMetadataObject,
 } from "#src/types/CASMetadata";
 import type { CASMetadataSync } from "#src/types/CASMetadataSync";
+
+/**
+ * 写盘批次大小：流式下载的块常见只有数 KB，逐块调用 adapter 会拖垮移动端 IO，
+ * 因此先合并到该大小再一次性写入。
+ */
+const WRITE_BATCH_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 临时文件所在子目录。名字不是 2 字符的分片目录名，CAS 的目录遍历不会把它
+ * 当作副本；与正式副本同一个目录树，完成后可原地改名而不跨文件系统。
+ */
+const TEMP_DIR_NAME = ".incoming";
+
+/** 把若干块拼成一个连续缓冲区，供一次写盘 */
+function concatChunks(chunks: Uint8Array[], totalBytes: number): ArrayBuffer {
+	const merged = new Uint8Array(totalBytes);
+	let offset = 0;
+	for (const chunk of chunks) {
+		merged.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return merged.buffer;
+}
 
 export class CASImpl implements CAS {
 	private trashRelPath = ".trash";
@@ -484,45 +514,120 @@ export class CASImpl implements CAS {
 		return count;
 	}
 
+	/**
+	 * 流式保存：边读边写临时文件并增量计算 CID，完成后改名到正式路径。
+	 * 半截内容只可能留在临时目录，正式路径上不会出现不完整副本。
+	 */
 	async save(
 		dir: string,
-		file: File,
+		source: ByteSource,
 	): Promise<{ cid: CID; didCreate: boolean }> {
-		const arrayBuffer = await getBlobArrayBuffer(file);
-		const cid = await this.generateCID(arrayBuffer);
-		const relPath = this.formatRelPath(cid);
-		const filePath = this.getFilePath(dir, relPath);
-		const exists = await this.app.vault.adapter.exists(filePath);
+		const adapter = this.app.vault.adapter;
+		const tempPath = join(
+			dir,
+			TEMP_DIR_NAME,
+			`${crypto.randomUUID()}.part`,
+		);
+		const hasher = new StreamingSha256();
+		let size = 0;
+		let wroteTemp = false;
+		let pending: Uint8Array[] = [];
+		let pendingBytes = 0;
 
-		if (exists) {
-			console.debug("save", {
-				filename: file.name,
-				filePath,
-				didCreate: false,
+		const flush = async () => {
+			if (pendingBytes === 0) return;
+			const data = concatChunks(pending, pendingBytes);
+			pending = [];
+			pendingBytes = 0;
+			if (wroteTemp) {
+				await adapter.appendBinary(tempPath, data);
+				return;
+			}
+			await makeDirs(this.app.vault, dirname(tempPath));
+			await adapter.writeBinary(tempPath, data);
+			wroteTemp = true;
+		};
+
+		let tempMoved = false;
+		try {
+			for await (const chunk of source.open()) {
+				hasher.update(chunk);
+				size += chunk.byteLength;
+				pending.push(chunk);
+				pendingBytes += chunk.byteLength;
+				if (pendingBytes >= WRITE_BATCH_BYTES) {
+					await flush();
+				}
+			}
+			await flush();
+			if (!wroteTemp) {
+				// 空内容也要落下空文件，否则改名时源文件不存在
+				await makeDirs(this.app.vault, dirname(tempPath));
+				await adapter.writeBinary(tempPath, new ArrayBuffer(0));
+				wroteTemp = true;
+			}
+
+			const cid = CID.create(
+				1,
+				raw.code,
+				Digest.create(sha256.code, hasher.digest()),
+			);
+			const relPath = this.formatRelPath(cid);
+			const filePath = this.getFilePath(dir, relPath);
+
+			if (await adapter.exists(filePath)) {
+				console.debug("save", {
+					filename: source.name,
+					filePath,
+					didCreate: false,
+				});
+				return { cid, didCreate: false };
+			}
+
+			// 落盘前交给写入策略把关：去重命中不新增副本，不触发清理；
+			// 大小已知时用声明值，流式下载在拿到总长后用实际值
+			await this.guard(dir, source.size ?? size);
+
+			await makeDirs(this.app.vault, dirname(filePath));
+			try {
+				await adapter.rename(tempPath, filePath);
+				tempMoved = true;
+			} catch (err) {
+				// 并发写入同一内容时目标可能已被另一路创建：按去重命中处理
+				if (!(await adapter.exists(filePath))) {
+					throw err;
+				}
+				console.debug("save", {
+					filename: source.name,
+					filePath,
+					didCreate: false,
+				});
+				return { cid, didCreate: false };
+			}
+
+			// 落盘成功后仅发布失效信号，由后台消费者按磁盘真相追平索引（不阻塞本调用）
+			this.sync.notifyChanged({
+				cid,
+				filename: source.name,
+				format: source.type,
+				size,
 			});
-			return { cid, didCreate: false };
+
+			console.debug("save", {
+				filename: source.name,
+				filePath,
+				didCreate: true,
+			});
+			return { cid, didCreate: true };
+		} finally {
+			if (!tempMoved) {
+				// 失败或取消：临时文件（含只写了一半的）不得留在 CAS 目录里。
+				// 清理失败原样上抛而不吞成日志——残留的临时文件需要被看见
+				if (await adapter.exists(tempPath)) {
+					await adapter.remove(tempPath);
+				}
+			}
 		}
-
-		// 落盘前交给上层写入策略把关（如下载配额自动清理）；去重命中不新增副本，无需触发
-		await this.guard(dir, file.size);
-
-		await makeDirs(this.app.vault, dirname(filePath));
-		await this.app.vault.adapter.writeBinary(filePath, arrayBuffer);
-
-		// 落盘成功后仅发布失效信号，由后台消费者按磁盘真相追平索引（不阻塞本调用）
-		this.sync.notifyChanged({
-			cid,
-			filename: file.name,
-			format: file.type,
-			size: file.size,
-		});
-
-		console.debug("save", {
-			filename: file.name,
-			filePath,
-			didCreate: true,
-		});
-		return { cid, didCreate: true };
 	}
 
 	formatRelPath(cid: CID): string {

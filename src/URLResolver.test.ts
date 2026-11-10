@@ -15,6 +15,7 @@ import {
 	AllSourcesFailedError,
 	DecryptionFailedError,
 	InvalidContentIDError,
+	WholeBodyTooLargeError,
 } from "./ResolveURLError";
 import { getDefaultSettings, type Settings } from "./settings";
 
@@ -110,6 +111,11 @@ describe("URLResolver", () => {
 							? input.href
 							: input.url;
 				fetchCalls.push({ url, init: init ?? {} });
+				// 完整下载的 CORS fetch 默认视为被拦截，走 requestUrl 回退；
+				// 需要测 fetch 流式分支的用例改在 createRemoteByteSource.test.ts
+				if ((init?.method ?? "GET") !== "HEAD") {
+					return Promise.reject(new TypeError("Failed to fetch"));
+				}
 				let resolve!: (v: Response) => void;
 				let reject!: (e: unknown) => void;
 				const promise = new Promise<Response>((res, rej) => {
@@ -169,6 +175,23 @@ describe("URLResolver", () => {
 	function noticeInstances() {
 		return (Notice as unknown as { instances: { message: string }[] })
 			.instances;
+	}
+
+	/** HEAD 能力查询响应：默认不支持 Range，使下载回退到整包请求 */
+	function headResponse(): RequestUrlResponse {
+		return {
+			status: 200,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			json: {},
+			text: "",
+		};
+	}
+
+	/** 判断 requestUrl 调用是否为 HEAD 能力查询 */
+	function isHeadRequest(request: Parameters<typeof requestUrl>[0]): boolean {
+		const method = typeof request === "string" ? "" : request.method;
+		return (method ?? "").toUpperCase() === "HEAD";
 	}
 
 	let mockApp: App;
@@ -708,6 +731,7 @@ describe("URLResolver", () => {
 		const gw2Get = deferred();
 
 		vi.mocked(requestUrl).mockImplementation((request) => {
+			if (isHeadRequest(request)) return mockResponse(headResponse());
 			const url = typeof request === "string" ? request : request.url;
 			if (url.startsWith("https://gw1")) return gw1Get.promise;
 			if (url.startsWith("https://gw2")) return gw2Get.promise;
@@ -781,6 +805,7 @@ describe("URLResolver", () => {
 		const gw2Get = deferred();
 
 		vi.mocked(requestUrl).mockImplementation((request) => {
+			if (isHeadRequest(request)) return mockResponse(headResponse());
 			const url = typeof request === "string" ? request : request.url;
 			if (url.startsWith("https://gw1")) return gw1Get.promise;
 			if (url.startsWith("https://gw2")) return gw2Get.promise;
@@ -826,7 +851,7 @@ describe("URLResolver", () => {
 
 		// 快网关完整下载失败（404 视为合法缺失），才轮到慢网关
 		gw2Get.resolve(missingResponse());
-		await flushMicrotasks();
+		await flushMicrotasks(16);
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gw1")),
 		).toHaveLength(1);
@@ -902,6 +927,72 @@ describe("URLResolver", () => {
 		).toHaveLength(1);
 	});
 
+	it("downloads through the fetch stream when the source allows CORS", async () => {
+		const content = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+		// eslint-disable-next-line no-restricted-globals -- 测试需要接管全局 fetch：流式下载通道只能用 fetch
+		const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+		// eslint-disable-next-line no-restricted-globals -- 同上
+		vi.mocked(fetch).mockImplementation((input, init) => {
+			if ((init?.method ?? "GET") === "HEAD")
+				return baseFetch(input, init);
+			return Promise.resolve({
+				status: 200,
+				headers: new Headers({ "content-type": "video/mp4" }),
+				body: new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(content.subarray(0, 3));
+						controller.enqueue(content.subarray(3));
+						controller.close();
+					},
+				}),
+			} as unknown as Response);
+		});
+
+		const resultPromise = resolver.resolveURL(
+			`ipfs://${dummyCIDStr}?filename=clip.mp4`,
+		);
+		await passProbeStage();
+		const result = await resultPromise;
+
+		expect(result).toBeDefined();
+		// 完整下载走 fetch 流，不发出 requestUrl 的 GET
+		expect(requestURLsFor("GET", () => true)).toHaveLength(0);
+		// eslint-disable-next-line @typescript-eslint/unbound-method
+		const source = vi.mocked(mockCas.save).mock.calls[0][1];
+		expect(source.name).toBe("clip.mp4");
+		expect(source.type).toBe("video/mp4");
+		const chunks: Uint8Array[] = [];
+		for await (const chunk of source.open()) {
+			chunks.push(chunk);
+		}
+		expect(chunks.map((chunk) => chunk.byteLength)).toEqual([3, 5]);
+	});
+
+	it("surfaces the whole-body size rejection when no source supports streaming or Range", async () => {
+		settings.maxWholeBodyDownloadBytes = 1024;
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const method =
+				typeof request === "string" ? "GET" : (request.method ?? "GET");
+			if (method === "HEAD") {
+				return mockResponse({
+					status: 200,
+					headers: { "content-length": "2048" },
+					arrayBuffer: new ArrayBuffer(0),
+					json: {},
+					text: "",
+				});
+			}
+			throw new Error("should not issue a whole-body GET");
+		});
+
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await passProbeStage();
+
+		await expect(resultPromise).rejects.toBeInstanceOf(
+			WholeBodyTooLargeError,
+		);
+	});
+
 	it("prefers the locked URL source when both source and gateway are reachable", async () => {
 		const sourceURL = "https://source.example.com/image.png";
 		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
@@ -918,6 +1009,7 @@ describe("URLResolver", () => {
 		const gatewayGet = deferred();
 
 		vi.mocked(requestUrl).mockImplementation((request) => {
+			if (isHeadRequest(request)) return mockResponse(headResponse());
 			const url = typeof request === "string" ? request : request.url;
 			if (url === sourceURL) return sourceGet.promise;
 			if (url.startsWith("https://gateway")) return gatewayGet.promise;

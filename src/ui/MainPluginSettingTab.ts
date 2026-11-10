@@ -4,6 +4,8 @@ import defineLocales from "../utils/defineLocales";
 import {
 	BYTES_PER_MB,
 	DEFAULT_DOWNLOAD_RETENTION_DAYS,
+	DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES,
+	normalizeMaxWholeBodyBytesInput,
 	normalizeQuotaBytesInput,
 	normalizeRetentionDaysInput,
 } from "../settings";
@@ -107,6 +109,30 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.downloadQuotaBytes =
 							normalizeQuotaBytesInput(value);
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName(t("maxWholeBodyDownload"))
+			.setDesc(t("maxWholeBodyDownloadDesc"))
+			.addText((text) =>
+				text
+					.setPlaceholder(
+						String(
+							DEFAULT_MAX_WHOLE_BODY_DOWNLOAD_BYTES /
+								BYTES_PER_MB,
+						),
+					)
+					.setValue(
+						String(
+							this.plugin.settings.maxWholeBodyDownloadBytes /
+								BYTES_PER_MB,
+						),
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.maxWholeBodyDownloadBytes =
+							normalizeMaxWholeBodyBytesInput(value);
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -511,6 +537,9 @@ const { t } = defineLocales({
 		downloadQuota: "Download quota (MB)",
 		downloadQuotaDesc:
 			"The download directories used for fetching (the global one and the ones of gateways with a URL template) are counted here. When their total exceeds this, expired copies are cleaned up automatically before a new copy is written. 0 or less disables automatic cleanup. Directories of read-only gateways (empty URL template) are neither counted nor cleaned up automatically.",
+		maxWholeBodyDownload: "Max in-memory download size (MB)",
+		maxWholeBodyDownloadDesc:
+			"Only used when a source supports neither streaming nor Range downloads: larger files fail instead of being fetched in one piece. 0 or less never allows whole-file downloads.",
 		...cleanDownloadDirMessages.en,
 		gateways: "Gateways",
 		gatewaysDesc:
@@ -566,6 +595,9 @@ const { t } = defineLocales({
 		downloadQuota: "下载配额（MB）",
 		downloadQuotaDesc:
 			"统计范围是插件用于下载的目录（全局下载目录与有网址的网关目录）：合计占用超过该值时，写入新副本之前自动清理超期副本。0 或更小的值表示不启用自动清理。仅用于读取的网关（网址为空）的下载目录既不计入统计，也不会被自动清理。",
+		maxWholeBodyDownload: "整包下载上限（MB）",
+		maxWholeBodyDownloadDesc:
+			"仅在来源既不支持流式读取也不支持 Range 下载时生效：超过该大小的文件直接失败，不会整包读入内存。0 或更小的值表示永不允许整包下载。",
 		...cleanDownloadDirMessages.zh,
 		gateways: "网关",
 		gatewaysDesc:
