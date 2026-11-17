@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.17](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.16...0.1.17) (2026-11-17)
+
+
+### Features
+
+* **cli:** add resolve subcommand for attachment content ([245ab57](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/245ab575adc156f2ce08608ca2f9cd4bdeb83e8f)), closes [#23](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/23)
+* render secret placeholders in outbound header values ([5c3ca60](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/5c3ca60c92808a9a02131e334b853901bd001613)), closes [#25](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/25)
+
 ## [0.1.16](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.15...0.1.16) (2026-11-10)
 
 
