@@ -39,6 +39,7 @@ import { uniq } from "es-toolkit";
 import createPluginContext from "./createPluginContext";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
+import { createCLIResolveHandler } from "./commands/resolveCLI";
 import { enforceDownloadQuota } from "./commands/cleanDownloadDir";
 import {
 	createReprocessContext,
@@ -220,6 +221,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				this.encryptionService,
 			),
 		);
+
+		this.registerResolveCLIHandler();
+
 		this.migrationManager = this.stack.use(new MigrationManager(this));
 		this.lockManager = this.stack.use(new LockManager(this));
 
@@ -553,6 +557,41 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.process().catch(showError);
 	}
 
+	/** 注册原生 CLI 子命令；旧版 Obsidian 没有该 API 时跳过，不影响插件加载 */
+	private registerResolveCLIHandler(): void {
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		if (typeof this.registerCliHandler !== "function") return;
+		// eslint-disable-next-line obsidianmd/no-unsupported-api
+		this.registerCliHandler(
+			"content-addressed-attachments:resolve",
+			t("cliResolveDescription"),
+			{
+				url: {
+					value: "<url>",
+					description: t("cliResolveURLDescription"),
+					required: true,
+				},
+			},
+			createCLIResolveHandler({
+				resolveURL: (rawURL) => this.urlResolver.resolveURL(rawURL),
+				getFullPath: (path) => {
+					// getFullPath 不在 DataAdapter 基础契约上，由桌面/移动端实现提供
+					const adapter = this.app.vault
+						.adapter as typeof this.app.vault.adapter & {
+						getFullPath?: (normalizedPath: string) => string;
+					};
+					if (typeof adapter.getFullPath !== "function") {
+						throw new Error(
+							"CLI resolve requires an adapter with getFullPath support",
+						);
+					}
+					return adapter.getFullPath(path);
+				},
+				getMaxBlobSize: () => this.settings.maxBlobSize,
+			}),
+		);
+	}
+
 	private async revealFileExplorer(): Promise<void> {
 		const { workspace } = this.app;
 		const leaf =
@@ -757,6 +796,10 @@ const { t } = defineLocales({
 			`Failed to load pre-processing script: ${url}`,
 		httpsScriptLocked: (url: string) =>
 			`HTTPS script locked to content: ${url}`,
+		cliResolveDescription:
+			"Resolve an attachment URL and output its content as JSON (ipfs:// or internal.ipfs-locked:)",
+		cliResolveURLDescription:
+			"Attachment URL to resolve (ipfs:// or internal.ipfs-locked:)",
 	},
 	zh: {
 		insertAttachment: "插入附件",
@@ -780,6 +823,10 @@ const { t } = defineLocales({
 		noScriptConfigured: "未配置预处理脚本",
 		scriptLoadFailed: (url: string) => `预处理脚本加载失败：${url}`,
 		httpsScriptLocked: (url: string) => `HTTPS 脚本已锁定内容：${url}`,
+		cliResolveDescription:
+			"解析附件 URL 并以 JSON 输出其内容（支持 ipfs:// 与 internal.ipfs-locked:）",
+		cliResolveURLDescription:
+			"要解析的附件 URL（ipfs:// 或 internal.ipfs-locked:）",
 	},
 });
 //#endregion
