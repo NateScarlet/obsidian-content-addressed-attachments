@@ -55,7 +55,7 @@ Obsidian 的本地与网络附件，按文件内容的 CID 分片存储与去重
 - **入口文件**：`src/main.ts`。经编译生成根目录的发布产物 `main.js`，由 Obsidian 加载。
 - **发布产物**：`main.js`、`manifest.json` 和可选的 `styles.css`。
 
-领域词汇见 [`CONTEXT.md`](./CONTEXT.md)（**仅词汇表**）；架构决策见 [`docs/adr/`](./docs/adr/)；
+领域词汇见 [`GLOSSARY.md`](./GLOSSARY.md)（**仅词汇表**）；架构决策见 [`docs/adr/`](./docs/adr/)；
 文档分层规则见 [`CODING_STANDARDS.md`](./CODING_STANDARDS.md#文档分层)。
 
 ## 目录结构
