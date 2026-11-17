@@ -4,9 +4,9 @@
 		en: {
 			headers: "Headers",
 			headersDescription:
-				"One header per line, format: Header-Name: header value",
+				"One header per line, format: Header-Name: header value. Use {{secrets.<id>}} to read a value from Obsidian Secure Storage.",
 			headersPlaceholder:
-				"e.g.:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
+				"e.g.:\nAuthorization: Bearer {{secrets.token}}\nUser-Agent: MyApp/1.0",
 			downloadDir: "Download directory",
 			downloadDirPlaceholder:
 				"Relative path to vault root. Defaults to global download directory.",
@@ -15,9 +15,9 @@
 		zh: {
 			headers: "请求头",
 			headersDescription:
-				"每行一个请求头，格式为: Header-Name: header value",
+				"每行一个请求头，格式为: Header-Name: header value。支持 {{secrets.<id>}} 从 Obsidian 钥匙串读取值。",
 			headersPlaceholder:
-				"例如:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
+				"例如:\nAuthorization: Bearer {{secrets.token}}\nUser-Agent: MyApp/1.0",
 			downloadDir: "下载目录",
 			downloadDirPlaceholder: "相对于存储库的根目录。默认为全局下载目录",
 			delete: "删除网关",

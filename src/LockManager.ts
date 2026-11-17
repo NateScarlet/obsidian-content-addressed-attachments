@@ -7,6 +7,7 @@ import { LockProgressModal } from "./ui/LockProgressModal";
 import { requestUrl } from "obsidian";
 import { basename } from "path-browserify";
 import { applyHeaderRules, headersToRecord } from "./utils/applyHeaderRules";
+import type { SecretReader } from "./utils/renderHeaderValue";
 
 export interface LockProgress {
 	status: "processing" | "completed" | "cancelled";
@@ -43,7 +44,10 @@ export class LockManager {
 	private app: App;
 	private currentStack: DisposableStack | undefined;
 
-	constructor(private plugin: ContentAddressedAttachmentPlugin) {
+	constructor(
+		private plugin: ContentAddressedAttachmentPlugin,
+		private readSecret: SecretReader,
+	) {
 		this.app = plugin.app;
 	}
 
@@ -384,7 +388,12 @@ export class LockManager {
 			}
 
 			const headers = new Headers();
-			applyHeaderRules(url, headers, this.plugin.settings.headerRules);
+			await applyHeaderRules(
+				url,
+				headers,
+				this.plugin.settings.headerRules,
+				this.readSecret,
+			);
 			const response = await requestUrl({
 				url,
 				headers: headersToRecord(headers),

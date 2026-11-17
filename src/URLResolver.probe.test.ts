@@ -11,6 +11,7 @@ import type { CAS } from "./types/CAS";
 import type EncryptionService from "./lib/encryption/EncryptionService";
 import { AllSourcesFailedError } from "./ResolveURLError";
 import { getDefaultSettings, type Settings } from "./settings";
+import type { SecretReader } from "./utils/renderHeaderValue";
 
 /**
  * 探测层行为测试：探测（no-cors HEAD fetch）的放行/出局/排序语义。
@@ -157,11 +158,13 @@ describe("URLResolver probe", () => {
 			],
 		};
 
+		const readSecret: SecretReader = () => undefined;
 		resolver = new URLResolver(
 			mockApp,
 			mockCas,
 			() => settings,
 			mockEncryptionService,
+			readSecret,
 		);
 	});
 

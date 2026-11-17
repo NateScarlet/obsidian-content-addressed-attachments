@@ -6,9 +6,9 @@
 			baseUrlPlaceholder: "e.g.: https://source.example.com",
 			headers: "Headers",
 			headersDescription:
-				"One header per line, format: Header-Name: header value",
+				"One header per line, format: Header-Name: header value. Use {{secrets.<id>}} to read a value from Obsidian Secure Storage.",
 			headersPlaceholder:
-				"e.g.:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
+				"e.g.:\nAuthorization: Bearer {{secrets.token}}\nUser-Agent: MyApp/1.0",
 			delete: "Delete rule",
 		},
 		zh: {
@@ -16,9 +16,9 @@
 			baseUrlPlaceholder: "例如: https://source.example.com",
 			headers: "请求头",
 			headersDescription:
-				"每行一个请求头，格式为: Header-Name: header value",
+				"每行一个请求头，格式为: Header-Name: header value。支持 {{secrets.<id>}} 从 Obsidian 钥匙串读取值。",
 			headersPlaceholder:
-				"例如:\nAuthorization: Bearer token\nUser-Agent: MyApp/1.0",
+				"例如:\nAuthorization: Bearer {{secrets.token}}\nUser-Agent: MyApp/1.0",
 			delete: "删除规则",
 		},
 	});

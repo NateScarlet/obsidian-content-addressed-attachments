@@ -20,6 +20,9 @@ import type EncryptionService from "./lib/encryption/EncryptionService";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import defineLocales from "./utils/defineLocales";
 import { applyHeaderRules } from "./utils/applyHeaderRules";
+import renderHeaderValue, {
+	type SecretReader,
+} from "./utils/renderHeaderValue";
 import openRemoteByteSource from "./openRemoteByteSource";
 
 // 模板数据类型接口
@@ -163,7 +166,7 @@ class DecryptedCacheManager {
 interface RemoteSource {
 	label: string;
 	getURL: () => string;
-	buildHeaders: () => Headers;
+	buildHeaders: () => Promise<Headers>;
 	getDir: () => string;
 }
 
@@ -180,6 +183,7 @@ export class URLResolver {
 		private cas: CAS,
 		private settings: () => Settings,
 		private encryptionService: EncryptionService,
+		private readSecret: SecretReader,
 	) {
 		this.cacheManager = new DecryptedCacheManager(
 			this.app.vault.adapter,
@@ -291,7 +295,12 @@ export class URLResolver {
 		signal?: AbortSignal,
 	): Promise<ResolveURLResult | undefined> {
 		const headers = new Headers();
-		applyHeaderRules(rawURL, headers, this.settings().headerRules);
+		await applyHeaderRules(
+			rawURL,
+			headers,
+			this.settings().headerRules,
+			this.readSecret,
+		);
 		const opened = await openRemoteByteSource({
 			url: rawURL,
 			headers,
@@ -492,7 +501,7 @@ export class URLResolver {
 		console.debug("GET", url);
 		const opened = await openRemoteByteSource({
 			url,
-			headers: source.buildHeaders(),
+			headers: await source.buildHeaders(),
 			signal,
 			maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
 			name: data.filename(),
@@ -541,11 +550,19 @@ export class URLResolver {
 					config.downloadDir ||
 					this.settings().downloadDir ||
 					this.settings().primaryDir,
-				buildHeaders: () => {
+				buildHeaders: async () => {
 					const headers = new Headers();
-					applyHeaderRules(url, headers, this.settings().headerRules);
+					await applyHeaderRules(
+						url,
+						headers,
+						this.settings().headerRules,
+						this.readSecret,
+					);
 					for (const [key, value] of config.headers) {
-						headers.set(key, value);
+						headers.set(
+							key,
+							await renderHeaderValue(value, this.readSecret),
+						);
 					}
 					if (!headers.has("Accept")) {
 						headers.set("Accept", data.format() || "*/*");
@@ -560,9 +577,14 @@ export class URLResolver {
 				getURL: () => url,
 				getDir: () =>
 					this.settings().downloadDir || this.settings().primaryDir,
-				buildHeaders: () => {
+				buildHeaders: async () => {
 					const headers = new Headers();
-					applyHeaderRules(url, headers, this.settings().headerRules);
+					await applyHeaderRules(
+						url,
+						headers,
+						this.settings().headerRules,
+						this.readSecret,
+					);
 					return headers;
 				},
 			});

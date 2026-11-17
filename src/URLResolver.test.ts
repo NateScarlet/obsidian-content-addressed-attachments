@@ -18,6 +18,7 @@ import {
 	WholeBodyTooLargeError,
 } from "./ResolveURLError";
 import { getDefaultSettings, type Settings } from "./settings";
+import type { SecretReader } from "./utils/renderHeaderValue";
 
 describe("URLResolver", () => {
 	const dummyCIDStr =
@@ -199,6 +200,7 @@ describe("URLResolver", () => {
 	let mockEncryptionService: EncryptionService;
 	let settings: Settings;
 	let resolver: URLResolver;
+	let mockReadSecret: SecretReader;
 
 	beforeEach(() => {
 		// 每个测试从干净的请求记录开始，避免跨用例累积影响断言
@@ -248,11 +250,13 @@ describe("URLResolver", () => {
 			],
 		};
 
+		mockReadSecret = vi.fn(() => undefined);
 		resolver = new URLResolver(
 			mockApp,
 			mockCas,
 			() => settings,
 			mockEncryptionService,
+			mockReadSecret,
 		);
 	});
 
@@ -1054,5 +1058,152 @@ describe("URLResolver", () => {
 		expect(
 			requestURLsFor("GET", (url) => url.startsWith("https://gateway")),
 		).toHaveLength(0);
+	});
+
+	it("renders secret placeholders in header rules for direct HTTP downloads", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "https://example.com",
+				headers: [["Authorization", "Bearer {{secrets.token}}"]],
+			},
+		];
+		vi.mocked(mockReadSecret).mockImplementation((id) =>
+			id === "token" ? "s3cr3t" : undefined,
+		);
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "text/plain" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		await resolver.resolveURL("https://example.com/data.txt");
+
+		const call = requestCallFor(
+			(url) => url === "https://example.com/data.txt",
+		);
+		expect(getHeader(call?.headers ?? {}, "Authorization")).toBe(
+			"Bearer s3cr3t",
+		);
+	});
+
+	it("renders secret placeholders in gateway headers and global rules", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "https://gateway.com",
+				headers: [["X-Global", "{{secrets.global}}"]],
+			},
+		];
+		settings.gateways = [
+			{
+				name: "test-gw",
+				urlTemplate: "https://gateway.com/ipfs/{{cid}}",
+				headers: [
+					["Authorization", "Bearer {{secrets.token}}"],
+					["X-Mixed", "{{cid}} suffix {{secrets.token}}"],
+				],
+				enabled: true,
+			},
+		];
+		vi.mocked(mockReadSecret).mockImplementation((id) => {
+			if (id === "token") return "t-value";
+			if (id === "global") return "g-value";
+			return undefined;
+		});
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "image/png" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		const resultPromise = resolver.resolveURL(`ipfs://${dummyCIDStr}`);
+		await passProbeStage();
+		await resultPromise;
+
+		const call = requestCallFor((url) =>
+			url.startsWith("https://gateway.com/ipfs/"),
+		);
+		expect(getHeader(call?.headers ?? {}, "Authorization")).toBe(
+			"Bearer t-value",
+		);
+		expect(getHeader(call?.headers ?? {}, "X-Global")).toBe("g-value");
+		// 非 secrets 命名空间的 Mustache 标签保持原样
+		expect(getHeader(call?.headers ?? {}, "X-Mixed")).toBe(
+			"{{cid}} suffix t-value",
+		);
+	});
+
+	it("renders secret placeholders in header rules for extraURL sources", async () => {
+		const sourceURL = "https://source.example.com/image.png";
+		const lockedURL = `internal.ipfs-locked:${dummyCIDStr},${sourceURL}`;
+		settings.headerRules = [
+			{
+				baseUrl: "https://source.example.com",
+				headers: [["Authorization", "Bearer {{secrets.token}}"]],
+			},
+		];
+		vi.mocked(mockReadSecret).mockImplementation((id) =>
+			id === "token" ? "locked-value" : undefined,
+		);
+		vi.mocked(requestUrl).mockImplementation((request) => {
+			const url = typeof request === "string" ? request : request.url;
+			if (url === sourceURL) {
+				return mockResponse({
+					status: 200,
+					headers: { "content-type": "image/png" },
+					arrayBuffer: new ArrayBuffer(8),
+					json: {},
+					text: "",
+				});
+			}
+			return mockResponse({
+				status: 404,
+				headers: {},
+				arrayBuffer: new ArrayBuffer(0),
+				json: {},
+				text: "",
+			});
+		});
+
+		const resultPromise = resolver.resolveURL(lockedURL);
+		await passProbeStage();
+		expect(await resultPromise).toBeDefined();
+
+		const call = requestCallFor((url) => url === sourceURL);
+		expect(getHeader(call?.headers ?? {}, "Authorization")).toBe(
+			"Bearer locked-value",
+		);
+	});
+
+	it("keeps the placeholder and still sends the request when reading fails", async () => {
+		settings.headerRules = [
+			{
+				baseUrl: "https://example.com",
+				headers: [["X-Token", "{{secrets.token}}"]],
+			},
+		];
+		vi.mocked(mockReadSecret).mockImplementation(() => {
+			throw new Error("keychain unavailable");
+		});
+		vi.mocked(requestUrl).mockResolvedValue({
+			status: 200,
+			headers: { "content-type": "text/plain" },
+			arrayBuffer: new ArrayBuffer(8),
+			json: {},
+			text: "",
+		});
+
+		await resolver.resolveURL("https://example.com/data.txt");
+
+		const call = requestCallFor(
+			(url) => url === "https://example.com/data.txt",
+		);
+		expect(call).toBeDefined();
+		expect(getHeader(call?.headers ?? {}, "X-Token")).toBe(
+			"{{secrets.token}}",
+		);
 	});
 });

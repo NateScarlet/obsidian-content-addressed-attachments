@@ -58,6 +58,7 @@ import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
 import type { KeyStorage } from "./lib/encryption/types";
+import type { SecretReader } from "./utils/renderHeaderValue";
 import TransformPipeline from "./preprocess/TransformPipeline";
 import DefaultScriptLoader from "./preprocess/ScriptLoader";
 import type { ScriptLoader } from "./preprocess/types";
@@ -202,6 +203,9 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				return Promise.resolve([]);
 			},
 		};
+		// 出站 header 的 secret 读取能力：复用同一份 SecretStorage 封装，
+		// 每次请求实时读取；这里的 secret 与加密密钥互不相干。
+		const readSecret: SecretReader = (id) => storage.getSecret(id);
 		this.keyManager = new KeyManager(
 			storage,
 			() => this.settings,
@@ -219,13 +223,14 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 				this.cas,
 				() => this.settings,
 				this.encryptionService,
+				readSecret,
 			),
 		);
 
 		this.registerResolveCLIHandler();
 
 		this.migrationManager = this.stack.use(new MigrationManager(this));
-		this.lockManager = this.stack.use(new LockManager(this));
+		this.lockManager = this.stack.use(new LockManager(this, readSecret));
 
 		// 初始化预处理管线
 		this.scriptLoader = new DefaultScriptLoader(
