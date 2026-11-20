@@ -25,7 +25,8 @@
 
 <script lang="ts">
 	import clsx from "clsx";
-	import type { GatewayConfig, URLResolver } from "#src/URLResolver";
+	import type { GatewayConfig } from "#src/downloadDirPolicy";
+	import type { URLResolver } from "#src/URLResolver";
 	import castError from "../utils/castError";
 	import { EXAMPLE_URL } from "#src/settings";
 

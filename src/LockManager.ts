@@ -8,6 +8,7 @@ import { requestUrl } from "obsidian";
 import { basename } from "path-browserify";
 import { applyHeaderRules, headersToRecord } from "./utils/applyHeaderRules";
 import type { SecretReader } from "./utils/renderHeaderValue";
+import { selectLandingDir } from "./downloadDirPolicy";
 
 export interface LockProgress {
 	status: "processing" | "completed" | "cancelled";
@@ -420,9 +421,11 @@ export class LockManager {
 					"application/octet-stream",
 			});
 
-			const dir =
-				this.plugin.settings.downloadDir ||
-				this.plugin.settings.primaryDir;
+			const dir = selectLandingDir(
+				undefined,
+				this.plugin.settings.downloadDir,
+				this.plugin.settings.primaryDir,
+			);
 
 			const { cid } = await this.plugin.cas.save(
 				dir,

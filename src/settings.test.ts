@@ -252,10 +252,10 @@ describe("整包下载上限", () => {
 	});
 });
 
-describe("getDownloadDirs 下载目录列表", () => {
-	it("包含仅用于读取的网关目录，去重并忽略空值", () => {
-		// 仅读取的目录仍需在读取范围内、也仍可在文件管理器中手动清理，
-		// 因此不因配额排除而从本列表消失（排除只作用于配额口径）
+describe("getDownloadDirs 设置读取函数", () => {
+	// 验证设置读取形态按当前设置返回完整目录（含仅用于读取的网关目录）；
+	// 口径规则本身由 downloadDirPolicy.test.ts 覆盖
+	it("按当前设置返回完整下载目录", () => {
 		const settings = settingsFromInput({
 			version: 1,
 			downloadDir: "dl",
@@ -268,30 +268,6 @@ describe("getDownloadDirs 下载目录列表", () => {
 					downloadDir: "external",
 				},
 				{
-					name: "远程",
-					urlTemplate: "https://gw.example/{{cid}}",
-					headers: [],
-					enabled: true,
-					downloadDir: "gw",
-				},
-				{
-					name: "无目录",
-					urlTemplate: "https://gw2.example/{{cid}}",
-					headers: [],
-					enabled: true,
-				},
-			],
-		});
-
-		expect(getDownloadDirs(settings)).toEqual(["dl", "external", "gw"]);
-	});
-
-	it("排除被禁用网关声明的目录，重新启用后恢复", () => {
-		const settings = settingsFromInput({
-			version: 1,
-			downloadDir: "dl",
-			gateways: [
-				{
 					name: "停用",
 					urlTemplate: "https://off.example/{{cid}}",
 					headers: [],
@@ -301,29 +277,9 @@ describe("getDownloadDirs 下载目录列表", () => {
 			],
 		});
 
-		// 禁用网关等价于不存在：不声明副本位置，其目录不在读取、清理与配额口径内
-		expect(getDownloadDirs(settings)).toEqual(["dl"]);
+		expect(getDownloadDirs(settings)).toEqual(["dl", "external"]);
 
-		settings.gateways[0].enabled = true;
-		expect(getDownloadDirs(settings)).toEqual(["dl", "off"]);
-	});
-
-	it("被禁用网关与全局下载目录重名时该目录仍在列表内", () => {
-		// 判据按目录集合而非配置来源：全局下载目录声明了它就仍参与
-		const settings = settingsFromInput({
-			version: 1,
-			downloadDir: "shared",
-			gateways: [
-				{
-					name: "停用",
-					urlTemplate: "https://off.example/{{cid}}",
-					headers: [],
-					enabled: false,
-					downloadDir: "shared",
-				},
-			],
-		});
-
-		expect(getDownloadDirs(settings)).toEqual(["shared"]);
+		settings.gateways[1].enabled = true;
+		expect(getDownloadDirs(settings)).toEqual(["dl", "external", "off"]);
 	});
 });

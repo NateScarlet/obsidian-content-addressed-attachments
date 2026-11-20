@@ -24,6 +24,11 @@ import renderHeaderValue, {
 	type SecretReader,
 } from "./utils/renderHeaderValue";
 import openRemoteByteSource from "./openRemoteByteSource";
+import {
+	gatewayProducesSource,
+	selectLandingDir,
+	type GatewayConfig,
+} from "./downloadDirPolicy";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -43,44 +48,6 @@ interface TemplateData {
 
 	// 辅助函数
 	encodeURI: TemplateLambda;
-}
-
-export interface GatewayConfig {
-	urlTemplate: string;
-	name: string;
-	headers: [key: string, value: string][];
-	enabled: boolean;
-	downloadDir?: string;
-}
-
-/**
- * 该网关是否会产生远程来源：URL 模板为空时渲染不出任何 URL，它退化为「仅从下载
- * 目录读取已有文件」，既不产生来源也不会让插件往它声明的目录落盘。
- * 下载配额据此排除这类目录（见 `cleanDownloadDir` 的 `quotaDirs`）。
- */
-export function gatewayProducesSource(config: {
-	urlTemplate: string;
-}): boolean {
-	return !!config.urlTemplate;
-}
-
-/**
- * 启用网关声明的下载目录（去重、忽略空值）。
- *
- * 禁用网关等价于不存在：它不作为来源（见 `buildRemoteSources`），因而不声明副本
- * 位置——其目录不进入任何下载目录口径，既不在读取范围与手动清理的「下载」标签页
- * 内，也不计入配额（见 `getDownloadDirs` 与 `quotaDirs`）。
- *
- * 判据按目录集合：同一目录若还被任一启用的配置声明，照常参与。
- */
-export function enabledGatewayDownloadDirs(
-	gateways: readonly Pick<GatewayConfig, "enabled" | "downloadDir">[],
-): string[] {
-	return [
-		...new Set(
-			gateways.filter((g) => g.enabled).map((g) => g.downloadDir ?? ""),
-		),
-	].filter(Boolean);
 }
 
 /** 按 URL 前缀匹配的全局请求头规则，命中任意远程请求时附加 headers */
@@ -314,7 +281,11 @@ export class URLResolver {
 		if (opened.status !== 200 || !opened.source) {
 			throw new Error(`HTTP ${opened.status} while resolving ${rawURL}`);
 		}
-		const dir = this.settings().downloadDir || this.settings().primaryDir;
+		const dir = selectLandingDir(
+			undefined,
+			this.settings().downloadDir,
+			this.settings().primaryDir,
+		);
 		const { cid } = await this.cas.save(dir, opened.source);
 		const path = this.cas.formatNormalizePath(dir, cid);
 		return {
@@ -547,9 +518,11 @@ export class URLResolver {
 				label: config.name,
 				getURL: () => url,
 				getDir: () =>
-					config.downloadDir ||
-					this.settings().downloadDir ||
-					this.settings().primaryDir,
+					selectLandingDir(
+						config,
+						this.settings().downloadDir,
+						this.settings().primaryDir,
+					),
 				buildHeaders: async () => {
 					const headers = new Headers();
 					await applyHeaderRules(
@@ -576,7 +549,11 @@ export class URLResolver {
 				label: url,
 				getURL: () => url,
 				getDir: () =>
-					this.settings().downloadDir || this.settings().primaryDir,
+					selectLandingDir(
+						undefined,
+						this.settings().downloadDir,
+						this.settings().primaryDir,
+					),
 				buildHeaders: async () => {
 					const headers = new Headers();
 					await applyHeaderRules(
