@@ -19,11 +19,12 @@ import { ENCRYPTED_FORMAT } from "./lib/encryption/types";
 import type EncryptionService from "./lib/encryption/EncryptionService";
 import createImagePlaceholderSVG from "./utils/createImagePlaceholderSVG";
 import defineLocales from "./utils/defineLocales";
-import { applyHeaderRules } from "./utils/applyHeaderRules";
 import renderHeaderValue, {
 	type SecretReader,
 } from "./utils/renderHeaderValue";
-import openRemoteByteSource from "./openRemoteByteSource";
+import saveRemoteToCAS, {
+	RemoteSourceUnavailableError,
+} from "./saveRemoteToCAS";
 import {
 	gatewayProducesSource,
 	selectLandingDir,
@@ -133,7 +134,8 @@ class DecryptedCacheManager {
 interface RemoteSource {
 	label: string;
 	getURL: () => string;
-	buildHeaders: () => Promise<Headers>;
+	/** 全局 header 规则之后追加的头（网关专属头、Accept 缺省值） */
+	decorateHeaders?: (headers: Headers) => Promise<void>;
 	getDir: () => string;
 }
 
@@ -261,37 +263,37 @@ export class URLResolver {
 		rawURL: string,
 		signal?: AbortSignal,
 	): Promise<ResolveURLResult | undefined> {
-		const headers = new Headers();
-		await applyHeaderRules(
-			rawURL,
-			headers,
-			this.settings().headerRules,
-			this.readSecret,
-		);
-		const opened = await openRemoteByteSource({
-			url: rawURL,
-			headers,
-			signal,
-			maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
-			name: rawURL.split("/").pop() || "download",
-		});
-		// 404 与 vault-relative 语义一致，视为合法的“资源不存在”；
-		// 其他状态码抛错让调用方可见，避免服务器故障被当成文件缺失静默吞掉
-		if (opened.status === 404) return undefined;
-		if (opened.status !== 200 || !opened.source) {
-			throw new Error(`HTTP ${opened.status} while resolving ${rawURL}`);
+		let saved;
+		try {
+			saved = await saveRemoteToCAS(this.cas, {
+				url: rawURL,
+				headerRules: this.settings().headerRules,
+				readSecret: this.readSecret,
+				dir: selectLandingDir(
+					undefined,
+					this.settings().downloadDir,
+					this.settings().primaryDir,
+				),
+				maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
+				signal,
+				name: rawURL.split("/").pop() || "download",
+			});
+		} catch (error) {
+			// 404 与 vault-relative 语义一致，视为合法的“资源不存在”；
+			// 其他状态码抛错让调用方可见，避免服务器故障被当成文件缺失静默吞掉
+			if (
+				error instanceof RemoteSourceUnavailableError &&
+				error.status === 404
+			) {
+				return undefined;
+			}
+			throw error;
 		}
-		const dir = selectLandingDir(
-			undefined,
-			this.settings().downloadDir,
-			this.settings().primaryDir,
-		);
-		const { cid } = await this.cas.save(dir, opened.source);
-		const path = this.cas.formatNormalizePath(dir, cid);
+		if (!saved) return undefined;
 		return {
-			path,
-			url: this.app.vault.adapter.getResourcePath(path),
-			cid,
+			path: saved.path,
+			url: this.app.vault.adapter.getResourcePath(saved.path),
+			cid: saved.cid,
 		};
 	}
 
@@ -470,26 +472,31 @@ export class URLResolver {
 	): Promise<ResolveURLResult | undefined> {
 		const url = source.getURL();
 		console.debug("GET", url);
-		const opened = await openRemoteByteSource({
-			url,
-			headers: await source.buildHeaders(),
-			signal,
-			maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
-			name: data.filename(),
-			fallbackType: data.format() || undefined,
-		});
-		if (opened.status !== 200 || !opened.source) {
-			return undefined;
-		}
-		const dir = source.getDir();
-		const { cid, didCreate } = await this.cas.save(dir, opened.source);
-		if (!cid.equals(data.cid)) {
-			if (didCreate) {
-				await this.cas.trash(cid);
+		let saved;
+		try {
+			saved = await saveRemoteToCAS(this.cas, {
+				url,
+				headerRules: this.settings().headerRules,
+				readSecret: this.readSecret,
+				decorateHeaders: source.decorateHeaders,
+				dir: source.getDir(),
+				maxWholeBodyBytes: this.settings().maxWholeBodyDownloadBytes,
+				signal,
+				name: data.filename(),
+				fallbackType: data.format() || undefined,
+				expectedCID: data.cid,
+			});
+		} catch (error) {
+			// 非 200 属于该来源失败（换下一个来源），不是全局错误；
+			// 网络/存储错误照旧向上抛出，由调用方收集后决定换源或结束
+			if (error instanceof RemoteSourceUnavailableError) {
+				return undefined;
 			}
-			return undefined;
+			throw error;
 		}
-		const path = this.cas.formatNormalizePath(dir, cid);
+		// CID 不符时 seam 已回收本次新建的副本，本来源放弃
+		if (!saved) return undefined;
+		const path = saved.path;
 		if (data.format() === ENCRYPTED_FORMAT) {
 			return this.resolveEncryptedFile(path, data.cid);
 		}
@@ -523,14 +530,7 @@ export class URLResolver {
 						this.settings().downloadDir,
 						this.settings().primaryDir,
 					),
-				buildHeaders: async () => {
-					const headers = new Headers();
-					await applyHeaderRules(
-						url,
-						headers,
-						this.settings().headerRules,
-						this.readSecret,
-					);
+				decorateHeaders: async (headers) => {
 					for (const [key, value] of config.headers) {
 						headers.set(
 							key,
@@ -540,7 +540,6 @@ export class URLResolver {
 					if (!headers.has("Accept")) {
 						headers.set("Accept", data.format() || "*/*");
 					}
-					return headers;
 				},
 			});
 		}
@@ -554,16 +553,6 @@ export class URLResolver {
 						this.settings().downloadDir,
 						this.settings().primaryDir,
 					),
-				buildHeaders: async () => {
-					const headers = new Headers();
-					await applyHeaderRules(
-						url,
-						headers,
-						this.settings().headerRules,
-						this.readSecret,
-					);
-					return headers;
-				},
 			});
 		}
 		return sources;

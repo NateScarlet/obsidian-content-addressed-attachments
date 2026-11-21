@@ -2,13 +2,13 @@ import { App, TFile } from "obsidian";
 // TODO: Refactor batch link traversal using VaultLinkTransformer
 import type ContentAddressedAttachmentPlugin from "./main";
 import defineLocales from "./utils/defineLocales";
-import fileToByteSource from "./utils/fileToByteSource";
 import { LockProgressModal } from "./ui/LockProgressModal";
-import { requestUrl } from "obsidian";
 import { basename } from "path-browserify";
-import { applyHeaderRules, headersToRecord } from "./utils/applyHeaderRules";
 import type { SecretReader } from "./utils/renderHeaderValue";
 import { selectLandingDir } from "./downloadDirPolicy";
+import saveRemoteToCAS, {
+	RemoteSourceUnavailableError,
+} from "./saveRemoteToCAS";
 
 export interface LockProgress {
 	status: "processing" | "completed" | "cancelled";
@@ -92,8 +92,12 @@ export class LockManager {
 		}
 	}
 
-	async lockLink(file: TFile, link: ParsedLink): Promise<void> {
-		const result = await this.migrateFromURL(link.link);
+	async lockLink(
+		file: TFile,
+		link: ParsedLink,
+		signal?: AbortSignal,
+	): Promise<void> {
+		const result = await this.migrateFromURL(link.link, signal);
 		if (!result.success || !result.newURL) {
 			throw new Error(result.error || t("fileLockFailed"));
 		}
@@ -244,7 +248,11 @@ export class LockManager {
 				}
 
 				try {
-					const lockResult = await this.migrateLink(link, content);
+					const lockResult = await this.migrateLink(
+						link,
+						content,
+						ctx.signal,
+					);
 					if (lockResult.success && lockResult.newContent) {
 						content = lockResult.newContent;
 						migratedCount++;
@@ -330,6 +338,7 @@ export class LockManager {
 	private async migrateLink(
 		link: ParsedLink,
 		content: string,
+		signal?: AbortSignal,
 	): Promise<{
 		success: boolean;
 		newContent?: string;
@@ -347,7 +356,7 @@ export class LockManager {
 			return { success: false, reason: t("notHTTPLink") };
 		}
 
-		const result = await this.migrateFromURL(link.link);
+		const result = await this.migrateFromURL(link.link, signal);
 		if (!result.success) {
 			return {
 				success: false,
@@ -367,13 +376,16 @@ export class LockManager {
 		};
 	}
 
-	private async migrateFromURL(url: string): Promise<{
+	private async migrateFromURL(
+		url: string,
+		signal?: AbortSignal,
+	): Promise<{
 		success: boolean;
 		newURL?: string;
 		error?: string;
 	}> {
 		try {
-			// 验证URL
+			// 只保留 URL 校验；下载、落盘与锁定链接构造统一交给远程获取 seam
 			let parsedURL: URL;
 			try {
 				parsedURL = new URL(url);
@@ -388,62 +400,35 @@ export class LockManager {
 				return { success: false, error: t("unsupportedProtocol") };
 			}
 
-			const headers = new Headers();
-			await applyHeaderRules(
+			const saved = await saveRemoteToCAS(this.plugin.cas, {
 				url,
-				headers,
-				this.plugin.settings.headerRules,
-				this.readSecret,
-			);
-			const response = await requestUrl({
-				url,
-				headers: headersToRecord(headers),
-				throw: false,
+				headerRules: this.plugin.settings.headerRules,
+				readSecret: this.readSecret,
+				dir: selectLandingDir(
+					undefined,
+					this.plugin.settings.downloadDir,
+					this.plugin.settings.primaryDir,
+				),
+				maxWholeBodyBytes:
+					this.plugin.settings.maxWholeBodyDownloadBytes,
+				signal,
+				name: basename(parsedURL.pathname),
 			});
-
-			if (response.status !== 200) {
-				return {
-					success: false,
-					error: `${t("downloadFailed")}: HTTP ${response.status}`,
-				};
+			if (!saved) {
+				return { success: false, error: t("fileLockFailed") };
 			}
 
-			const arrayBuffer = response.arrayBuffer;
-			const blob = new Blob([arrayBuffer]);
-
-			// 从URL提取文件名
-			const pathname = parsedURL.pathname;
-			const filename = basename(pathname);
-
-			const fileObj = new File([blob], filename, {
-				type:
-					response.headers["content-type"] ||
-					"application/octet-stream",
-			});
-
-			const dir = selectLandingDir(
-				undefined,
-				this.plugin.settings.downloadDir,
-				this.plugin.settings.primaryDir,
-			);
-
-			const { cid } = await this.plugin.cas.save(
-				dir,
-				fileToByteSource(fileObj),
-			);
-
-			// 创建新的锁定链接格式
-			const newURL = `internal.ipfs-locked:${cid.toString()},${url}`;
-
-			return {
-				success: true,
-				newURL,
-			};
+			return { success: true, newURL: saved.lockedURL };
 		} catch (error) {
 			console.warn(`迁移URL失败: ${url}`, error);
+			// 非 200 响应沿用迁移前的本地化提示，避免把内部错误串暴露给用户
+			const message =
+				error instanceof RemoteSourceUnavailableError
+					? `${t("downloadFailed")}: HTTP ${error.status}`
+					: String(error);
 			return {
 				success: false,
-				error: String(error),
+				error: message,
 			};
 		}
 	}
@@ -474,8 +459,8 @@ const { t } = defineLocales({
 		noActiveNote: "No active note",
 		cancelled: "Lock cancelled by user",
 		notHTTPLink: "Not an HTTP/HTTPS link",
-		nonEmbeddedLink: "Non-embedded link (skipping)",
 		downloadFailed: "Failed to download file",
+		nonEmbeddedLink: "Non-embedded link (skipping)",
 		invalidURL: "Invalid URL",
 		unsupportedProtocol: "Unsupported protocol",
 	},
@@ -500,8 +485,8 @@ const { t } = defineLocales({
 		noActiveNote: "没有活动的笔记",
 		cancelled: "已被用户取消",
 		notHTTPLink: "非HTTP/HTTPS链接",
-		nonEmbeddedLink: "非嵌入链接(跳过)",
 		downloadFailed: "下载文件失败",
+		nonEmbeddedLink: "非嵌入链接(跳过)",
 		invalidURL: "无效的URL",
 		unsupportedProtocol: "不支持的协议",
 	},
