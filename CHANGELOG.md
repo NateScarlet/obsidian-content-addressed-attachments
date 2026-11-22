@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.18](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.17...0.1.18) (2026-11-22)
+
+
+### Bug Fixes
+
+* should download locked links through the shared remote source seam ([41f0884](https://github.com/NateScarlet/obsidian-content-addressed-attachments/commit/41f0884d50f56f8a4d05d7ccd85704a60df1a6e7)), closes [#59](https://github.com/NateScarlet/obsidian-content-addressed-attachments/issues/59)
+
 ## [0.1.17](https://github.com/NateScarlet/obsidian-content-addressed-attachments/compare/0.1.16...0.1.17) (2026-11-17)
 
 
