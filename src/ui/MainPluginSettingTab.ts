@@ -1,5 +1,20 @@
-import { PluginSettingTab, Setting, Notice } from "obsidian";
-import type ContentAddressedAttachmentPlugin from "../main";
+import {
+	PluginSettingTab,
+	Setting,
+	Notice,
+	type App,
+	type Plugin,
+} from "obsidian";
+import type { Settings } from "../settings";
+import type { CAS } from "#src/types/CAS";
+import type { URLResolver } from "#src/URLResolver";
+import type EncryptionService from "#src/lib/encryption/EncryptionService";
+import type KeyManager from "#src/lib/encryption/KeyManager";
+import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
+import type ReferenceManager from "#src/ReferenceManager";
+import type { MigrationManager } from "#src/MigrationManager";
+import type { LockManager } from "#src/LockManager";
+import type TransformPipeline from "#src/preprocess/TransformPipeline";
 import defineLocales from "../utils/defineLocales";
 import {
 	BYTES_PER_MB,
@@ -31,11 +46,32 @@ import ignore from "ignore";
 import { mdiUndo } from "@mdi/js";
 import showButton from "#src/utils/showButton";
 
+/**
+ * 设置页的注入依赖。settings 必须是活引用（本页多处直接改字段再保存），
+ * 其余依赖按实际使用项列出；app 与 plugin 仅用于 Obsidian 基类构造器。
+ */
+export interface MainPluginSettingTabDeps {
+	app: App;
+	plugin: Plugin;
+	settings: Settings;
+	saveSettings: () => Promise<void>;
+	hasSecretStorage: boolean;
+	urlResolver: URLResolver;
+	keyManager: KeyManager;
+	encryptionService: EncryptionService;
+	cas: CAS;
+	referenceManager: ReferenceManager;
+	encryptPathPolicy: EncryptPathPolicy;
+	migrationManager: MigrationManager;
+	lockManager: LockManager;
+	pipeline: TransformPipeline;
+}
+
 export default class MainPluginSettingTab extends PluginSettingTab {
 	private stack?: DisposableStack;
 
-	constructor(private plugin: ContentAddressedAttachmentPlugin) {
-		super(plugin.app, plugin);
+	constructor(private deps: MainPluginSettingTabDeps) {
+		super(deps.app, deps.plugin);
 	}
 
 	display(): void {
@@ -53,10 +89,10 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder(t("examplePlaceholder"))
-					.setValue(this.plugin.settings.primaryDir)
+					.setValue(this.deps.settings.primaryDir)
 					.onChange(async (value) => {
-						this.plugin.settings.primaryDir = value;
-						await this.plugin.saveSettings();
+						this.deps.settings.primaryDir = value;
+						await this.deps.saveSettings();
 					}),
 			);
 		new Setting(containerEl)
@@ -64,11 +100,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setDesc(t("downloadDirectoryDesc"))
 			.addText((text) =>
 				text
-					.setPlaceholder(this.plugin.settings.primaryDir)
-					.setValue(this.plugin.settings.downloadDir)
+					.setPlaceholder(this.deps.settings.primaryDir)
+					.setValue(this.deps.settings.downloadDir)
 					.onChange(async (value) => {
-						this.plugin.settings.downloadDir = value;
-						await this.plugin.saveSettings();
+						this.deps.settings.downloadDir = value;
+						await this.deps.saveSettings();
 					}),
 			);
 		new Setting(containerEl)
@@ -77,13 +113,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder(String(DEFAULT_DOWNLOAD_RETENTION_DAYS))
-					.setValue(
-						String(this.plugin.settings.downloadRetentionDays),
-					)
+					.setValue(String(this.deps.settings.downloadRetentionDays))
 					.onChange(async (value) => {
-						this.plugin.settings.downloadRetentionDays =
+						this.deps.settings.downloadRetentionDays =
 							normalizeRetentionDaysInput(value);
-						await this.plugin.saveSettings();
+						await this.deps.saveSettings();
 					}),
 			);
 		// 配额说明与清理不可逆的常驻提示合并为一段描述（ADR-0005）
@@ -102,14 +136,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					.setPlaceholder("0")
 					.setValue(
 						String(
-							this.plugin.settings.downloadQuotaBytes /
+							this.deps.settings.downloadQuotaBytes /
 								BYTES_PER_MB,
 						),
 					)
 					.onChange(async (value) => {
-						this.plugin.settings.downloadQuotaBytes =
+						this.deps.settings.downloadQuotaBytes =
 							normalizeQuotaBytesInput(value);
-						await this.plugin.saveSettings();
+						await this.deps.saveSettings();
 					}),
 			);
 
@@ -126,14 +160,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					)
 					.setValue(
 						String(
-							this.plugin.settings.maxWholeBodyDownloadBytes /
+							this.deps.settings.maxWholeBodyDownloadBytes /
 								BYTES_PER_MB,
 						),
 					)
 					.onChange(async (value) => {
-						this.plugin.settings.maxWholeBodyDownloadBytes =
+						this.deps.settings.maxWholeBodyDownloadBytes =
 							normalizeMaxWholeBodyBytesInput(value);
-						await this.plugin.saveSettings();
+						await this.deps.saveSettings();
 					}),
 			);
 
@@ -145,14 +179,14 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					.setIcon("house-plus")
 					.setTooltip(t("addGateway"))
 					.onClick(async () => {
-						this.plugin.settings.gateways.push({
+						this.deps.settings.gateways.push({
 							name: t("newGateway"),
 							urlTemplate:
 								"https://example.com/{{cid}}{{{url.pathname}}}",
 							headers: [],
 							enabled: true,
 						});
-						await this.plugin.saveSettings();
+						await this.deps.saveSettings();
 						// eslint-disable-next-line @typescript-eslint/no-deprecated
 						this.display();
 					}),
@@ -164,20 +198,20 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			mount(TemplatePreview, {
 				target: previewContainer,
 				props: {
-					urlResolver: this.plugin.urlResolver,
+					urlResolver: this.deps.urlResolver,
 				},
 			}),
 			(i) => void unmount(i),
 		);
 
-		this.plugin.settings.gateways.forEach((config, index) => {
+		this.deps.settings.gateways.forEach((config, index) => {
 			const setting = new Setting(containerEl)
 				.setName("")
 				.setDesc("")
 				.addToggle((toggle) =>
 					toggle.setValue(config.enabled).onChange(async (value) => {
 						config.enabled = value;
-						await this.plugin.saveSettings();
+						await this.deps.saveSettings();
 					}),
 				)
 				.addText((text) => {
@@ -185,7 +219,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setValue(config.name)
 						.onChange(async (value) => {
 							config.name = value;
-							await this.plugin.saveSettings();
+							await this.deps.saveSettings();
 						});
 					text.inputEl.className = clsx`min-w-32 max-w-full flex-1 grow`;
 				})
@@ -195,7 +229,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setValue(config.urlTemplate)
 						.onChange(async (value) => {
 							config.urlTemplate = value;
-							await this.plugin.saveSettings();
+							await this.deps.saveSettings();
 							preview.config = config;
 						});
 
@@ -215,9 +249,8 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								this.app,
 								config,
 								(config) => {
-									this.plugin.settings.gateways[index] =
-										config;
-									this.plugin.saveSettings().catch(showError);
+									this.deps.settings.gateways[index] = config;
+									this.deps.saveSettings().catch(showError);
 									// eslint-disable-next-line @typescript-eslint/no-deprecated
 									this.display();
 								},
@@ -242,11 +275,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 										if (cancelled) {
 											return;
 										}
-										this.plugin.settings.gateways.splice(
+										this.deps.settings.gateways.splice(
 											index,
 											1,
 										);
-										this.plugin
+										this.deps
 											.saveSettings()
 											.catch(showError);
 										// eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -283,17 +316,17 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					.setIcon("plus")
 					.setTooltip(t("addHeaderRule"))
 					.onClick(async () => {
-						this.plugin.settings.headerRules.push({
+						this.deps.settings.headerRules.push({
 							baseUrl: "",
 							headers: [],
 						});
-						await this.plugin.saveSettings();
+						await this.deps.saveSettings();
 						// eslint-disable-next-line @typescript-eslint/no-deprecated
 						this.display();
 					}),
 			);
 
-		this.plugin.settings.headerRules.forEach((rule, index) => {
+		this.deps.settings.headerRules.forEach((rule, index) => {
 			const setting = new Setting(containerEl)
 				.setName("")
 				.setDesc("")
@@ -302,7 +335,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 						.setValue(rule.baseUrl)
 						.onChange(async (value) => {
 							rule.baseUrl = value;
-							await this.plugin.saveSettings();
+							await this.deps.saveSettings();
 						});
 					text.inputEl.className = clsx`min-w-32 max-w-full flex-1 grow`;
 				})
@@ -315,9 +348,9 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 								this.app,
 								rule,
 								(updated) => {
-									this.plugin.settings.headerRules[index] =
+									this.deps.settings.headerRules[index] =
 										updated;
-									this.plugin.saveSettings().catch(showError);
+									this.deps.saveSettings().catch(showError);
 									// eslint-disable-next-line @typescript-eslint/no-deprecated
 									this.display();
 								},
@@ -342,11 +375,11 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 										if (cancelled) {
 											return;
 										}
-										this.plugin.settings.headerRules.splice(
+										this.deps.settings.headerRules.splice(
 											index,
 											1,
 										);
-										this.plugin
+										this.deps
 											.saveSettings()
 											.catch(showError);
 										// eslint-disable-next-line @typescript-eslint/no-deprecated
@@ -385,7 +418,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		);
 
 		//#region 加密设置
-		if (this.plugin.hasSecretStorage) {
+		if (this.deps.hasSecretStorage) {
 			new Setting(containerEl).setName(t("encryption")).setHeading();
 
 			const target = containerEl.createDiv();
@@ -393,10 +426,10 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 				mount(EncryptionSettingsComponent, {
 					target,
 					props: {
-						keyManager: this.plugin.keyManager,
-						encryptionService: this.plugin.encryptionService,
-						settings: this.plugin.settings,
-						saveSettings: () => this.plugin.saveSettings(),
+						keyManager: this.deps.keyManager,
+						encryptionService: this.deps.encryptionService,
+						settings: this.deps.settings,
+						saveSettings: () => this.deps.saveSettings(),
 						// eslint-disable-next-line @typescript-eslint/no-deprecated
 						display: () => this.display(),
 						app: this.app,
@@ -423,22 +456,20 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 							const ig = ignore().add(patterns);
 							const ctx = {
 								app: this.app,
-								cas: this.plugin.cas,
-								encryptionService:
-									this.plugin.encryptionService,
-								urlResolver: this.plugin.urlResolver,
-								referenceManager: this.plugin.referenceManager,
-								dir: this.plugin.settings.primaryDir,
-								keyManager: this.plugin.keyManager,
-								encryptPathPolicy:
-									this.plugin.encryptPathPolicy,
+								cas: this.deps.cas,
+								encryptionService: this.deps.encryptionService,
+								urlResolver: this.deps.urlResolver,
+								referenceManager: this.deps.referenceManager,
+								dir: this.deps.settings.primaryDir,
+								keyManager: this.deps.keyManager,
+								encryptPathPolicy: this.deps.encryptPathPolicy,
 							};
 							for (const file of files) {
 								if (ig.ignores(file.path)) {
 									const count = await encryptNote(
 										ctx,
 										file,
-										this.plugin.settings.primaryDir,
+										this.deps.settings.primaryDir,
 									);
 									total += count;
 								}
@@ -461,7 +492,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName(t("preProcessing")).setHeading();
 
 		// 预处理脚本：多行输入框（支持长 URL 换行）+ 预设自动补全下拉
-		const currentScriptURL = this.plugin.settings.preProcess.scriptURL;
+		const currentScriptURL = this.deps.settings.preProcess.scriptURL;
 		const scriptInputContainer = containerEl.createDiv();
 		this.stack.adopt(
 			mount(PreProcessScriptInput, {
@@ -473,8 +504,8 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 					disabledLabel: t("preProcessDisabled"),
 					findScriptByURL,
 					onChange: async (value: string) => {
-						this.plugin.settings.preProcess.scriptURL = value;
-						await this.plugin.saveSettings();
+						this.deps.settings.preProcess.scriptURL = value;
+						await this.deps.saveSettings();
 					},
 				},
 			}),
@@ -492,9 +523,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setDesc(t("migrateAllNotesDesc"))
 			.addButton((button) =>
 				button.setButtonText(btnText).onClick(() => {
-					this.plugin.migrationManager
-						.execute("all")
-						.catch(showError);
+					this.deps.migrationManager.execute("all").catch(showError);
 				}),
 			);
 
@@ -503,7 +532,7 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.setDesc(t("lockAllNotesDesc"))
 			.addButton((button) => {
 				button.setButtonText(btnText).onClick(() => {
-					this.plugin.lockManager.execute("all").catch(showError);
+					this.deps.lockManager.execute("all").catch(showError);
 				});
 			});
 
@@ -513,7 +542,16 @@ export default class MainPluginSettingTab extends PluginSettingTab {
 			.addButton((button) =>
 				button.setButtonText(btnText).onClick(() => {
 					reprocessWholeVault(
-						createReprocessContext(this.plugin),
+						createReprocessContext({
+							app: this.app,
+							cas: this.deps.cas,
+							encryptionService: this.deps.encryptionService,
+							urlResolver: this.deps.urlResolver,
+							referenceManager: this.deps.referenceManager,
+							encryptPathPolicy: this.deps.encryptPathPolicy,
+							pipeline: this.deps.pipeline,
+							settings: this.deps.settings,
+						}),
 					).catch(showError);
 				}),
 			);

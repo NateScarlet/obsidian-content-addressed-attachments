@@ -36,7 +36,6 @@ import {
 	type EncryptContext,
 } from "./commands/convertAttachment";
 import { uniq } from "es-toolkit";
-import createPluginContext from "./createPluginContext";
 import { LockManager } from "./LockManager";
 import restoreReferencedFiles from "./commands/restoreReferencedFiles";
 import { createCLIResolveHandler } from "./commands/resolveCLI";
@@ -89,7 +88,13 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 	 */
 	public metadataWriteController = new AbortController();
 	public urlResolver!: URLResolver;
-	public referenceManager = new ReferenceManager(this);
+	public referenceManager = new ReferenceManager({
+		vault: this.app.vault,
+		// cas / 元数据 / 设置在 onload 中创建或替换，按使用时求值注入
+		getCas: () => this.cas,
+		getCasMetadata: () => this.casMetadata,
+		getSettings: () => this.settings,
+	});
 	public keyManager!: KeyManager;
 	public encryptionService!: EncryptionService;
 	public encryptPathPolicy!: EncryptPathPolicy;
@@ -229,8 +234,21 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 
 		this.registerResolveCLIHandler();
 
-		this.migrationManager = this.stack.use(new MigrationManager(this));
-		this.lockManager = this.stack.use(new LockManager(this, readSecret));
+		this.migrationManager = this.stack.use(
+			new MigrationManager({
+				app: this.app,
+				cas: this.cas,
+				getSettings: () => this.settings,
+			}),
+		);
+		this.lockManager = this.stack.use(
+			new LockManager({
+				app: this.app,
+				cas: this.cas,
+				getSettings: () => this.settings,
+				readSecret,
+			}),
+		);
 
 		// 初始化预处理管线
 		this.scriptLoader = new DefaultScriptLoader(
@@ -255,7 +273,24 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			createIPFSLinkClickExtension(this.urlResolver),
 		);
 
-		this.addSettingTab(new MainPluginSettingTab(this));
+		this.addSettingTab(
+			new MainPluginSettingTab({
+				app: this.app,
+				plugin: this,
+				settings: this.settings,
+				saveSettings: () => this.saveSettings(),
+				hasSecretStorage: this.hasSecretStorage,
+				urlResolver: this.urlResolver,
+				keyManager: this.keyManager,
+				encryptionService: this.encryptionService,
+				cas: this.cas,
+				referenceManager: this.referenceManager,
+				encryptPathPolicy: this.encryptPathPolicy,
+				migrationManager: this.migrationManager,
+				lockManager: this.lockManager,
+				pipeline: this.pipeline,
+			}),
+		);
 
 		//#region 事件注册
 		this.registerEvent(
@@ -347,7 +382,12 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 							: undefined;
 					if (!rawText) return;
 					const ctx: EncryptContext = {
-						...createPluginContext(this),
+						app: this.app,
+						cas: this.cas,
+						encryptionService: this.encryptionService,
+						urlResolver: this.urlResolver,
+						referenceManager: this.referenceManager,
+						encryptPathPolicy: this.encryptPathPolicy,
 						keyManager: this.keyManager,
 					};
 					const isEncrypted = isEncryptedLink(rawText);
@@ -544,7 +584,23 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		// 注册文件管理器视图
 		this.registerView(
 			CAS_FILE_EXPLORER_VIEW_TYPE,
-			(leaf) => new CASFileExplorerView(leaf, this),
+			(leaf) =>
+				new CASFileExplorerView(leaf, {
+					app: this.app,
+					cas: this.cas,
+					casMetadata: this.casMetadata,
+					referenceManager: this.referenceManager,
+					encryptionService: this.encryptionService,
+					metadataWriteSignal: this.metadataWriteController.signal,
+					getPrimaryDir: () => this.settings.primaryDir,
+					getDownloadDirs: () => getDownloadDirs(this.settings),
+					getDownloadRetentionDays: () =>
+						this.settings.downloadRetentionDays,
+					setDownloadRetentionDays: async (days: number) => {
+						this.settings.downloadRetentionDays = days;
+						await this.saveSettings();
+					},
+				}),
 		);
 
 		// 添加打开文件管理器的命令

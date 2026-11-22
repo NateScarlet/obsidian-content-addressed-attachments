@@ -5,10 +5,13 @@ import { sha256 } from "multiformats/hashes/sha2";
 import * as raw from "multiformats/codecs/raw";
 import { TFile } from "obsidian";
 import ReferenceManager from "./ReferenceManager";
-import type { ReferenceManagerCache } from "./ReferenceManager";
-import type ContentAddressedAttachmentPlugin from "./main";
+import type {
+	ReferenceManagerCache,
+	ReferenceManagerDeps,
+} from "./ReferenceManager";
 import type { CAS } from "./types/CAS";
 import type { CASMetadata } from "./types/CASMetadata";
+import type { Settings } from "./settings";
 
 /**
  * ReferenceManager 新鲜性接缝：以磁盘为唯一可信源。
@@ -144,18 +147,26 @@ function makeFake(deps: {
 	};
 
 	const referenceCache = new MemRefCache();
-	const plugin = {
-		app: { vault },
-		cas: {
-			index: vi.fn(async () => {}),
-		},
-		casMetadata: {
-			get: vi.fn(async () => undefined),
-		},
-		settings: { primaryDir: "CAS", downloadDir: "", gateways: [] },
-	} as unknown as ContentAddressedAttachmentPlugin;
+	const cas = {
+		index: vi.fn(async () => {}),
+		restoreIfTrashed: vi.fn(async () => false),
+	} satisfies Pick<CAS, "index" | "restoreIfTrashed">;
+	const casMetadata = {
+		get: vi.fn(async () => undefined),
+	} as unknown as CASMetadata;
+	const managerDeps: ReferenceManagerDeps = {
+		vault,
+		getCas: () => cas,
+		getCasMetadata: () => casMetadata,
+		getSettings: () =>
+			({
+				primaryDir: "CAS",
+				downloadDir: "",
+				gateways: [],
+			}) as unknown as Settings,
+	};
 
-	const rm = new ReferenceManager(plugin, {
+	const rm = new ReferenceManager(managerDeps, {
 		cache: referenceCache,
 		incrementalScanReporter: deps.incrementalScanReporter ?? {
 			begin: () => ({ update() {}, finish() {} }),
@@ -258,7 +269,7 @@ function makeQueueFake(deps: {
 		restoreIfTrashed,
 		// 索引写入：projectLinkIndex 会调用，本套用例不关心其结果
 		index: vi.fn(async () => {}),
-	} as unknown as CAS;
+	} satisfies Pick<CAS, "index" | "restoreIfTrashed">;
 
 	const metadataGet = vi.fn(async (cid: CID) => {
 		inFlight++;
@@ -282,14 +293,14 @@ function makeQueueFake(deps: {
 		downloadDir: "downloads",
 		gateways: [] as { downloadDir?: string }[],
 	};
-	const plugin = {
-		app: { vault },
-		cas,
-		casMetadata,
-		settings,
-	} as unknown as ContentAddressedAttachmentPlugin;
+	const managerDeps: ReferenceManagerDeps = {
+		vault,
+		getCas: () => cas,
+		getCasMetadata: () => casMetadata,
+		getSettings: () => settings as unknown as Settings,
+	};
 
-	const rm = new ReferenceManager(plugin, {
+	const rm = new ReferenceManager(managerDeps, {
 		cache: new MemRefCache(),
 		incrementalScanReporter: {
 			begin: () => ({ update() {}, finish() {} }),

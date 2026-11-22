@@ -1,6 +1,7 @@
-import { App, TFile } from "obsidian";
+import type { App, TFile } from "obsidian";
 // TODO: Refactor batch link traversal using VaultLinkTransformer
-import type ContentAddressedAttachmentPlugin from "./main";
+import type { CAS } from "./types/CAS";
+import type { Settings } from "./settings";
 import defineLocales from "./utils/defineLocales";
 import { LockProgressModal } from "./ui/LockProgressModal";
 import { basename } from "path-browserify";
@@ -27,6 +28,15 @@ interface LockContext {
 	updateProgress(progress: LockProgress): void;
 }
 
+/** LockManager 的注入依赖；设置以 getter 提供，改动即时生效。 */
+export interface LockManagerDeps {
+	app: App;
+	/** 远程获取 seam 需要的落盘 / 回收 / 路径格式化能力 */
+	cas: Pick<CAS, "save" | "trash" | "formatNormalizePath">;
+	getSettings: () => Settings;
+	readSecret: SecretReader;
+}
+
 export interface LockResult extends LockProgress {
 	success: boolean;
 }
@@ -45,11 +55,8 @@ export class LockManager {
 	private app: App;
 	private currentStack: DisposableStack | undefined;
 
-	constructor(
-		private plugin: ContentAddressedAttachmentPlugin,
-		private readSecret: SecretReader,
-	) {
-		this.app = plugin.app;
+	constructor(private deps: LockManagerDeps) {
+		this.app = deps.app;
 	}
 
 	async execute(scope: "current" | "all"): Promise<LockResult> {
@@ -400,17 +407,17 @@ export class LockManager {
 				return { success: false, error: t("unsupportedProtocol") };
 			}
 
-			const saved = await saveRemoteToCAS(this.plugin.cas, {
+			const settings = this.deps.getSettings();
+			const saved = await saveRemoteToCAS(this.deps.cas, {
 				url,
-				headerRules: this.plugin.settings.headerRules,
-				readSecret: this.readSecret,
+				headerRules: settings.headerRules,
+				readSecret: this.deps.readSecret,
 				dir: selectLandingDir(
 					undefined,
-					this.plugin.settings.downloadDir,
-					this.plugin.settings.primaryDir,
+					settings.downloadDir,
+					settings.primaryDir,
 				),
-				maxWholeBodyBytes:
-					this.plugin.settings.maxWholeBodyDownloadBytes,
+				maxWholeBodyBytes: settings.maxWholeBodyDownloadBytes,
 				signal,
 				name: basename(parsedURL.pathname),
 			});

@@ -55,7 +55,7 @@ export class RemoteSourceUnavailableError extends Error {
 }
 
 export default async function saveRemoteToCAS(
-	cas: CAS,
+	cas: Pick<CAS, "save" | "trash" | "formatNormalizePath">,
 	options: SaveRemoteOptions,
 ): Promise<SaveRemoteResult | undefined> {
 	const headers = new Headers();

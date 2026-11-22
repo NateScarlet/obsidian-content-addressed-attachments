@@ -1,12 +1,10 @@
-/* eslint-disable @typescript-eslint/unbound-method -- vitest 的 mock 方法按值读取，不依赖 this */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { CID } from "multiformats/cid";
 import { requestUrl, type App } from "obsidian";
-import type ContentAddressedAttachmentPlugin from "#src/main";
 import type { CAS } from "#src/types/CAS";
 import type { SecretReader } from "#src/utils/renderHeaderValue";
-import { LockManager } from "#src/LockManager";
-import { getDefaultSettings } from "#src/settings";
+import { LockManager, type LockManagerDeps } from "#src/LockManager";
+import { getDefaultSettings, type Settings } from "#src/settings";
 
 vi.mock("./ui/LockProgressModal", () => ({
 	LockProgressModal: class {
@@ -31,11 +29,12 @@ describe("LockManager migration", () => {
 	const linkStart = content.indexOf("![");
 	const linkEnd = content.indexOf(")") + 1;
 
-	let cas: CAS;
+	let cas: Pick<CAS, "save" | "trash" | "formatNormalizePath">;
 	let readSecret: SecretReader;
 	let manager: LockManager;
 	let written: string | undefined;
 	let fetchInit: RequestInit | undefined;
+	let settingsUnderTest: Settings | undefined;
 
 	function stubStreamFetch() {
 		vi.stubGlobal(
@@ -72,7 +71,7 @@ describe("LockManager migration", () => {
 			headerRules: [
 				{
 					baseUrl: "https://source.example.com",
-					headers: [["X-Token", "abc"]],
+					headers: [["X-Token", "abc"] as [string, string]],
 				},
 			],
 		};
@@ -86,12 +85,14 @@ describe("LockManager migration", () => {
 				),
 			},
 		} as unknown as App;
-		const plugin = {
+		settingsUnderTest = settings;
+		const deps: LockManagerDeps = {
 			app,
 			cas,
-			settings,
-		} as unknown as ContentAddressedAttachmentPlugin;
-		return new LockManager(plugin, readSecret);
+			getSettings: () => settings,
+			readSecret,
+		};
+		return new LockManager(deps);
 	}
 
 	beforeEach(() => {
@@ -111,7 +112,7 @@ describe("LockManager migration", () => {
 				(dir: string, c: CID) => `${dir}/${c.toString()}`,
 			),
 			trash: vi.fn().mockResolvedValue(1),
-		} as unknown as CAS;
+		} satisfies Pick<CAS, "save" | "trash" | "formatNormalizePath">;
 		readSecret = vi.fn(() => undefined);
 	});
 
@@ -142,6 +143,19 @@ describe("LockManager migration", () => {
 			`internal.ipfs-locked:${cid.toString()},${url}`,
 		);
 		expect(written).not.toContain(`](${url})`);
+	});
+
+	it("reads the current download directory at use time, not at construction", async () => {
+		stubStreamFetch();
+		manager = makeManager();
+		settingsUnderTest!.downloadDir = ".attachments/moved";
+
+		await manager.lockLink({} as never, parsedLink());
+
+		expect(vi.mocked(cas.save)).toHaveBeenCalledWith(
+			".attachments/moved",
+			expect.anything(),
+		);
 	});
 
 	it("applies header rules to the migration download", async () => {

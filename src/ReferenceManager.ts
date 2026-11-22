@@ -1,5 +1,7 @@
 import { CID } from "multiformats";
-import type ContentAddressedAttachmentPlugin from "./main";
+import type { Settings } from "./settings";
+import type { CAS } from "./types/CAS";
+import type { CASMetadata } from "./types/CASMetadata";
 import SingleFlightGroup from "./utils/SingleFlightGroup";
 import { ReferenceManagerCacheImpl } from "./infrastructure/indexed-db/ReferenceManagerCache";
 import findIPFSLinks, { type IPFSLinkMatch } from "./utils/findIPFSLinks";
@@ -11,7 +13,7 @@ import orderedParallelMap, {
 	drain,
 	type OrderedParallelProjection,
 } from "./utils/orderedParallelMap";
-import { Notice, TFile } from "obsidian";
+import { Notice, TFile, type TAbstractFile } from "obsidian";
 import { mount, unmount } from "svelte";
 import IncrementalScanProgress from "#src/lib/IncrementalScanProgress.svelte";
 import { getDownloadDirs } from "#src/settings";
@@ -38,6 +40,30 @@ function batchKeyOf(skipVerify: boolean): string {
  * 又不能大到一次性启动过多读取任务打满内存与 IO。
  */
 const INCREMENTAL_SCAN_LIMIT = 64;
+
+/**
+ * 引用索引所需的 vault 只读面：只列实际使用的四个方法，作为测试接缝。
+ */
+export interface VaultReader {
+	getAbstractFileByPath(path: string): TAbstractFile | null;
+	read(file: TFile): Promise<string>;
+	cachedRead(file: TFile): Promise<string>;
+	getMarkdownFiles(): TFile[];
+}
+
+/**
+ * ReferenceManager 的注入依赖。
+ * 三个 `get*` 依赖都以 getter 提供：本类在字段初始化阶段构造，此时 cas / 元数据 /
+ * 设置尚未在 onload 中创建或被 loadSettings 替换，使用时求值才能读到当前实例。
+ */
+export interface ReferenceManagerDeps {
+	vault: VaultReader;
+	/** 索引写入与引用恢复：只需 index 与 restoreIfTrashed */
+	getCas: () => Pick<CAS, "index" | "restoreIfTrashed">;
+	getCasMetadata: () => CASMetadata;
+	/** 目录改动即时生效 */
+	getSettings: () => Settings;
+}
 
 export interface ReferenceManagerCache {
 	add(
@@ -113,7 +139,7 @@ export default class ReferenceManager {
 	private readonly restoreQueue: RestoreQueue;
 
 	constructor(
-		private plugin: ContentAddressedAttachmentPlugin,
+		private deps: ReferenceManagerDeps,
 		/** 可注入依赖：cache 供测试用内存实现；报告器供测试注入空实现避免 DOM */
 		options: {
 			cache?: ReferenceManagerCache;
@@ -163,14 +189,18 @@ export default class ReferenceManager {
 		cids: CID[],
 		knownIPFSCids: ReadonlySet<string>,
 	): Promise<void> {
-		await restoreReferencedFiles(this.plugin.cas, this.plugin.casMetadata, {
-			referenceManager: this,
-			primaryDir: this.plugin.settings.primaryDir,
-			downloadDirs: getDownloadDirs(this.plugin.settings),
-			cids,
-			knownIPFSCids,
-			signal: this.bgController.signal,
-		});
+		await restoreReferencedFiles(
+			this.deps.getCas(),
+			this.deps.getCasMetadata(),
+			{
+				referenceManager: this,
+				primaryDir: this.deps.getSettings().primaryDir,
+				downloadDirs: getDownloadDirs(this.deps.getSettings()),
+				cids,
+				knownIPFSCids,
+				signal: this.bgController.signal,
+			},
+		);
 	}
 
 	async count(
@@ -266,13 +296,12 @@ export default class ReferenceManager {
 		prefix: string,
 		prefix2: string,
 	) {
-		const file =
-			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+		const file = this.deps.vault.getAbstractFileByPath(normalizedPath);
 		if (!(file instanceof TFile)) {
 			return false;
 		}
 		// 引用判定以磁盘为唯一可信源（vault.read），不以 cachedRead 为准（见 ADR-0007）
-		const content = await this.plugin.app.vault.read(file);
+		const content = await this.deps.vault.read(file);
 		return content.includes(prefix) || content.includes(prefix2);
 	}
 
@@ -293,7 +322,7 @@ export default class ReferenceManager {
 
 	private async doEnsureFresh(signal: AbortSignal | undefined) {
 		await this.incrementalScan();
-		const { vault } = this.plugin.app;
+		const { vault } = this.deps;
 		const cachedPaths = await this.cache.cachedPaths(signal);
 		if (cachedPaths.size === 0) {
 			return;
@@ -312,7 +341,7 @@ export default class ReferenceManager {
 		try {
 			signal.throwIfAborted();
 			const cutoffAt = await this.cache.cutoffAt(signal);
-			const { vault } = this.plugin.app;
+			const { vault } = this.deps;
 			const startAt = new Date();
 			const newFiles = vault
 				.getMarkdownFiles()
@@ -378,14 +407,13 @@ export default class ReferenceManager {
 	}
 
 	private async doLoadFile(normalizedPath: string) {
-		const file =
-			this.plugin.app.vault.getAbstractFileByPath(normalizedPath);
+		const file = this.deps.vault.getAbstractFileByPath(normalizedPath);
 		// 索引以磁盘为唯一可信源（vault.read），不以 cachedRead / 编辑器缓冲为准，
 		// 避免过时缓存让被引用附件被误判为未引用（见 ADR-0007）。
 		// 共享后台中止信号：卸载时取消在飞索引写入。
 		await this.loadFileContent(
 			normalizedPath,
-			file instanceof TFile ? await this.plugin.app.vault.read(file) : "",
+			file instanceof TFile ? await this.deps.vault.read(file) : "",
 			this.bgController.signal,
 		);
 	}
@@ -401,7 +429,7 @@ export default class ReferenceManager {
 	): Promise<OrderedParallelProjection<never>> {
 		await Promise.all([
 			this.cache.add(url.cid, normalizedPath, signal),
-			this.plugin.cas.index({
+			this.deps.getCas().index({
 				cid: url.cid,
 				indexedAt: new Date(),
 				filename: url.filename || title || undefined,
@@ -460,7 +488,7 @@ export default class ReferenceManager {
 
 	async *findReference(cid: CID, signal?: AbortSignal) {
 		await this.incrementalScan();
-		const { vault } = this.plugin.app;
+		const { vault } = this.deps;
 		for await (const normalizedPath of this.cache.find(cid, signal)) {
 			const file = vault.getAbstractFileByPath(normalizedPath);
 			if (!(file instanceof TFile)) {

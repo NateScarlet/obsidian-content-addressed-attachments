@@ -63,7 +63,7 @@ export interface RestoreReferencedFilesOptions {
  * @param options 引用类型判定依赖与恢复目录来源
  */
 export default async function restoreReferencedFiles(
-	cas: CAS,
+	cas: Pick<CAS, "restoreIfTrashed">,
 	casMetadata: CASMetadata,
 	options: RestoreReferencedFilesOptions,
 ): Promise<number> {

@@ -1,6 +1,7 @@
-import { App, TFile, type LinkCache } from "obsidian";
+import type { App, LinkCache, TFile } from "obsidian";
 // TODO: Refactor batch link traversal using VaultLinkTransformer
-import ContentAddressedAttachmentPlugin from "./main";
+import type { CAS } from "./types/CAS";
+import type { Settings } from "./settings";
 import defineLocales from "./utils/defineLocales";
 import fileToByteSource from "./utils/fileToByteSource";
 import { MigrationProgressModal } from "./ui/MigrationProgressModal";
@@ -76,6 +77,14 @@ interface MigrationContext {
 	updateProgress(progress: MigrationProgress): void;
 }
 
+/** MigrationManager 的注入依赖；设置以 getter 提供，目录改动即时生效。 */
+export interface MigrationManagerDeps {
+	app: App;
+	/** 本地文件落盘只需 save */
+	cas: Pick<CAS, "save">;
+	getSettings: () => Settings;
+}
+
 export interface MigrationResult extends MigrationProgress {
 	success: boolean;
 }
@@ -84,8 +93,8 @@ export class MigrationManager {
 	private app: App;
 	private currentStack: DisposableStack | undefined;
 
-	constructor(private plugin: ContentAddressedAttachmentPlugin) {
-		this.app = plugin.app;
+	constructor(private deps: MigrationManagerDeps) {
+		this.app = deps.app;
 	}
 
 	async execute(scope: "current" | "all"): Promise<MigrationResult> {
@@ -393,8 +402,8 @@ export class MigrationManager {
 			const blob = new Blob([arrayBuffer]);
 			const fileObj = new File([blob], file.name);
 
-			const { cid } = await this.plugin.cas.save(
-				this.plugin.settings.primaryDir,
+			const { cid } = await this.deps.cas.save(
+				this.deps.getSettings().primaryDir,
 				fileToByteSource(fileObj),
 			);
 

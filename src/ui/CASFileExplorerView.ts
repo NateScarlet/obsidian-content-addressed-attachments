@@ -1,11 +1,25 @@
 import { ItemView, WorkspaceLeaf } from "obsidian";
 import { mount, unmount } from "svelte";
 import CASFileExplorer from "#src/lib/CASFileExplorer.svelte";
-import { getDownloadDirs } from "#src/settings";
-import type ContentAddressedAttachmentPlugin from "../main";
+import type { CASFileExplorerContext } from "#src/lib/CASFileExplorerContext";
 import defineLocales from "../utils/defineLocales";
 
 export const CAS_FILE_EXPLORER_VIEW_TYPE = "cas-file-explorer-8974b7f23c81";
+
+/** 视图挂载所需的依赖：组件内部状态（mode / query / fetchMore）不属于注入项。 */
+export type CASFileExplorerViewDeps = Pick<
+	CASFileExplorerContext,
+	| "app"
+	| "cas"
+	| "casMetadata"
+	| "referenceManager"
+	| "encryptionService"
+	| "metadataWriteSignal"
+	| "getPrimaryDir"
+	| "getDownloadDirs"
+	| "getDownloadRetentionDays"
+	| "setDownloadRetentionDays"
+>;
 
 export class CASFileExplorerView extends ItemView {
 	/** Svelte 5 组件实例（mount 返回值；CASFileExplorer 无导出字段） */
@@ -13,7 +27,7 @@ export class CASFileExplorerView extends ItemView {
 
 	constructor(
 		leaf: WorkspaceLeaf,
-		private plugin: ContentAddressedAttachmentPlugin,
+		private deps: CASFileExplorerViewDeps,
 	) {
 		super(leaf);
 	}
@@ -33,22 +47,7 @@ export class CASFileExplorerView extends ItemView {
 	onOpen(): Promise<void> {
 		this.component = mount(CASFileExplorer, {
 			target: this.contentEl,
-			props: {
-				app: this.plugin.app,
-				cas: this.plugin.cas,
-				casMetadata: this.plugin.casMetadata,
-				referenceManager: this.plugin.referenceManager,
-				encryptionService: this.plugin.encryptionService,
-				metadataWriteSignal: this.plugin.metadataWriteController.signal,
-				getPrimaryDir: () => this.plugin.settings.primaryDir,
-				getDownloadDirs: () => getDownloadDirs(this.plugin.settings),
-				getDownloadRetentionDays: () =>
-					this.plugin.settings.downloadRetentionDays,
-				setDownloadRetentionDays: async (days: number) => {
-					this.plugin.settings.downloadRetentionDays = days;
-					await this.plugin.saveSettings();
-				},
-			},
+			props: this.deps,
 		});
 		return Promise.resolve();
 	}

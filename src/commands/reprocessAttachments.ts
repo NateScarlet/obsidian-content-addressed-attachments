@@ -1,7 +1,6 @@
 import { Modal, Notice, Setting, type Editor } from "obsidian";
 import type EncryptPathPolicy from "#src/lib/encryption/EncryptPathPolicy";
 import type TransformPipeline from "#src/preprocess/TransformPipeline";
-import createPluginContext from "#src/createPluginContext";
 import type PluginContext from "#src/types/PluginContext";
 import type { PluginContextSource } from "#src/types/PluginContext";
 import { type IPFSLinkMatch } from "#src/utils/findIPFSLinks";
@@ -75,7 +74,11 @@ export function createReprocessContext(
 	source: ReprocessContextSource,
 ): ReprocessContext {
 	return {
-		...createPluginContext(source),
+		app: source.app,
+		cas: source.cas,
+		encryptionService: source.encryptionService,
+		urlResolver: source.urlResolver,
+		referenceManager: source.referenceManager,
 		encryptPathPolicy: source.encryptPathPolicy,
 		pipeline: source.pipeline,
 		dir: source.settings.primaryDir,
