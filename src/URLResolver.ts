@@ -30,6 +30,10 @@ import {
 	selectLandingDir,
 	type GatewayConfig,
 } from "./downloadDirPolicy";
+import DecryptedCache, {
+	DecryptedCacheDirMissingError,
+	type DecryptedCacheResource,
+} from "./infrastructure/local/DecryptedCache";
 
 // 模板数据类型接口
 type TemplateLambda = () => (
@@ -65,68 +69,6 @@ export interface ResolveURLResult {
 	cid: CID;
 }
 
-// #region DecryptedCacheManager
-
-/** Manages in-memory blob URLs and on-disk decrypted file caches, decoupled from URL resolution. */
-class DecryptedCacheManager {
-	private blobStore = new Map<string, string>();
-
-	constructor(
-		private adapter: App["vault"]["adapter"],
-		private getCacheDir: () => string | undefined,
-	) {}
-
-	getBlobUrl(key: string): string | undefined {
-		return this.blobStore.get(key);
-	}
-
-	createBlobUrl(key: string, blob: Blob): string {
-		const url = URL.createObjectURL(blob);
-		this.blobStore.set(key, url);
-		return url;
-	}
-
-	async readDiskCache(filename: string): Promise<string | undefined> {
-		const cacheDir = this.getCacheDir();
-		if (!cacheDir) return undefined;
-		const cachePath = `${cacheDir}/${filename}`;
-		const exists = await this.adapter.exists(cachePath);
-		return exists ? cachePath : undefined;
-	}
-
-	async writeDiskCache(cachePath: string, data: ArrayBuffer): Promise<void> {
-		const cacheDir = this.getCacheDir();
-		if (!cacheDir) throw new Error("Cache dir not set");
-		const cacheDirExists = await this.adapter.exists(cacheDir);
-		if (!cacheDirExists) {
-			await this.adapter.mkdir(cacheDir);
-		}
-		await this.adapter.writeBinary(cachePath, data);
-	}
-
-	revokeStaleBlobs(activeKeys: Set<string>): void {
-		for (const [key, url] of this.blobStore) {
-			if (!activeKeys.has(key)) {
-				URL.revokeObjectURL(url);
-				this.blobStore.delete(key);
-			}
-		}
-	}
-
-	dispose(): void {
-		for (const url of this.blobStore.values()) {
-			URL.revokeObjectURL(url);
-		}
-		this.blobStore.clear();
-	}
-
-	get blobCount(): number {
-		return this.blobStore.size;
-	}
-}
-
-// #endregion
-
 /**
  * 一个可参与远程竞争的来源：URL、请求头与下载目录均延迟到实际请求时求值，
  * 保证 HEAD 能力查询与 GET 完整下载使用同一份来源配置。
@@ -143,9 +85,7 @@ export class URLResolver {
 	private flight = new SingleFlightGroup<ResolveURLResult | undefined>();
 	// 探测按 Host 去重：同一 Host 的并发探测共享一次请求，结论适用于本批全部来源
 	private probeFlight = new SingleFlightGroup<{ rtt: number }>();
-	private cacheManager: DecryptedCacheManager;
-	// 防抖 cleanup 的 timer ID
-	private cleanupTimer: number | undefined;
+	private cache: DecryptedCache;
 
 	constructor(
 		private app: App,
@@ -154,7 +94,7 @@ export class URLResolver {
 		private encryptionService: EncryptionService,
 		private readSecret: SecretReader,
 	) {
-		this.cacheManager = new DecryptedCacheManager(
+		this.cache = new DecryptedCache(
 			this.app.vault.adapter,
 			() => this.settings().decryptedCacheDir,
 		);
@@ -162,11 +102,7 @@ export class URLResolver {
 
 	/** 清理所有解密产生的 blob URL 和定时器 */
 	[Symbol.dispose](): void {
-		if (this.cleanupTimer) {
-			window.clearTimeout(this.cleanupTimer);
-			this.cleanupTimer = undefined;
-		}
-		this.cacheManager.dispose();
+		this.cache[Symbol.dispose]();
 	}
 
 	/**
@@ -616,65 +552,50 @@ export class URLResolver {
 		encryptedPath: string,
 		cid: CID,
 	): Promise<ResolveURLResult | undefined> {
-		// 优先检查内存中已有的 blob URL 缓存
-		const cachedBlob = this.cacheManager.getBlobUrl(encryptedPath);
-		if (cachedBlob) return { url: cachedBlob, path: encryptedPath, cid };
-
-		// 优先检查磁盘缓存
-		const cacheFilename = `${cid.toString()}.decrypted`;
-		const cachePath = await this.cacheManager.readDiskCache(cacheFilename);
-
-		if (cachePath) {
-			return {
-				path: cachePath,
-				url: this.app.vault.adapter.getResourcePath(cachePath),
-				cid,
-			};
-		}
-
-		// 读取与解密失败才是内容级失败（密钥缺失、数据损坏），包装成
-		// DecryptionFailedError 交给展示层；其后的缓存目录配置与落盘逻辑
-		// 语义不同（配置问题、写盘失败），不纳入这个错误类型
-		let decrypted: Awaited<
-			ReturnType<EncryptionService["ensureDecrypted"]>
-		>;
+		let resource: DecryptedCacheResource | undefined;
 		try {
-			const encryptedData =
-				await this.app.vault.adapter.readBinary(encryptedPath);
-			decrypted =
-				await this.encryptionService.ensureDecrypted(encryptedData);
+			resource = await this.cache.getOrCreate(
+				cid.toString(),
+				async () => {
+					// 读取与解密失败才是内容级失败（密钥缺失、数据损坏），包装成
+					// DecryptionFailedError 交给展示层；缓存目录的配置与落盘语义
+					// 不同，不纳入这个错误类型
+					let decrypted: Awaited<
+						ReturnType<EncryptionService["ensureDecrypted"]>
+					>;
+					try {
+						const encryptedData =
+							await this.app.vault.adapter.readBinary(
+								encryptedPath,
+							);
+						decrypted =
+							await this.encryptionService.ensureDecrypted(
+								encryptedData,
+							);
+					} catch (err) {
+						console.error(
+							"Failed to decrypt file:",
+							encryptedPath,
+							err,
+						);
+						throw err instanceof DecryptionFailedError
+							? err
+							: new DecryptionFailedError(encryptedPath, err);
+					}
+					// 无加密层属于合法缺失（内容未加密），交给缓存层原样透传
+					if (decrypted.layers.length === 0) return undefined;
+					return decrypted;
+				},
+				this.settings().maxBlobSize,
+				this.settings().decryptedCacheDir,
+			);
 		} catch (err) {
-			console.error("Failed to decrypt file:", encryptedPath, err);
-			throw err instanceof DecryptionFailedError
-				? err
-				: new DecryptionFailedError(encryptedPath, err);
-		}
-
-		if (decrypted.layers.length === 0) return;
-
-		const size = decrypted.data.byteLength;
-		const maxBlob = this.settings().maxBlobSize;
-
-		if (size <= maxBlob) {
-			const url = this.cacheManager.createBlobUrl(
-				encryptedPath,
-				decrypted.toBlob(),
-			);
-			return { url, path: encryptedPath, cid };
-		}
-
-		// 大文件：解密到缓存目录
-		const cacheDir = this.settings().decryptedCacheDir;
-		if (!cacheDir) {
+			if (!(err instanceof DecryptedCacheDirMissingError)) throw err;
 			console.error(
-				`Decrypted cache directory is not set. Cannot cache large decrypted file (${size} bytes) for ${encryptedPath}`,
+				`Decrypted cache directory is not set. Cannot cache large decrypted file (${err.size} bytes) for ${encryptedPath}`,
 			);
-
 			// 仅对图片类型生成图片占位符，其他类型直接报错
-			const mimeType = decrypted.mimeType;
-			const isImage = mimeType.startsWith("image/");
-
-			if (isImage) {
+			if (err.mimeType.startsWith("image/")) {
 				const svg = createImagePlaceholderSVG(
 					t("decryptedCacheDirNotSetPlaceholder"),
 					"error",
@@ -684,15 +605,16 @@ export class URLResolver {
 					cid,
 				};
 			}
-
 			throw new Error(t("decryptedCacheDirNotSetSimple"));
 		}
 
-		await this.cacheManager.writeDiskCache(cachePath!, decrypted.data);
-
+		if (!resource) return undefined;
+		if (resource.kind === "blob") {
+			return { url: resource.url, path: encryptedPath, cid };
+		}
 		return {
-			path: cachePath!,
-			url: this.app.vault.adapter.getResourcePath(cachePath!),
+			path: resource.path,
+			url: this.app.vault.adapter.getResourcePath(resource.path),
 			cid,
 		};
 	}
@@ -700,82 +622,12 @@ export class URLResolver {
 	/**
 	 * 清理不再被任何活跃笔记引用的解密缓存文件和 blob URL。
 	 * 调用者应在笔记关闭时调用此方法，传入一个生成器函数以惰性产生活跃 CID。
-	 * 内部使用 30 秒防抖，避免用户快速切换笔记时频繁清理。
-	 *
-	 * 缓存文件命名格式为 `<cid>.decrypted`，直接扫描缓存目录匹配此模式，
-	 * 而非维护内存映射，确保应用中途崩溃后残留文件也能被正确清理。
+	 * 30 秒防抖与目录扫描由缓存 module 自持，此处仅转调。
 	 */
 	cleanupDecryptedCache(
 		getActiveCids: () => Iterable<string> | AsyncIterable<string>,
 	): void {
-		if (this.cleanupTimer) {
-			window.clearTimeout(this.cleanupTimer);
-		}
-
-		this.cleanupTimer = window.setTimeout(() => {
-			void (async () => {
-				this.cleanupTimer = undefined;
-				const cacheDir = this.settings().decryptedCacheDir;
-
-				// 早期返回：无缓存可清理
-				if (this.cacheManager.blobCount === 0 && !cacheDir) return;
-
-				// 清理磁盘缓存文件：逐个检查缓存文件，对每个文件用生成器惰性查找活跃 CID，
-				// 利用生成器的提前中止特性，找到匹配即停止扫描，避免不必要的全量收集。
-				if (cacheDir) {
-					try {
-						const cacheDirExists =
-							await this.app.vault.adapter.exists(cacheDir);
-						if (cacheDirExists) {
-							const files =
-								await this.app.vault.adapter.list(cacheDir);
-							for (const filePath of files.files) {
-								const fileName =
-									filePath.split("/").pop() ?? "";
-								if (!fileName.endsWith(".decrypted")) continue;
-								// 提取 CID（文件名去掉 .decrypted 后缀）
-								const cid = fileName.slice(
-									0,
-									-".decrypted".length,
-								);
-								// 惰性检查：遍历活跃 CID 生成器，找到匹配即提前中止
-								let isActive = false;
-								for await (const activeCid of getActiveCids()) {
-									if (activeCid === cid) {
-										isActive = true;
-										break;
-									}
-								}
-								if (!isActive) {
-									try {
-										await this.app.vault.adapter.remove(
-											filePath,
-										);
-									} catch (err) {
-										console.error(
-											`Failed to cleanup decrypted cache for CID ${cid}:`,
-											err,
-										);
-									}
-								}
-							}
-						}
-					} catch (err) {
-						console.error(
-							"Failed to list decrypted cache directory:",
-							err,
-						);
-					}
-				}
-
-				// 清理不再引用的 blob URL：收集活跃 CID 用于 Set 查找
-				const activeCids = new Set<string>();
-				for await (const cid of getActiveCids()) {
-					activeCids.add(cid);
-				}
-				this.cacheManager.revokeStaleBlobs(activeCids);
-			})();
-		}, 30_000);
+		this.cache.sweep(getActiveCids);
 	}
 }
 
