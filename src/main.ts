@@ -49,10 +49,7 @@ import {
 } from "./commands/reprocessAttachments";
 import IPFSLink from "./utils/IPFSLink";
 import findIPFSLinks from "./utils/findIPFSLinks";
-import patchElementURL from "./utils/patchElementURLs";
-import patchElementBackgroundImage from "./utils/patchElementBackgroundImage";
 import FailureImages from "./utils/FailureImages";
-import { stripWrappedPrefix } from "./utils/wrappedBackgroundImage";
 import KeyManager from "./lib/encryption/KeyManager";
 import EncryptionService from "./lib/encryption/EncryptionService";
 import EncryptPathPolicy from "./lib/encryption/EncryptPathPolicy";
@@ -62,13 +59,8 @@ import TransformPipeline from "./preprocess/TransformPipeline";
 import DefaultScriptLoader from "./preprocess/ScriptLoader";
 import type { ScriptLoader } from "./preprocess/types";
 import createScriptLoaderOptions from "./preprocess/createScriptLoaderOptions";
-import orderedParallelMap, {
-	DEFAULT_PARALLEL_LIMIT,
-	EMPTY_PROJECTION,
-	drain,
-	type OrderedParallelProjection,
-} from "./utils/orderedParallelMap";
 import CoalescedNotice from "./utils/CoalescedNotice";
+import PageLinkPatcher from "./PageLinkPatcher";
 
 /** 页面补丁失败提示的合并窗口（毫秒） */
 const PATCH_FAILURE_NOTICE_WINDOW_MS = 500;
@@ -104,7 +96,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		return !!this.app.secretStorage;
 	}
 
-	private inProgressElements = new WeakSet<HTMLElement>();
 	private stack = new DisposableStack();
 	/** 页面链接补丁失败提示：按 DOM 变动高频触发，合并为窗口内累计一条 */
 	private readonly patchFailureNotice = this.stack.use(
@@ -267,7 +258,18 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 			() => this.settings.preProcess.scriptURL,
 		);
 
-		this.setupMutationObserver();
+		// 页面补丁状态机：入口只组装依赖并启动，卸载时随 stack 断开 observer
+		this.stack
+			.use(
+				new PageLinkPatcher({
+					resolveURL: (rawURL) => this.urlResolver.resolveURL(rawURL),
+					placeholder: this.placeholderImageURL,
+					failures: this.failureImages,
+					notice: this.patchFailureNotice,
+					document: activeDocument,
+				}),
+			)
+			.start();
 
 		this.registerEditorExtension(
 			createIPFSLinkClickExtension(this.urlResolver),
@@ -614,8 +616,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		this.addRibbonIcon("hard-drive", t("openCASExplorer"), () => {
 			this.revealFileExplorer().catch(showError);
 		});
-
-		this.process().catch(showError);
 	}
 
 	/** 注册原生 CLI 子命令；旧版 Obsidian 没有该 API 时跳过，不影响插件加载 */
@@ -665,132 +665,6 @@ export default class ContentAddressedAttachmentPlugin extends Plugin {
 		});
 		// eslint-disable-next-line obsidianmd/no-unsupported-api
 		await workspace.revealLeaf?.(leaf);
-	}
-
-	private setupMutationObserver() {
-		const observer = this.stack.adopt(
-			new MutationObserver((mutations) => {
-				mutations.forEach((mutation) => {
-					if (mutation.target.instanceOf(HTMLElement)) {
-						this.process(mutation.target).catch(showError);
-					}
-					mutation.addedNodes.forEach((node) => {
-						if (node.instanceOf(HTMLElement)) {
-							this.process(node).catch(showError);
-						}
-					});
-				});
-			}),
-			(i) => i.disconnect(),
-		);
-		observer.observe(activeDocument.body, {
-			childList: true,
-			subtree: true,
-		});
-	}
-
-	private async processElementURL(el: HTMLElement) {
-		if (this.inProgressElements.has(el)) {
-			return;
-		}
-		using stack = new DisposableStack();
-		this.inProgressElements.add(el);
-		stack.defer(() => this.inProgressElements.delete(el));
-
-		const options = {
-			placeholder: this.placeholderImageURL,
-			failures: this.failureImages,
-		};
-		for (const attr of ["src", "href"]) {
-			const value = el.getAttribute(attr);
-			if (!value) continue;
-			// 检查是否是 IPFS/锁定链接（含 http:/// 伪装前缀的链接）
-			const canonical: string = stripWrappedPrefix(value) ?? value;
-			if (
-				canonical.startsWith("ipfs://") ||
-				canonical.startsWith("internal.ipfs-locked:")
-			) {
-				console.debug("🖼️ 处理 URL:", value);
-				await patchElementURL(
-					el,
-					attr as "src" | "href",
-					(rawURL) => this.urlResolver.resolveURL(rawURL),
-					{
-						imageFallback:
-							el.instanceOf(HTMLImageElement) && attr === "src",
-						...options,
-					},
-				);
-			}
-		}
-	}
-
-	/**
-	 * 改写 Obsidian Base 卡片封面：Base 只接受 http(s) 封面值，因此 IPFS 链接
-	 * 以 http:/// 前缀包装保留在 DOM 的 background-image 中，这里剥掉前缀走
-	 * 统一解析后写回可访问的资源 URL（桌面与移动端同一套机制）。
-	 * 异步解析返回后仅当背景图未被组件改掉时才写回，避免覆盖组件自己的修改。
-	 */
-	private async processElementBackgroundImage(el: HTMLElement) {
-		if (this.inProgressElements.has(el)) {
-			return;
-		}
-		using stack = new DisposableStack();
-		this.inProgressElements.add(el);
-		stack.defer(() => this.inProgressElements.delete(el));
-
-		await patchElementBackgroundImage(
-			el,
-			(rawURL) => this.urlResolver.resolveURL(rawURL),
-			{
-				placeholder: this.placeholderImageURL,
-				failures: this.failureImages,
-			},
-		);
-	}
-
-	private async process(parent: ParentNode = activeDocument): Promise<void> {
-		// 匹配 ipfs:// 或 internal.ipfs-locked: 前缀（含 http:/// 伪装前缀）
-		const match = parent.querySelectorAll<HTMLElement>(
-			'[src^="ipfs://"], [href^="ipfs://"], [src^="internal.ipfs-locked:"], [href^="internal.ipfs-locked:"], [src*="http:///ipfs://"], [href*="http:///ipfs://"], [src*="http:///internal.ipfs-locked:"], [href*="http:///internal.ipfs-locked:"]',
-		);
-		// Base 封面：background-image 中被 http:/// 前缀伪装的 IPFS 链接
-		const backgroundMatch = parent.querySelectorAll<HTMLElement>(
-			'[style*="http:///ipfs://"], [style*="http:///internal.ipfs-locked:"]',
-		);
-
-		// 有界并发：一次 mutation 可命中大量元素，元素内解析还会触发远程请求，
-		// 无上限并发会把页面渲染与网络都打满
-		const patches: (() => Promise<void>)[] = [];
-		match.forEach((element) => {
-			patches.push(() => this.processElementURL(element));
-		});
-		backgroundMatch.forEach((element) => {
-			patches.push(() => this.processElementBackgroundImage(element));
-		});
-
-		let failures = 0;
-		await drain(
-			orderedParallelMap(
-				patches,
-				async (patch): Promise<OrderedParallelProjection<never>> => {
-					try {
-						await patch();
-					} catch (error) {
-						// 元素级隔离：各元素相互独立，一个元素解析失败不应让同批其余元素
-						// 停止补丁；失败汇总后以单条防抖 Notice 反馈（日志在构建中被剥离，
-						// 不是调用者可见的反馈）
-						failures += 1;
-						console.error("补丁元素 URL 失败", error);
-					}
-					return EMPTY_PROJECTION;
-				},
-				{ limit: DEFAULT_PARALLEL_LIMIT },
-			),
-		);
-		if (failures > 0) {
-			this.patchFailureNotice.report(failures);
-		}
 	}
 
 	async loadSettings() {
